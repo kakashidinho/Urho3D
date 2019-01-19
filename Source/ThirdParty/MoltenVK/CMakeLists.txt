@@ -165,7 +165,6 @@ MoltenVKShaderConverter/MoltenVKSPIRVToMSLConverter/SPIRVConversion.h
 MoltenVKShaderConverter/MoltenVKSPIRVToMSLConverter/SPIRVConversion.mm
 MoltenVKShaderConverter/MoltenVKSPIRVToMSLConverter/SPIRVToMSLConverter.cpp
 MoltenVKShaderConverter/MoltenVKSPIRVToMSLConverter/SPIRVToMSLConverter.h
-MoltenVKShaderConverter/MoltenVKSPIRVToMSLConverter/spirv.hpp
 )
 
 source_group("MoltenVKSPIRVToMSLConverter"            FILES ${MoltenVKSPIRVToMSLConverter})

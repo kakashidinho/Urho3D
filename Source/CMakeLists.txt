@@ -135,6 +135,14 @@ if (NOT ANDROID AND NOT ARM AND NOT WEB)
     endif ()
 endif ()
 
+# Add Angle , Vulkan libraries , add MoltenVK in case it's for MacOS/iOS
+if(URHO3D_ANGLE_VULKAN)
+    add_subdirectory (ThirdParty/angle)
+if(APPLE)
+    add_subdirectory (ThirdParty/MoltenVK)
+endif()
+endif ()
+
 # Urho3D game engine library
 add_subdirectory (Urho3D)
 

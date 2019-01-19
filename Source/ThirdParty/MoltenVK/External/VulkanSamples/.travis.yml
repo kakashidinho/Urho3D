@@ -1,0 +1,120 @@
+# Build Configuration for Travis CI
+# https://travis-ci.org
+
+dist: trusty
+sudo: required
+language: cpp
+
+matrix:
+  # Show final status immediately if a test fails.
+  fast_finish: true
+  include:
+    # Android build.
+    - language: android
+      android:
+        components:
+          - build-tools-26.0.2
+          - android-26
+          - extra
+      env: VULKAN_BUILD_TARGET=ANDROID ANDROID_ABI=armeabi-v7a
+    # Linux GCC debug build.
+    - os: linux
+      compiler: gcc
+      env: VULKAN_BUILD_TARGET=LINUX
+    # Linux clang debug build.
+    - os: linux
+      compiler: clang
+      env: VULKAN_BUILD_TARGET=LINUX
+    # Check for proper clang formatting in the pull request.
+    - env: CHECK_FORMAT=ON
+
+cache: ccache
+
+# Use set -e so that the build fails when a command fails.
+# The default action for Travis-CI is to continue running even if a command fails.
+# See https://github.com/travis-ci/travis-ci/issues/1066.
+# Use the YAML block scalar header (|) to allow easier multiline script coding.
+
+before_install:
+  - set -e
+  - |
+    if [[ "$TRAVIS_EVENT_TYPE" == "cron" ]]; then
+        # Add an option to update dependencies from master
+        UPDATE_DEPS_EXTRA_OPTIONS="--ref=master"
+    fi
+  - |
+    if [[ "$VULKAN_BUILD_TARGET" == "LINUX" ]]; then
+      # Install the appropriate Linux packages.
+      sudo apt-get -qq update
+      sudo apt-get -y install libxkbcommon-dev libwayland-dev libxrandr-dev libx11-xcb-dev
+      # Install dependencies
+      python scripts/update_deps.py --dir=external $UPDATE_DEPS_EXTRA_OPTIONS
+    fi
+  - |
+    if [[ "$VULKAN_BUILD_TARGET" == "ANDROID" ]]; then
+      # Install the Android NDK.
+      export ARCH=`uname -m`
+      wget http://dl.google.com/android/repository/android-ndk-r15c-linux-${ARCH}.zip
+      unzip -u -q android-ndk-r15c-linux-${ARCH}.zip
+      export ANDROID_NDK_HOME=`pwd`/android-ndk-r15c
+      export JAVA_HOME="/usr/lib/jvm/java-8-oracle"
+      export PATH="$ANDROID_NDK_HOME:$PATH"
+      pushd android-ndk-r15c
+      yes | sdkmanager --update
+      yes | sdkmanager --licenses
+      popd
+    fi
+  - |
+    if [[ "$CHECK_FORMAT" == "ON" && "$TRAVIS_PULL_REQUEST" != "false" ]]; then
+      # Install the clang format diff tool, but only for pull requests.
+      curl -L http://llvm.org/svn/llvm-project/cfe/trunk/tools/clang-format/clang-format-diff.py -o scripts/clang-format-diff.py;
+    fi
+  # Misc setup
+  - |
+  - export core_count=$(nproc || echo 4) && echo core_count = $core_count
+  - set +e
+
+script:
+  - set -e
+  - |
+  - |
+    if [[ "$VULKAN_BUILD_TARGET" == "ANDROID" ]]; then
+      pushd android-ndk-r15c/sources/third_party/shaderc
+      ../../../ndk-build NDK_PROJECT_PATH=. APP_BUILD_SCRIPT=Android.mk APP_STL:=c++_static APP_ABI=$ANDROID_ABI NDK_TOOLCHAIN_VERSION:=clang libshaderc_combined -j16
+      popd
+      cd API-Samples
+      cmake -DANDROID=ON -DABI_NAME=$ANDROID_ABI
+      cd android
+      ./gradlew build
+    fi
+    if [[ "$VULKAN_BUILD_TARGET" == "LINUX" ]]; then
+      # Build VulkanSamples
+      mkdir build
+      cd build
+      cmake -C../external/helper.cmake ..
+      make -j $core_count
+      cd ..
+    fi
+  - |
+    if [[ "$CHECK_FORMAT" == "ON" ]]; then
+      if [[ "$TRAVIS_PULL_REQUEST" != "false" ]]; then
+        # Run the clang format check only for pull request builds because the
+        # master branch is needed to do the git diff.
+        echo "Checking clang-format between TRAVIS_BRANCH=$TRAVIS_BRANCH and TRAVIS_PULL_REQUEST_BRANCH=$TRAVIS_PULL_REQUEST_BRANCH"
+        ./scripts/check_code_format.sh
+      else
+        echo "Skipping clang-format check since this is not a pull request."
+      fi
+    fi
+  - set +e
+
+notifications:
+  email:
+    recipients:
+      - karl@lunarg.com
+      - cnorthrop@google.com
+      - tobine@google.com
+      - chrisforbes@google.com
+      - tony@lunarg.com
+    on_success: change
+    on_failure: always

@@ -152,7 +152,9 @@ rx::DisplayImpl *CreateDisplayFromAttribs(const AttributeMap &attribMap, const D
 #elif defined(ANGLE_USE_X11)
             impl = new rx::DisplayGLX(state);
 #elif defined(ANGLE_PLATFORM_APPLE)
+#   ifndef URHO3D_ANGLE_VULKAN
             impl = new rx::DisplayCGL(state);
+#   endif
 #elif defined(ANGLE_USE_OZONE)
             impl = new rx::DisplayOzone(state);
 #elif defined(ANGLE_PLATFORM_ANDROID)

@@ -1210,7 +1210,7 @@ endif()
 
 if (WIN32)
 set(object_tracker_sources
-  out/Generated/gen/third_party/vulkan-validation-layers/angle/vulkan/object_tracker.cpp
+  out/gen/third_party/vulkan-validation-layers/angle/vulkan/object_tracker.cpp
   third_party/vulkan-validation-layers/src/layers/object_tracker.h
   third_party/vulkan-validation-layers/src/layers/object_tracker_utils.cpp
 )
@@ -1220,7 +1220,7 @@ endif()
 
 if (WIN32)
 set (parameter_validation_sources
-  out/Generated/gen/third_party/vulkan-validation-layers/angle/vulkan/parameter_validation.cpp
+  out/gen/third_party/vulkan-validation-layers/angle/vulkan/parameter_validation.cpp
   third_party/vulkan-validation-layers/src/layers/parameter_validation.h
   third_party/vulkan-validation-layers/src/layers/parameter_validation_utils.cpp
 )
@@ -1281,12 +1281,12 @@ set (libangle_includes
   third_party/spirv-headers/src/include
   third_party/vulkan-validation-layers/src/layers
   third_party/vulkan-loader/src/loader
-  out/Generated/gen/angle
-  out/Generated/gen/third_party
-  out/Generated/gen/third_party/spirv-tools/src
-  out/Generated/gen/third_party/vulkan-loader/angle/vulkan
-  out/Generated/gen/third_party/vulkan-tools/angle/vulkan
-  out/Generated/gen/third_party/vulkan-validation-layers/angle/vulkan
+  out/gen/angle
+  out/gen/third_party
+  out/gen/third_party/spirv-tools/src
+  out/gen/third_party/vulkan-loader/angle/vulkan
+  out/gen/third_party/vulkan-tools/angle/vulkan
+  out/gen/third_party/vulkan-validation-layers/angle/vulkan
 )
 
 # Define dependency libs

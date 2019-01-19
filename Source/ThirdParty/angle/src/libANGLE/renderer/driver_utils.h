@@ -24,6 +24,8 @@ enum VendorID : uint32_t
     // This is Qualcomm PCI Vendor ID.
     // Android doesn't have a PCI bus, but all we need is a unique id.
     VENDOR_ID_QUALCOMM = 0x5143,
+    // ELIX22 - added apple vendor ID
+    VENDOR_ID_APPLE = 0x106B,
 };
 
 enum AndroidDeviceID : uint32_t
@@ -69,6 +71,11 @@ inline bool IsPixel2(uint32_t vendorId, uint32_t deviceId)
     return IsQualcomm(vendorId) && deviceId == ANDROID_DEVICE_ID_PIXEL2;
 }
 
+inline bool IsApple(uint32_t vendor_id)
+{
+    return vendor_id == VENDOR_ID_APPLE;
+}
+    
 const char *GetVendorString(uint32_t vendorId);
 
 // Intel

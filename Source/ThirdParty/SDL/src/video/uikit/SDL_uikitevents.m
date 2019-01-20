@@ -63,9 +63,10 @@ UIKit_PumpEvents(_THIS)
     do {
         result = CFRunLoopRunInMode((CFStringRef)UITrackingRunLoopMode, seconds, TRUE);
     } while(result == kCFRunLoopRunHandledSource);
-
+#ifndef SDL_VIDEO_OPENGL_EGL // TBD ELIX22
     /* See the comment in the function definition. */
     UIKit_GL_RestoreCurrentContext();
+#endif
 }
 
 #endif /* SDL_VIDEO_DRIVER_UIKIT */

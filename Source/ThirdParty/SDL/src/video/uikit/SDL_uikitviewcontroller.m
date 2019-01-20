@@ -144,7 +144,9 @@ SDL_AppleTVControllerUIHintChanged(void *userdata, const char *name, const char 
     /* Don't run the game loop while a messagebox is up */
     if (!UIKit_ShowingMessageBox()) {
         /* See the comment in the function definition. */
+#ifndef SDL_VIDEO_OPENGL_EGL // TBD ELIX22
         UIKit_GL_RestoreCurrentContext();
+#endif
 
         animationCallback(animationCallbackParam);
     }

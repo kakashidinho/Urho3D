@@ -42,6 +42,10 @@
 
 #include <Foundation/Foundation.h>
 
+#if SDL_VIDEO_OPENGL_EGL
+#include "SDL_uikitegl.h"
+#endif
+
 @implementation SDL_WindowData
 
 @synthesize uiwindow;
@@ -222,6 +226,18 @@ UIKit_CreateWindow(_THIS, SDL_Window *window)
         }
     }
 
+#if SDL_VIDEO_OPENGL_EGL
+    /* The rest of this macro mess is OpenGL ES windows */
+    if (_this->gl_config.profile_mask == SDL_GL_CONTEXT_PROFILE_ES)
+    {
+        if (UIKIT_GLES_SetupWindow(_this, window) < 0) {
+            UIKit_DestroyWindow(_this, window);
+            return -1;
+        }
+        return 1;
+    }
+#endif
+
     return 1;
 }
 
@@ -353,6 +369,7 @@ UIKit_GetWindowWMInfo(_THIS, SDL_Window * window, SDL_SysWMinfo * info)
             info->info.uikit.window = data.uiwindow;
 
             /* These struct members were added in SDL 2.0.4. */
+#ifndef SDL_VIDEO_OPENGL_EGL // TBD ELIX22
             if (versionnum >= SDL_VERSIONNUM(2,0,4)) {
                 if ([data.viewcontroller.view isKindOfClass:[SDL_uikitopenglview class]]) {
                     SDL_uikitopenglview *glview = (SDL_uikitopenglview *)data.viewcontroller.view;
@@ -365,7 +382,7 @@ UIKit_GetWindowWMInfo(_THIS, SDL_Window * window, SDL_SysWMinfo * info)
                     info->info.uikit.resolveFramebuffer = 0;
                 }
             }
-
+#endif
             return SDL_TRUE;
         } else {
             SDL_SetError("Application not compiled with SDL %d.%d",

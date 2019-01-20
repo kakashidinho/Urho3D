@@ -45,6 +45,10 @@
 
 #include <SDL/SDL.h>
 
+#if defined(URHO3D_ANGLE_VULKAN)
+#include "../../../ThirdParty/angle/include/EGL/egl.h"
+#endif
+
 #include "../../DebugNew.h"
 
 #ifdef GL_ES_VERSION_2_0
@@ -61,6 +65,14 @@ extern "C"
     GL_APICALL void GL_APIENTRY glDrawArraysInstancedANGLE (GLenum mode, GLint first, GLsizei count, GLsizei primcount);
     GL_APICALL void GL_APIENTRY glDrawElementsInstancedANGLE (GLenum mode, GLsizei count, GLenum type, const void *indices, GLsizei primcount);
     GL_APICALL void GL_APIENTRY glVertexAttribDivisorANGLE (GLuint index, GLuint divisor);
+}
+#endif
+
+#if defined(URHO3D_ANGLE_VULKAN)
+extern "C"
+{
+EGLDisplay EGLAPIENTRY eglGetCurrentDisplay(void);
+const char *EGLAPIENTRY eglQueryString(EGLDisplay dpy, EGLint name);
 }
 #endif
 
@@ -261,6 +273,11 @@ bool Graphics::SetMode(int width, int height, bool fullscreen, bool borderless, 
 
     bool maximize = false;
 
+/* TBD ELIX22, needs more investigation to enable high DPI  */
+#if defined(URHO3D_ANGLE_VULKAN)
+    highDPI =  false;
+#endif
+
 #if defined(IOS) || defined(TVOS)
     // iOS and tvOS app always take the fullscreen (and with status bar hidden)
     fullscreen = true;
@@ -412,7 +429,10 @@ bool Graphics::SetMode(int width, int height, bool fullscreen, bool borderless, 
             flags |= SDL_WINDOW_ALLOW_HIGHDPI;
 
         SDL_SetHint(SDL_HINT_ORIENTATIONS, orientations_.CString());
-
+#ifdef URHO3D_ANGLE_VULKAN
+		SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+		SDL_SetHint(SDL_HINT_OPENGL_ES_DRIVER, "1");
+#endif
         for (;;)
         {
             if (!externalWindow_)
@@ -525,6 +545,20 @@ bool Graphics::SetMode(int width, int height, bool fullscreen, bool borderless, 
     eventData[P_MONITOR] = monitor_;
     eventData[P_REFRESHRATE] = refreshRate_;
     SendEvent(E_SCREENMODE, eventData);
+
+#if defined(URHO3D_ANGLE_VULKAN)
+    setFlipY(false);
+    EGLDisplay disp =   eglGetCurrentDisplay();
+    const char *vendorString = eglQueryString(disp, EGL_VENDOR);
+    const char * vendor_string_intel = SDL_strstr(vendorString, "Intel");
+    const char * vendor_string_apple = SDL_strstr(vendorString, "APPLE");
+    /*TBD ELI , this is  an  hack , currently the Angle-Vulkan backend  doesn't flip  the Y axis for Intel based
+     platofrms it will require flipping the Y axis on the Urho3D side*/
+    if(vendor_string_intel != NULL  || vendor_string_apple != NULL )
+    {
+        setFlipY(true);
+    }
+#endif
 
     return true;
 }
@@ -2443,6 +2477,9 @@ void Graphics::Restore()
     // Ensure first that the context exists
     if (!impl_->context_)
     {
+#ifdef URHO3D_ANGLE_VULKAN
+		SDL_SetHint(SDL_HINT_OPENGL_ES_DRIVER, "1");
+#endif
         impl_->context_ = SDL_GL_CreateContext(window_);
 
 #ifndef GL_ES_VERSION_2_0

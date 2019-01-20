@@ -1,7 +1,7 @@
 /*
  * mvk_datatypes.h
  *
- * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -54,7 +54,6 @@ typedef enum {
     kMVKFormatColorInt32,       /**< A signed 32-bit integer color. */
     kMVKFormatColorUInt32,		/**< An unsigned 32-bit integer color. */
     kMVKFormatDepthStencil,     /**< A depth and stencil value. */
-    kMVKFormatCompressed,       /**< A block-compressed color. */
 } MVKFormatType;
 
 /** Returns whether the VkFormat is supported by this implementation. */
@@ -204,9 +203,6 @@ bool mvkMTLPixelFormatIsDepthFormat(MTLPixelFormat mtlFormat);
 /** Returns whether the specified Metal MTLPixelFormat can be used as a stencil format. */
 bool mvkMTLPixelFormatIsStencilFormat(MTLPixelFormat mtlFormat);
 
-/** Returns whether the specified Metal MTLPixelFormat is a PVRTC format. */
-bool mvkMTLPixelFormatIsPVRTCFormat(MTLPixelFormat mtlFormat);
-
 /** Returns the Metal texture type from the specified Vulkan image properties. */
 MTLTextureType mvkMTLTextureTypeFromVkImageType(VkImageType vkImageType,
 												uint32_t arraySize,
@@ -298,14 +294,6 @@ VkExtent3D mvkMipmapBaseSizeFromLevelSize3D(VkExtent3D levelSize, uint32_t level
  * or returns MTLSamplerAddressModeMirrorClampToEdge if no corresponding MTLSamplerAddressMode exists.
  */
 MTLSamplerAddressMode mvkMTLSamplerAddressModeFromVkSamplerAddressMode(VkSamplerAddressMode vkMode);
-
-#if MVK_MACOS
-/**
- * Returns the Metal MTLSamplerBorderColor corresponding to the specified Vulkan VkBorderColor,
- * or returns MTLSamplerBorderColorTransparentBlack if no corresponding MTLSamplerBorderColor exists.
- */
-MTLSamplerBorderColor mvkMTLSamplerBorderColorFromVkBorderColor(VkBorderColor vkColor);
-#endif
 
 /**
  * Returns the Metal MTLSamplerMinMagFilter corresponding to the specified Vulkan VkFilter,

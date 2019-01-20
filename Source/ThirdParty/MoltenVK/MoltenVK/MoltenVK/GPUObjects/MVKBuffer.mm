@@ -1,7 +1,7 @@
 /*
  * MVKBuffer.mm
  *
- * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -155,7 +155,7 @@ id<MTLTexture> MVKBufferView::getMTLTexture() {
 MVKBufferView::MVKBufferView(MVKDevice* device, const VkBufferViewCreateInfo* pCreateInfo) : MVKRefCountedDeviceObject(device) {
     _buffer = (MVKBuffer*)pCreateInfo->buffer;
     _mtlBufferOffset = _buffer->getMTLBufferOffset() + pCreateInfo->offset;
-    _mtlPixelFormat = getMTLPixelFormatFromVkFormat(pCreateInfo->format);
+    _mtlPixelFormat = mtlPixelFormatFromVkFormat(pCreateInfo->format);
     VkExtent2D fmtBlockSize = mvkVkFormatBlockTexelSize(pCreateInfo->format);  // Pixel size of format
     size_t bytesPerBlock = mvkVkFormatBytesPerBlock(pCreateInfo->format);
 	_mtlTexture = nil;
@@ -166,10 +166,9 @@ MVKBufferView::MVKBufferView(MVKDevice* device, const VkBufferViewCreateInfo* pC
     size_t blockCount = byteCount / bytesPerBlock;
 
 	// But Metal requires the texture to be a 2D texture. Determine the number of 2D rows we need and their width.
-	// Multiple rows will automatically align with PoT max texture dimension, but need to align upwards if less than full single row.
 	size_t maxBlocksPerRow = _device->_pMetalFeatures->maxTextureDimension / fmtBlockSize.width;
 	size_t blocksPerRow = min(blockCount, maxBlocksPerRow);
-	_mtlBytesPerRow = mvkAlignByteOffset(blocksPerRow * bytesPerBlock, _device->getVkFormatTexelBufferAlignment(pCreateInfo->format));
+	_mtlBytesPerRow = mvkAlignByteOffset(blocksPerRow * bytesPerBlock, _device->_pProperties->limits.minTexelBufferOffsetAlignment);
 
 	size_t rowCount = blockCount / blocksPerRow;
 	if (blockCount % blocksPerRow) { rowCount++; }

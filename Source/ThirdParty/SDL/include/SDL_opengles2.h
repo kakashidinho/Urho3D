@@ -26,6 +26,11 @@
  */
 #include "SDL_config.h"
 
+#ifdef URHO3D_ANGLE_VULKAN
+#include <GLES2/gl2platform.h>
+#include <GLES2/gl2.h>
+#include <GLES2/gl2ext.h>
+#else
 #ifndef _MSC_VER
 
 #ifdef __IPHONEOS__
@@ -46,6 +51,7 @@
 #include "SDL_opengles2_gl2ext.h"
 
 #endif /* _MSC_VER */
+#endif /* URHO3D_ANGLE_VULKAN */
 
 #ifndef APIENTRY
 #define APIENTRY GL_APIENTRY

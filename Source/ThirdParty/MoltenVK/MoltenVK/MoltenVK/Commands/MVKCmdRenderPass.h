@@ -1,7 +1,7 @@
 /*
  * MVKCmdRenderPass.h
  *
- * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,7 +19,6 @@
 #pragma once
 
 #include "MVKCommand.h"
-#include "MVKVector.h"
 #include <vector>
 
 #import <Metal/Metal.h>
@@ -48,7 +47,7 @@ private:
 	VkSubpassContents _contents;
 	MVKRenderPass* _renderPass;
 	MVKFramebuffer* _framebuffer;
-	MVKVector<VkClearValue> _clearValues;
+	std::vector<VkClearValue> _clearValues;
 };
 
 
@@ -115,7 +114,7 @@ public:
 
 private:
 	uint32_t _firstViewport;
-	MVKVector<MTLViewport> _mtlViewports;
+	std::vector<MTLViewport> _mtlViewports;
 };
 
 
@@ -134,7 +133,7 @@ public:
 
 private:
 	uint32_t _firstScissor;
-	MVKVector<MTLScissorRect> _mtlScissors;
+	std::vector<MTLScissorRect> _mtlScissors;
 };
 
 

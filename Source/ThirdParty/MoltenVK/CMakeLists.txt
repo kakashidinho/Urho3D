@@ -19,7 +19,6 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 #
-# 20190119 - Eli Aloni (A.K.A elix22) - initial creation
 
 # Define target name
 set (TARGET_NAME MoltenVK)
@@ -165,6 +164,7 @@ MoltenVKShaderConverter/MoltenVKSPIRVToMSLConverter/SPIRVConversion.h
 MoltenVKShaderConverter/MoltenVKSPIRVToMSLConverter/SPIRVConversion.mm
 MoltenVKShaderConverter/MoltenVKSPIRVToMSLConverter/SPIRVToMSLConverter.cpp
 MoltenVKShaderConverter/MoltenVKSPIRVToMSLConverter/SPIRVToMSLConverter.h
+MoltenVKShaderConverter/MoltenVKSPIRVToMSLConverter/spirv.hpp
 )
 
 source_group("MoltenVKSPIRVToMSLConverter"            FILES ${MoltenVKSPIRVToMSLConverter})

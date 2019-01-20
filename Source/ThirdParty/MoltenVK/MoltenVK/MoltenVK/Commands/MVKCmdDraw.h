@@ -1,7 +1,7 @@
 /*
  * MVKCmdDraw.h
  *
- * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@
 
 #include "MVKCommand.h"
 #include "MVKMTLResourceBindings.h"
-#include "MVKVector.h"
+#include <vector>
 
 #import <Metal/Metal.h>
 
@@ -44,7 +44,7 @@ public:
     MVKCmdBindVertexBuffers(MVKCommandTypePool<MVKCmdBindVertexBuffers>* pool);
 
 protected:
-    MVKVector<MVKMTLBufferBinding> _bindings;
+    std::vector<MVKMTLBufferBinding> _bindings;
 };
 
 

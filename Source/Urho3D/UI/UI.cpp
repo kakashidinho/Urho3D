@@ -998,6 +998,15 @@ void UI::Render(VertexBuffer* buffer, const PODVector<UIBatch>& batches, unsigne
         scale.y_ = -scale.y_;
 #endif
     }
+#ifdef URHO3D_ANGLE_VULKAN
+    else if(graphics_->isNeedsFlipY())
+    {
+        // same way as a render texture produced on Direct3D.
+        offset.y_ = -offset.y_;
+        scale.y_ = -scale.y_;
+        
+    }
+#endif
 
     Matrix4 projection(Matrix4::IDENTITY);
     projection.m00_ = scale.x_ * uiScale_;
@@ -1014,6 +1023,13 @@ void UI::Render(VertexBuffer* buffer, const PODVector<UIBatch>& batches, unsigne
     // Reverse winding if rendering to texture on OpenGL
     if (surface)
         graphics_->SetCullMode(CULL_CW);
+    else
+#endif
+#ifdef URHO3D_ANGLE_VULKAN
+    if(graphics_->isNeedsFlipY())
+    {
+        graphics_->SetCullMode(CULL_CW);
+    }
     else
 #endif
         graphics_->SetCullMode(CULL_CCW);
@@ -1079,6 +1095,15 @@ void UI::Render(VertexBuffer* buffer, const PODVector<UIBatch>& batches, unsigne
         // Flip scissor vertically if using OpenGL texture rendering
 #ifdef URHO3D_OPENGL
         if (surface)
+        {
+            int top = scissor.top_;
+            int bottom = scissor.bottom_;
+            scissor.top_ = viewSize.y_ - bottom;
+            scissor.bottom_ = viewSize.y_ - top;
+        }
+#endif
+#ifdef URHO3D_ANGLE_VULKAN
+        else if(graphics_->isNeedsFlipY())
         {
             int top = scissor.top_;
             int bottom = scissor.bottom_;

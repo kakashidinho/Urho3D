@@ -1,7 +1,7 @@
 /*
  * MVKDevice.h
  *
- * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -243,9 +243,7 @@ public:
 
 	/** Returns the underlying Metal device. */
 	inline id<MTLDevice> getMTLDevice() { return _mtlDevice; }
-    
-    /*** Replaces the underlying Metal device .*/
-    inline void replaceMTLDevice(id<MTLDevice> mtlDevice) { [_mtlDevice autorelease]; _mtlDevice = [mtlDevice retain]; }
+
 
 #pragma mark Construction
 
@@ -277,7 +275,7 @@ protected:
 	void initFeatures();
 	void initProperties();
 	void initMemoryProperties();
-	std::vector<MVKQueueFamily*>& getQueueFamilies();
+	void initQueueFamilies();
 	void initPipelineCacheUUID();
 	MTLFeatureSet getHighestMTLFeatureSet();
 	void logGPUInfo();
@@ -508,10 +506,7 @@ public:
 	 *
 	 * All other pixel formats are returned unchanged.
 	 */
-	MTLPixelFormat getMTLPixelFormatFromVkFormat(VkFormat vkFormat);
-
-	/** Returns the memory alignment required for the format when used in a texel buffer. */
-	VkDeviceSize getVkFormatTexelBufferAlignment(VkFormat format);
+	MTLPixelFormat mtlPixelFormatFromVkFormat(VkFormat vkFormat);
 
     /** 
      * Returns the MTLBuffer used to hold occlusion query results, 
@@ -581,7 +576,6 @@ protected:
 	MVKResource* addResource(MVKResource* rez);
 	MVKResource* removeResource(MVKResource* rez);
     void initPerformanceTracking();
-	void initPhysicalDevice(MVKPhysicalDevice* physicalDevice);
 	void initQueues(const VkDeviceCreateInfo* pCreateInfo);
     const char* getActivityPerformanceDescription(MVKPerformanceTracker& shaderCompilationEvent);
 	uint64_t getPerformanceTimestampImpl();
@@ -618,12 +612,12 @@ public:
 	 * Returns the Metal MTLPixelFormat corresponding to the specified Vulkan VkFormat,
 	 * or returns MTLPixelFormatInvalid if no corresponding MTLPixelFormat exists.
 	 *
-	 * This function delegates to the MVKDevice::getMTLPixelFormatFromVkFormat() function.
+	 * This function delegates to the MVKDevice::mtlPixelFormatFromVkFormat() function.
 	 * See the notes for that function for more information about how MTLPixelFormats
 	 * are managed for each platform device.
 	 */
-    inline MTLPixelFormat getMTLPixelFormatFromVkFormat(VkFormat vkFormat) {
-        return _device->getMTLPixelFormatFromVkFormat(vkFormat);
+    inline MTLPixelFormat mtlPixelFormatFromVkFormat(VkFormat vkFormat) {
+        return _device->mtlPixelFormatFromVkFormat(vkFormat);
     }
 
 	/** Constructs an instance for the specified device. */

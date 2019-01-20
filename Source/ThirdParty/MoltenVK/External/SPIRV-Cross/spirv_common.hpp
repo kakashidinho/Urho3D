@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2019 Arm Limited
+ * Copyright 2015-2018 ARM Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -322,14 +322,14 @@ enum Types
 	TypeConstant,
 	TypeFunction,
 	TypeFunctionPrototype,
+	TypePointer,
 	TypeBlock,
 	TypeExtension,
 	TypeExpression,
 	TypeConstantOp,
 	TypeCombinedImageSampler,
 	TypeAccessChain,
-	TypeUndef,
-	TypeCount
+	TypeUndef
 };
 
 struct SPIRUndef : IVariant
@@ -564,15 +564,8 @@ struct SPIRExpression : IVariant
 	// This is needed for targets which don't support row_major layouts.
 	bool need_transpose = false;
 
-	// Whether or not this is an access chain expression.
-	bool access_chain = false;
-
 	// A list of expressions which this expression depends on.
 	std::vector<uint32_t> expression_dependencies;
-
-	// By reading this expression, we implicitly read these expressions as well.
-	// Used by access chain Store and Load since we read multiple expressions in this case.
-	std::vector<uint32_t> implied_read_expressions;
 
 	SPIRV_CROSS_DECLARE_CLONE(SPIRExpression)
 };
@@ -812,11 +805,6 @@ struct SPIRFunction : IVariant
 	// Need to defer this, because they might rely on things which change during compilation.
 	std::vector<std::function<void()>> fixup_hooks_in;
 
-	// On function entry, make sure to copy a constant array into thread addr space to work around
-	// the case where we are passing a constant array by value to a function on backends which do not
-	// consider arrays value types.
-	std::vector<uint32_t> constant_arrays_needed_on_stack;
-
 	bool active = false;
 	bool flush_undeclared = true;
 	bool do_combined_parameters = true;
@@ -856,10 +844,6 @@ struct SPIRAccessChain : IVariant
 	uint32_t matrix_stride = 0;
 	bool row_major_matrix = false;
 	bool immutable = false;
-
-	// By reading this expression, we implicitly read these expressions as well.
-	// Used by access chain Store and Load since we read multiple expressions in this case.
-	std::vector<uint32_t> implied_read_expressions;
 
 	SPIRV_CROSS_DECLARE_CLONE(SPIRAccessChain)
 };
@@ -902,10 +886,6 @@ struct SPIRVariable : IVariant
 
 	bool deferred_declaration = false;
 	bool phi_variable = false;
-
-	// Used to deal with Phi variable flushes. See flush_phi().
-	bool allocate_temporary_copy = false;
-
 	bool remapped_variable = false;
 	uint32_t remapped_components = 0;
 
@@ -1100,21 +1080,6 @@ struct SPIRConstant : IVariant
 			c.vecsize = constant_type_.vecsize;
 	}
 
-	inline bool constant_is_null() const
-	{
-		if (specialization)
-			return false;
-		if (!subconstants.empty())
-			return false;
-
-		for (uint32_t col = 0; col < columns(); col++)
-			for (uint32_t row = 0; row < vector_size(); row++)
-				if (scalar_u64(col, row) != 0)
-					return false;
-
-		return true;
-	}
-
 	explicit SPIRConstant(uint32_t constant_type_)
 	    : constant_type(constant_type_)
 	{
@@ -1255,7 +1220,7 @@ public:
 		return *this;
 	}
 
-	void set(std::unique_ptr<IVariant> val, Types new_type)
+	void set(std::unique_ptr<IVariant> val, uint32_t new_type)
 	{
 		holder = std::move(val);
 		if (!allow_type_rewrite && type != TypeNone && type != new_type)
@@ -1269,7 +1234,7 @@ public:
 	{
 		if (!holder)
 			SPIRV_CROSS_THROW("nullptr");
-		if (static_cast<Types>(T::type) != type)
+		if (T::type != type)
 			SPIRV_CROSS_THROW("Bad cast");
 		return *static_cast<T *>(holder.get());
 	}
@@ -1279,12 +1244,12 @@ public:
 	{
 		if (!holder)
 			SPIRV_CROSS_THROW("nullptr");
-		if (static_cast<Types>(T::type) != type)
+		if (T::type != type)
 			SPIRV_CROSS_THROW("Bad cast");
 		return *static_cast<const T *>(holder.get());
 	}
 
-	Types get_type() const
+	uint32_t get_type() const
 	{
 		return type;
 	}
@@ -1312,7 +1277,7 @@ public:
 
 private:
 	std::unique_ptr<IVariant> holder;
-	Types type = TypeNone;
+	uint32_t type = TypeNone;
 	bool allow_type_rewrite = false;
 };
 
@@ -1333,7 +1298,7 @@ T &variant_set(Variant &var, P &&... args)
 {
 	auto uptr = std::unique_ptr<T>(new T(std::forward<P>(args)...));
 	auto ptr = uptr.get();
-	var.set(std::move(uptr), static_cast<Types>(T::type));
+	var.set(std::move(uptr), T::type);
 	return *ptr;
 }
 
@@ -1352,7 +1317,7 @@ struct Meta
 		std::string qualified_alias;
 		std::string hlsl_semantic;
 		Bitset decoration_flags;
-		spv::BuiltIn builtin_type = spv::BuiltInMax;
+		spv::BuiltIn builtin_type;
 		uint32_t location = 0;
 		uint32_t component = 0;
 		uint32_t set = 0;
@@ -1363,7 +1328,6 @@ struct Meta
 		uint32_t input_attachment = 0;
 		uint32_t spec_id = 0;
 		uint32_t index = 0;
-		spv::FPRoundingMode fp_rounding_mode = spv::FPRoundingModeMax;
 		bool builtin = false;
 	};
 

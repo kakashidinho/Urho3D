@@ -1,7 +1,7 @@
 /*
  * MVKRenderPass.mm
  *
- * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -67,7 +67,7 @@ VkSampleCountFlagBits MVKRenderSubpass::getSampleCount() {
 
 void MVKRenderSubpass::populateMTLRenderPassDescriptor(MTLRenderPassDescriptor* mtlRPDesc,
 													   MVKFramebuffer* framebuffer,
-													   MVKVector<VkClearValue>& clearValues,
+													   vector<VkClearValue>& clearValues,
 													   bool isRenderingEntireAttachment) {
 	// Populate the Metal color attachments
 	uint32_t caCnt = getColorAttachmentCount();
@@ -157,7 +157,7 @@ void MVKRenderSubpass::populateMTLRenderPassDescriptor(MTLRenderPassDescriptor* 
 }
 
 void MVKRenderSubpass::populateClearAttachments(vector<VkClearAttachment>& clearAtts,
-												MVKVector<VkClearValue>& clearValues) {
+												vector<VkClearValue>& clearValues) {
 	VkClearAttachment cAtt;
 
 	uint32_t attIdx;
@@ -178,7 +178,7 @@ void MVKRenderSubpass::populateClearAttachments(vector<VkClearAttachment>& clear
 		cAtt.colorAttachment = 0;
 		cAtt.clearValue = clearValues[attIdx];
 
-		MTLPixelFormat mtlDSFmt = _renderPass->getMTLPixelFormatFromVkFormat(getDepthStencilFormat());
+		MTLPixelFormat mtlDSFmt = _renderPass->mtlPixelFormatFromVkFormat(getDepthStencilFormat());
 		if (mvkMTLPixelFormatIsDepthFormat(mtlDSFmt)) { cAtt.aspectMask |= VK_IMAGE_ASPECT_DEPTH_BIT; }
 		if (mvkMTLPixelFormatIsStencilFormat(mtlDSFmt)) { cAtt.aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT; }
 		if (cAtt.aspectMask) { clearAtts.push_back(cAtt); }

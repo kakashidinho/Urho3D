@@ -1,7 +1,7 @@
 /*
  * MVKCommandBuffer.h
  *
- * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,6 @@
 #include "MVKCommandEncoderState.h"
 #include "MVKMTLBufferAllocation.h"
 #include "MVKCmdPipeline.h"
-#include "MVKVector.h"
 #include <vector>
 #include <unordered_map>
 
@@ -240,7 +239,7 @@ public:
 						 MVKRenderPass* renderPass,
 						 MVKFramebuffer* framebuffer,
 						 VkRect2D& renderArea,
-						 MVKVector<VkClearValue>* clearValues);
+						 std::vector<VkClearValue>* clearValues);
 
 	/** Begins the next render subpass. */
 	void beginNextSubpass(VkSubpassContents renderpassContents);
@@ -403,7 +402,7 @@ protected:
 	uint32_t _renderSubpassIndex;
 	VkRect2D _renderArea;
     MVKActivatedQueries* _pActivatedQueries;
-	MVKVector<VkClearValue> _clearValues;
+	std::vector<VkClearValue> _clearValues;
 	id<MTLComputeCommandEncoder> _mtlComputeEncoder;
 	MVKCommandUse _mtlComputeEncoderUse;
 	id<MTLBlitCommandEncoder> _mtlBlitEncoder;

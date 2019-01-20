@@ -1,7 +1,7 @@
 /*
  * MVKImage.mm
  *
- * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,9 +21,7 @@
 #include "MVKCommandBuffer.h"
 #include "mvk_datatypes.h"
 #include "MVKFoundation.h"
-#include "MVKEnvironment.h"
 #include "MVKLogging.h"
-#include "MVKCodec.h"
 #import "MTLTextureDescriptor+MoltenVK.h"
 #import "MTLSamplerDescriptor+MoltenVK.h"
 
@@ -367,51 +365,21 @@ VkResult MVKImage::useIOSurface(IOSurfaceRef ioSurface) {
 
 MTLTextureUsage MVKImage::getMTLTextureUsage() {
 	MTLTextureUsage usage = mvkMTLTextureUsageFromVkImageUsageFlags(_usage);
-
 	// If this is a depth/stencil texture, and the device supports it, tell
 	// Metal we may create texture views of this, too.
 	if ((_mtlPixelFormat == MTLPixelFormatDepth32Float_Stencil8
 #if MVK_MACOS
 		 || _mtlPixelFormat == MTLPixelFormatDepth24Unorm_Stencil8
 #endif
-		) && _device->_pMetalFeatures->stencilViews) {
+		) && _device->_pMetalFeatures->stencilViews)
 		mvkEnableFlag(usage, MTLTextureUsagePixelFormatView);
-	}
-
-	// If this format doesn't support being blitted to, and the usage
-	// doesn't specify use as an attachment, turn off
-	// MTLTextureUsageRenderTarget.
-	VkFormatProperties props;
-	_device->getPhysicalDevice()->getFormatProperties(getVkFormat(), &props);
-	if (!mvkAreFlagsEnabled(_isLinear ? props.linearTilingFeatures : props.optimalTilingFeatures, VK_FORMAT_FEATURE_BLIT_DST_BIT) &&
-		!mvkIsAnyFlagEnabled(_usage, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)) {
-		mvkDisableFlag(usage, MTLTextureUsageRenderTarget);
-	}
-
-#if MVK_MACOS
-	// If this is a 3D compressed texture, tell Metal we might write to it.
-	if (_is3DCompressed) {
-		mvkEnableFlag(usage, MTLTextureUsageShaderWrite);
-	}
-#endif
-
 	return usage;
 }
 
 // Returns an autoreleased Metal texture descriptor constructed from the properties of this image.
 MTLTextureDescriptor* MVKImage::getMTLTextureDescriptor() {
 	MTLTextureDescriptor* mtlTexDesc = [[MTLTextureDescriptor alloc] init];
-#if MVK_MACOS
-	if (_is3DCompressed) {
-		// Metal doesn't yet support 3D compressed textures, so we'll decompress
-		// the texture ourselves. This, then, is the *uncompressed* format.
-		mtlTexDesc.pixelFormat = MTLPixelFormatBGRA8Unorm;
-	} else {
-		mtlTexDesc.pixelFormat = _mtlPixelFormat;
-	}
-#else
 	mtlTexDesc.pixelFormat = _mtlPixelFormat;
-#endif
 	mtlTexDesc.textureType = _mtlTextureType;
 	mtlTexDesc.width = _extent.width;
 	mtlTexDesc.height = _extent.height;
@@ -465,27 +433,6 @@ void MVKImage::updateMTLTextureContent(MVKImageSubresource& subresource,
     mtlRegion.origin = MTLOriginMake(0, 0, 0);
     mtlRegion.size = mvkMTLSizeFromVkExtent3D(mipExtent);
 
-#if MVK_MACOS
-    std::unique_ptr<char[]> decompBuffer;
-    if (_is3DCompressed) {
-        // We cannot upload the texture data directly in this case. But we
-        // can upload the decompressed image data.
-        std::unique_ptr<MVKCodec> codec = mvkCreateCodec(getVkFormat());
-        if (!codec) {
-            mvkNotifyErrorWithText(VK_ERROR_FORMAT_NOT_SUPPORTED, "A 3D texture used a compressed format that MoltenVK does not yet support.");
-            return;
-        }
-        VkSubresourceLayout destLayout;
-        destLayout.rowPitch = 4 * mipExtent.width;
-        destLayout.depthPitch = destLayout.rowPitch * mipExtent.height;
-        destLayout.size = destLayout.depthPitch * mipExtent.depth;
-        decompBuffer = std::unique_ptr<char[]>(new char[destLayout.size]);
-        codec->decompress(decompBuffer.get(), pImgBytes, destLayout, imgLayout, mipExtent);
-        pImgBytes = decompBuffer.get();
-        imgLayout = destLayout;
-    }
-#endif
-
     [getMTLTexture() replaceRegion: mtlRegion
                        mipmapLevel: imgSubRez.mipLevel
                              slice: imgSubRez.arrayLayer
@@ -534,21 +481,14 @@ void MVKImage::getMTLTextureContent(MVKImageSubresource& subresource,
 
 MVKImage::MVKImage(MVKDevice* device, const VkImageCreateInfo* pCreateInfo) : MVKResource(device) {
 
+    _byteAlignment = _device->_pProperties->limits.minTexelBufferOffsetAlignment;
+
     if (pCreateInfo->flags & VK_IMAGE_CREATE_BLOCK_TEXEL_VIEW_COMPATIBLE_BIT) {
-        setConfigurationResult(mvkNotifyErrorWithText(VK_ERROR_FEATURE_NOT_PRESENT, "vkCreateImage() : Metal does not allow uncompressed views of compressed images."));
+        mvkNotifyErrorWithText(VK_ERROR_FEATURE_NOT_PRESENT, "vkCreateImage() : Metal may not allow uncompressed views of compressed images.");
     }
 
-#if MVK_IOS
-    if ( (pCreateInfo->imageType != VK_IMAGE_TYPE_2D) && (mvkFormatTypeFromVkFormat(pCreateInfo->format) == kMVKFormatCompressed) ) {
+    if ( (pCreateInfo->imageType != VK_IMAGE_TYPE_2D) && (mvkFormatTypeFromVkFormat(pCreateInfo->format) == kMVKFormatNone) ) {
         setConfigurationResult(mvkNotifyErrorWithText(VK_ERROR_FEATURE_NOT_PRESENT, "vkCreateImage() : Under Metal, compressed formats may only be used with 2D images."));
-    }
-#else
-    if ( (pCreateInfo->imageType != VK_IMAGE_TYPE_2D) && (mvkFormatTypeFromVkFormat(pCreateInfo->format) == kMVKFormatCompressed) && !mvkCanDecodeFormat(pCreateInfo->format) ) {
-        setConfigurationResult(mvkNotifyErrorWithText(VK_ERROR_FEATURE_NOT_PRESENT, "vkCreateImage() : Under Metal, compressed formats may only be used with 2D images."));
-    }
-#endif
-    if ( (pCreateInfo->imageType != VK_IMAGE_TYPE_2D) && (mvkFormatTypeFromVkFormat(pCreateInfo->format) == kMVKFormatDepthStencil) ) {
-        setConfigurationResult(mvkNotifyErrorWithText(VK_ERROR_FEATURE_NOT_PRESENT, "vkCreateImage() : Under Metal, depth/stencil formats may only be used with 2D images."));
     }
 
     // Adjust the info components to be compatible with Metal, then use the modified versions
@@ -569,7 +509,7 @@ MVKImage::MVKImage(MVKDevice* device, const VkImageCreateInfo* pCreateInfo) : MV
 
     _mtlTexture = nil;
     _ioSurface = nil;
-    _mtlPixelFormat = getMTLPixelFormatFromVkFormat(pCreateInfo->format);
+    _mtlPixelFormat = mtlPixelFormatFromVkFormat(pCreateInfo->format);
     _mtlTextureType = mvkMTLTextureTypeFromVkImageType(pCreateInfo->imageType,
                                                        _arrayLayers,
                                                        (pCreateInfo->samples > 1));
@@ -586,7 +526,7 @@ MVKImage::MVKImage(MVKDevice* device, const VkImageCreateInfo* pCreateInfo) : MV
             _mtlTextureType = MTLTextureType2DArray;
         }
     }
-    if ( (_samples > 1) && (mvkFormatTypeFromVkFormat(pCreateInfo->format) == kMVKFormatCompressed) ) {
+    if ( (_samples > 1) && (mvkFormatTypeFromVkFormat(pCreateInfo->format) == kMVKFormatNone) ) {
         setConfigurationResult(mvkNotifyErrorWithText(VK_ERROR_FEATURE_NOT_PRESENT, "vkCreateImage() : Under Metal, multisampling cannot be used with compressed images. Setting sample count to 1."));
         _samples = VK_SAMPLE_COUNT_1_BIT;
     }
@@ -597,9 +537,6 @@ MVKImage::MVKImage(MVKDevice* device, const VkImageCreateInfo* pCreateInfo) : MV
     _hasExpectedTexelSize = (mvkMTLPixelFormatBytesPerBlock(_mtlPixelFormat) == mvkVkFormatBytesPerBlock(pCreateInfo->format));
 	_isLinear = validateLinear(pCreateInfo);
 	_usesTexelBuffer = false;
-	_is3DCompressed = _mtlTextureType == MTLTextureType3D && mvkFormatTypeFromMTLPixelFormat(_mtlPixelFormat) == kMVKFormatCompressed;
-
-	_byteAlignment = _isLinear ? _device->getVkFormatTexelBufferAlignment(pCreateInfo->format) : mvkEnsurePowerOfTwo(mvkVkFormatBytesPerBlock(pCreateInfo->format));
 
     // Calc _byteCount after _mtlTexture & _byteAlignment
     for (uint32_t mipLvl = 0; mipLvl < _mipLevels; mipLvl++) {
@@ -798,7 +735,7 @@ MVKImageView::MVKImageView(MVKDevice* device, const VkImageViewCreateInfo* pCrea
     _mtlPixelFormat = getSwizzledMTLPixelFormat(pCreateInfo->format, pCreateInfo->components, useSwizzle);
 	_mtlTextureType = mvkMTLTextureTypeFromVkImageViewType(pCreateInfo->viewType, (_image->getSampleCount() != VK_SAMPLE_COUNT_1_BIT));
 	initMTLTextureViewSupport();
-	_packedSwizzle = useSwizzle ? mvkPackSwizzle(pCreateInfo->components) : 0;
+	_packedSwizzle = useSwizzle ? packSwizzle(pCreateInfo->components) : 0;
 }
 
 // Validate whether the image view configuration can be supported
@@ -826,7 +763,7 @@ void MVKImageView::validateImageViewConfig(const VkImageViewCreateInfo* pCreateI
 // alignments of existing MTLPixelFormats of the same structure. If swizzling is not possible for a
 // particular combination of format and swizzle spec, the original MTLPixelFormat is returned.
 MTLPixelFormat MVKImageView::getSwizzledMTLPixelFormat(VkFormat format, VkComponentMapping components, bool& useSwizzle) {
-    MTLPixelFormat mtlPF = getMTLPixelFormatFromVkFormat(format);
+    MTLPixelFormat mtlPF = mtlPixelFormatFromVkFormat(format);
 
     useSwizzle = false;
     switch (mtlPF) {
@@ -896,6 +833,19 @@ MTLPixelFormat MVKImageView::getSwizzledMTLPixelFormat(VkFormat format, VkCompon
     return mtlPF;
 }
 
+const char*  MVKImageView::getSwizzleName(VkComponentSwizzle swizzle) {
+    switch (swizzle) {
+        case VK_COMPONENT_SWIZZLE_IDENTITY: return "VK_COMPONENT_SWIZZLE_IDENTITY";
+        case VK_COMPONENT_SWIZZLE_ZERO:     return "VK_COMPONENT_SWIZZLE_ZERO";
+        case VK_COMPONENT_SWIZZLE_ONE:      return "VK_COMPONENT_SWIZZLE_ONE";
+        case VK_COMPONENT_SWIZZLE_R:        return "VK_COMPONENT_SWIZZLE_R";
+        case VK_COMPONENT_SWIZZLE_G:        return "VK_COMPONENT_SWIZZLE_G";
+        case VK_COMPONENT_SWIZZLE_B:        return "VK_COMPONENT_SWIZZLE_B";
+        case VK_COMPONENT_SWIZZLE_A:        return "VK_COMPONENT_SWIZZLE_A";
+        default:                            return "VK_COMPONENT_SWIZZLE_UNKNOWN";
+    }
+}
+
 // Returns whether the swizzle components of the internal VkComponentMapping matches the
 // swizzle pattern, by comparing corresponding elements of the two structures. The pattern
 // supports wildcards, in that any element of pattern can be set to VK_COMPONENT_SWIZZLE_MAX_ENUM
@@ -911,6 +861,12 @@ bool MVKImageView::matchesSwizzle(VkComponentMapping components, VkComponentMapp
            ((pattern.a == VK_COMPONENT_SWIZZLE_A) && (components.a == VK_COMPONENT_SWIZZLE_IDENTITY))) ) { return false; }
 
     return true;
+}
+
+// Packs a VkComponentMapping structure into a single 32-bit word.
+uint32_t MVKImageView::packSwizzle(VkComponentMapping components) {
+    return ((components.r & 0xFF) << 0) | ((components.g & 0xFF) << 8) |
+           ((components.b & 0xFF) << 16) | ((components.a & 0xFF) << 24);
 }
 
 // Determine whether this image view should use a Metal texture view,
@@ -962,20 +918,6 @@ MTLSamplerDescriptor* MVKSampler::getMTLSamplerDescriptor(const VkSamplerCreateI
 	mtlSampDesc.compareFunctionMVK = (pCreateInfo->compareEnable
 									  ? mvkMTLCompareFunctionFromVkCompareOp(pCreateInfo->compareOp)
 									  : MTLCompareFunctionNever);
-#if MVK_MACOS
-	mtlSampDesc.borderColorMVK = mvkMTLSamplerBorderColorFromVkBorderColor(pCreateInfo->borderColor);
-	if (_device->getPhysicalDevice()->getMetalFeatures()->samplerClampToBorder) {
-		if (pCreateInfo->addressModeU == VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER) {
-			mtlSampDesc.sAddressMode = MTLSamplerAddressModeClampToBorderColor;
-		}
-		if (pCreateInfo->addressModeV == VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER) {
-			mtlSampDesc.tAddressMode = MTLSamplerAddressModeClampToBorderColor;
-		}
-		if (pCreateInfo->addressModeW == VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER) {
-			mtlSampDesc.rAddressMode = MTLSamplerAddressModeClampToBorderColor;
-		}
-	}
-#endif
 	return [mtlSampDesc autorelease];
 }
 

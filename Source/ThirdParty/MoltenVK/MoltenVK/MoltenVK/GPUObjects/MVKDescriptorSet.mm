@@ -1,7 +1,7 @@
 /*
  * MVKDescriptorSetLayout.mm
  *
- * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -80,7 +80,7 @@ MVK_PUBLIC_SYMBOL MVKShaderResourceBinding& MVKShaderResourceBinding::operator+=
 void MVKDescriptorSetLayoutBinding::bind(MVKCommandEncoder* cmdEncoder,
                                          MVKDescriptorBinding& descBinding,
                                          MVKShaderResourceBinding& dslMTLRezIdxOffsets,
-                                         MVKVector<uint32_t>& dynamicOffsets,
+                                         vector<uint32_t>& dynamicOffsets,
                                          uint32_t* pDynamicOffsetIndex) {
     MVKMTLBufferBinding bb;
     MVKMTLTextureBinding tb;
@@ -437,28 +437,11 @@ MVKDescriptorSetLayoutBinding::MVKDescriptorSetLayoutBinding(MVKDescriptorSetLay
             _immutableSamplers.reserve(pBinding->descriptorCount);
             for (uint32_t i = 0; i < pBinding->descriptorCount; i++) {
                 _immutableSamplers.push_back((MVKSampler*)pBinding->pImmutableSamplers[i]);
-                _immutableSamplers.back()->retain();
             }
         }
 
     _info = *pBinding;
     _info.pImmutableSamplers = nullptr;     // Remove dangling pointer
-}
-
-MVKDescriptorSetLayoutBinding::MVKDescriptorSetLayoutBinding(const MVKDescriptorSetLayoutBinding& binding) :
-	MVKConfigurableObject(), _info(binding._info), _immutableSamplers(binding._immutableSamplers),
-	_mtlResourceIndexOffsets(binding._mtlResourceIndexOffsets),
-	_applyToVertexStage(binding._applyToVertexStage), _applyToFragmentStage(binding._applyToFragmentStage),
-	_applyToComputeStage(binding._applyToComputeStage) {
-	for (MVKSampler* sampler : _immutableSamplers) {
-		sampler->retain();
-	}
-}
-
-MVKDescriptorSetLayoutBinding::~MVKDescriptorSetLayoutBinding() {
-	for (MVKSampler* sampler : _immutableSamplers) {
-		sampler->release();
-	}
 }
 
 /**
@@ -511,7 +494,7 @@ VkResult MVKDescriptorSetLayoutBinding::initMetalResourceIndexOffsets(MVKShaderS
 void MVKDescriptorSetLayout::bindDescriptorSet(MVKCommandEncoder* cmdEncoder,
                                                MVKDescriptorSet* descSet,
                                                MVKShaderResourceBinding& dslMTLRezIdxOffsets,
-                                               MVKVector<uint32_t>& dynamicOffsets,
+                                               vector<uint32_t>& dynamicOffsets,
                                                uint32_t* pDynamicOffsetIndex) {
 
     if (_isPushDescriptorLayout) return;
@@ -564,22 +547,19 @@ void MVKDescriptorSetLayout::pushDescriptorSet(MVKCommandEncoder* cmdEncoder,
 
     if (!_isPushDescriptorLayout) return;
     for (const VkWriteDescriptorSet& descWrite : descriptorWrites) {
-        uint32_t dstBinding = descWrite.dstBinding;
+        uint32_t bindIdx = descWrite.dstBinding;
         uint32_t dstArrayElement = descWrite.dstArrayElement;
         uint32_t descriptorCount = descWrite.descriptorCount;
         const VkDescriptorImageInfo* pImageInfo = descWrite.pImageInfo;
         const VkDescriptorBufferInfo* pBufferInfo = descWrite.pBufferInfo;
         const VkBufferView* pTexelBufferView = descWrite.pTexelBufferView;
-        if (!_bindingToIndex.count(dstBinding)) continue;
         // Note: This will result in us walking off the end of the array
         // in case there are too many updates... but that's ill-defined anyway.
-        for (; descriptorCount; dstBinding++) {
-            if (!_bindingToIndex.count(dstBinding)) continue;
+        for (; descriptorCount; bindIdx++) {
             size_t stride;
             const void* pData = getWriteParameters(descWrite.descriptorType, pImageInfo,
                                                    pBufferInfo, pTexelBufferView, stride);
             uint32_t descriptorsPushed = 0;
-            uint32_t bindIdx = _bindingToIndex[dstBinding];
             _bindings[bindIdx].push(cmdEncoder, dstArrayElement, descriptorCount,
                                     descriptorsPushed, descWrite.descriptorType,
                                     stride, pData, dslMTLRezIdxOffsets);
@@ -600,17 +580,14 @@ void MVKDescriptorSetLayout::pushDescriptorSet(MVKCommandEncoder* cmdEncoder,
         return;
     for (uint32_t i = 0; i < descUpdateTemplate->getNumberOfEntries(); i++) {
         const VkDescriptorUpdateTemplateEntryKHR* pEntry = descUpdateTemplate->getEntry(i);
-        uint32_t dstBinding = pEntry->dstBinding;
+        uint32_t bindIdx = pEntry->dstBinding;
         uint32_t dstArrayElement = pEntry->dstArrayElement;
         uint32_t descriptorCount = pEntry->descriptorCount;
         const void* pCurData = (const char*)pData + pEntry->offset;
-        if (!_bindingToIndex.count(dstBinding)) continue;
         // Note: This will result in us walking off the end of the array
         // in case there are too many updates... but that's ill-defined anyway.
-        for (; descriptorCount; dstBinding++) {
-            if (!_bindingToIndex.count(dstBinding)) continue;
+        for (; descriptorCount; bindIdx++) {
             uint32_t descriptorsPushed = 0;
-            uint32_t bindIdx = _bindingToIndex[dstBinding];
             _bindings[bindIdx].push(cmdEncoder, dstArrayElement, descriptorCount,
                                     descriptorsPushed, pEntry->descriptorType,
                                     pEntry->stride, pCurData, dslMTLRezIdxOffsets);
@@ -635,7 +612,6 @@ MVKDescriptorSetLayout::MVKDescriptorSetLayout(MVKDevice* device,
     _bindings.reserve(pCreateInfo->bindingCount);
     for (uint32_t i = 0; i < pCreateInfo->bindingCount; i++) {
         _bindings.emplace_back(this, &pCreateInfo->pBindings[i]);
-        _bindingToIndex[pCreateInfo->pBindings[i].binding] = i;
         setConfigurationResult(_bindings.back().getConfigurationResult());
     }
 }
@@ -664,8 +640,6 @@ uint32_t MVKDescriptorBinding::writeBindings(uint32_t srcStartIndex,
 					auto* mvkSampler = (MVKSampler*)pImgInfo->sampler;
 					mvkSampler->retain();
 					_mtlSamplers[dstIdx] = mvkSampler ? mvkSampler->getMTLSamplerState() : nil;
-				} else {
-					_imageBindings[dstIdx].sampler = nullptr;	// Guard against app not explicitly clearing Sampler.
 				}
 				if (oldSampler) {
 					oldSampler->release();
@@ -687,8 +661,6 @@ uint32_t MVKDescriptorBinding::writeBindings(uint32_t srcStartIndex,
 					auto* mvkSampler = (MVKSampler*)pImgInfo->sampler;
 					mvkSampler->retain();
 					_mtlSamplers[dstIdx] = mvkSampler ? mvkSampler->getMTLSamplerState() : nil;
-				} else {
-					_imageBindings[dstIdx].sampler = nullptr;	// Guard against app not explicitly clearing Sampler.
 				}
 				if (oldImageView) {
 					oldImageView->release();

@@ -28,6 +28,9 @@
 #include "SDL_cocoashape.h"
 #include "SDL_cocoavulkan.h"
 #include "SDL_assert.h"
+#if SDL_VIDEO_OPENGL_EGL
+#include "SDL_cocoaopengles.h"
+#endif
 
 /* Initialization/Query functions */
 static int Cocoa_VideoInit(_THIS);
@@ -110,7 +113,18 @@ Cocoa_CreateDevice(int devindex)
     device->shape_driver.SetWindowShape = Cocoa_SetWindowShape;
     device->shape_driver.ResizeWindowShape = Cocoa_ResizeWindowShape;
 
-#if SDL_VIDEO_OPENGL_CGL
+#if SDL_VIDEO_OPENGL_EGL 
+    /* Switch to EGL based functions */
+    device->GL_LoadLibrary = COCOA_GLES_LoadLibrary;
+    device->GL_GetProcAddress = COCOA_GLES_GetProcAddress;
+    device->GL_UnloadLibrary = COCOA_GLES_UnloadLibrary;
+    device->GL_CreateContext = COCOA_GLES_CreateContext;
+    device->GL_MakeCurrent = COCOA_GLES_MakeCurrent;
+    device->GL_SetSwapInterval = COCOA_GLES_SetSwapInterval;
+    device->GL_GetSwapInterval = COCOA_GLES_GetSwapInterval;
+    device->GL_SwapWindow = COCOA_GLES_SwapWindow;
+    device->GL_DeleteContext = COCOA_GLES_DeleteContext;
+#elif SDL_VIDEO_OPENGL_CGL
     device->GL_LoadLibrary = Cocoa_GL_LoadLibrary;
     device->GL_GetProcAddress = Cocoa_GL_GetProcAddress;
     device->GL_UnloadLibrary = Cocoa_GL_UnloadLibrary;

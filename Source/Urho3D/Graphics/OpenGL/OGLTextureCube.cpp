@@ -305,11 +305,16 @@ bool TextureCube::SetData(CubeMapFace face, Image* image, bool useAlpha)
             return false;
         }
 
+#ifdef URHO3D_ANGLE_VULKAN
+		format = Graphics::GetRGBAFormat();
+		needDecompress = true;
+#else
         if (!format)
         {
             format = Graphics::GetRGBAFormat();
             needDecompress = true;
         }
+#endif
 
         unsigned mipsToSkip = mipsToSkip_[quality];
         if (mipsToSkip >= levels)

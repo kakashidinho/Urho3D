@@ -1,7 +1,7 @@
 /*
  * MVKSync.mm
  *
- * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -41,7 +41,7 @@ void MVKSemaphoreImpl::release() {
 
 void MVKSemaphoreImpl::reserve() {
 	lock_guard<mutex> lock(_lock);
-	_reservationCount++;
+	reserveImpl();
 }
 
 bool MVKSemaphoreImpl::wait(uint64_t timeout, bool reserveAgain) {
@@ -60,7 +60,7 @@ bool MVKSemaphoreImpl::wait(uint64_t timeout, bool reserveAgain) {
         isDone = _blocker.wait_for(lock, nanos, [this]{ return isClear(); });
     }
 
-	if (reserveAgain) { _reservationCount++; }
+    if (reserveAgain) { reserveImpl(); }
     return isDone;
 }
 
@@ -85,18 +85,17 @@ void MVKSemaphore::signal() {
 void MVKFence::addSitter(MVKFenceSitter* fenceSitter) {
 	lock_guard<mutex> lock(_lock);
 
-	// We only care about unsignaled fences. If already signaled,
-	// don't add myself to the sitter and don't signal the sitter.
+	// Sitters only care about unsignaled fences. If already signaled,
+	// don't add myself to the sitter and don't notify the sitter.
 	if (_isSignaled) { return; }
 
 	// Ensure each fence only added once to each fence sitter
 	auto addRslt = _fenceSitters.insert(fenceSitter);	// pair with second element true if was added
-	if (addRslt.second) { fenceSitter->awaitFence(this); }
+	if (addRslt.second) { fenceSitter->addUnsignaledFence(this); }
 }
 
 void MVKFence::removeSitter(MVKFenceSitter* fenceSitter) {
 	lock_guard<mutex> lock(_lock);
-
 	_fenceSitters.erase(fenceSitter);
 }
 
@@ -115,15 +114,69 @@ void MVKFence::signal() {
 
 void MVKFence::reset() {
 	lock_guard<mutex> lock(_lock);
-
 	_isSignaled = false;
 	_fenceSitters.clear();
 }
 
 bool MVKFence::getIsSignaled() {
 	lock_guard<mutex> lock(_lock);
-
 	return _isSignaled;
+}
+
+
+#pragma mark Construction
+
+MVKFence::~MVKFence() {
+	lock_guard<mutex> lock(_lock);
+    for (auto& fs : _fenceSitters) {
+        fs->fenceSignaled(this);
+    }
+}
+
+
+#pragma mark -
+#pragma mark MVKFenceSitter
+
+void MVKFenceSitter::addUnsignaledFence(MVKFence* fence) {
+	lock_guard<mutex> lock(_lock);
+	// Only reserve semaphore once per fence
+	auto addRslt = _unsignaledFences.insert(fence);		// pair with second element true if was added
+	if (addRslt.second) { _blocker.reserve(); }
+}
+
+void MVKFenceSitter::fenceSignaled(MVKFence* fence) {
+	lock_guard<mutex> lock(_lock);
+	// Only release semaphore if actually waiting for this fence
+	if (_unsignaledFences.erase(fence)) { _blocker.release(); }
+}
+
+bool MVKFenceSitter::wait(uint64_t timeout) {
+	bool isDone = _blocker.wait(timeout);
+	if ( !isDone && timeout > 0 ) { mvkNotifyErrorWithText(VK_TIMEOUT, "Vulkan fence timeout after %llu nanoseconds.", timeout); }
+	return isDone;
+}
+
+
+#pragma mark Construction
+
+MVKFenceSitter::~MVKFenceSitter() {
+	// Use copy of collection to avoid deadlocks with the fences if lock in place here when removing sitters
+	vector<MVKFence*> ufsCopy;
+	getUnsignaledFences(ufsCopy);
+	for (auto& uf : ufsCopy) {
+        uf->removeSitter(this);
+    }
+}
+
+// Fills the vector with the collection of unsignaled fences
+void MVKFenceSitter::getUnsignaledFences(vector<MVKFence*>& fences) {
+	fences.clear();
+
+	lock_guard<mutex> lock(_lock);
+	fences.reserve(_unsignaledFences.size());
+	for (auto& uf : _unsignaledFences) {
+		fences.push_back(uf);
+	}
 }
 
 
@@ -137,31 +190,18 @@ VkResult mvkResetFences(uint32_t fenceCount, const VkFence* pFences) {
 	return VK_SUCCESS;
 }
 
-// Create a blocking fence sitter, add it to each fence, wait, then remove it.
 VkResult mvkWaitForFences(uint32_t fenceCount,
 						  const VkFence* pFences,
 						  VkBool32 waitAll,
 						  uint64_t timeout) {
 
-	VkResult rslt = VK_SUCCESS;
+	// Create a blocking fence sitter and add it to each fence
 	MVKFenceSitter fenceSitter(waitAll);
-
 	for (uint32_t i = 0; i < fenceCount; i++) {
-		((MVKFence*)pFences[i])->addSitter(&fenceSitter);
+		MVKFence* mvkFence = (MVKFence*)pFences[i];
+		mvkFence->addSitter(&fenceSitter);
 	}
-
-	if ( !fenceSitter.wait(timeout) ) {
-		rslt = VK_TIMEOUT;
-		if (timeout > 0) {
-			mvkNotifyErrorWithText(rslt, "Vulkan fence timeout after %llu nanoseconds.", timeout);
-		}
-	}
-
-	for (uint32_t i = 0; i < fenceCount; i++) {
-		((MVKFence*)pFences[i])->removeSitter(&fenceSitter);
-	}
-
-	return rslt;
+	return fenceSitter.wait(timeout) ? VK_SUCCESS : VK_TIMEOUT;
 }
 
 

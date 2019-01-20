@@ -1,7 +1,7 @@
 /*
  * SPIRVToMSLConverter.cpp
  *
- * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -45,28 +45,8 @@ MVK_PUBLIC_SYMBOL bool SPIRVToMSLConverterOptions::matches(const SPIRVToMSLConve
 	if (auxBufferIndex != other.auxBufferIndex) { return false; }
     if (!!shouldFlipVertexY != !!other.shouldFlipVertexY) { return false; }
     if (!!isRenderingPoints != !!other.isRenderingPoints) { return false; }
-	if (!!shouldSwizzleTextureSamples != !!other.shouldSwizzleTextureSamples) { return false; }
 	if (entryPointName != other.entryPointName) { return false; }
     return true;
-}
-
-MVK_PUBLIC_SYMBOL std::string SPIRVToMSLConverterOptions::printMSLVersion(uint32_t mslVersion, bool includePatch) {
-	string verStr;
-
-	uint32_t major = mslVersion / 10000;
-	verStr += to_string(major);
-
-	uint32_t minor = (mslVersion - makeMSLVersion(major)) / 100;
-	verStr += ".";
-	verStr += to_string(minor);
-
-	if (includePatch) {
-		uint32_t patch = mslVersion - makeMSLVersion(major, minor);
-		verStr += ".";
-		verStr += to_string(patch);
-	}
-
-	return verStr;
 }
 
 MVK_PUBLIC_SYMBOL bool MSLVertexAttribute::matches(const MSLVertexAttribute& other) const {
@@ -238,8 +218,7 @@ MVK_PUBLIC_SYMBOL bool SPIRVToMSLConverter::convert(SPIRVToMSLConverterContext& 
 		mslOpts.aux_buffer_index = context.options.auxBufferIndex;
 		mslOpts.enable_point_size_builtin = context.options.isRenderingPoints;
 		mslOpts.disable_rasterization = context.options.isRasterizationDisabled;
-		mslOpts.swizzle_texture_samples = context.options.shouldSwizzleTextureSamples;
-		mslOpts.pad_fragment_output_components = true;
+		mslOpts.swizzle_texture_samples = true;
 		pMSLCompiler->set_msl_options(mslOpts);
 
 		auto scOpts = pMSLCompiler->get_common_options();
@@ -286,10 +265,6 @@ MVK_PUBLIC_SYMBOL bool SPIRVToMSLConverter::convert(SPIRVToMSLConverterContext& 
 		try {
 #endif
 			pGLSLCompiler = new spirv_cross::CompilerGLSL(_spirv);
-			auto options = pGLSLCompiler->get_common_options();
-			options.vulkan_semantics = true;
-			options.separate_shader_objects = true;
-			pGLSLCompiler->set_common_options(options);
 			string glsl = pGLSLCompiler->compile();
             logSource(glsl, "GLSL", "Estimated original");
 #ifndef SPIRV_CROSS_EXCEPTIONS_TO_ASSERTIONS

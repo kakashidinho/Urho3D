@@ -1,7 +1,7 @@
 /*
  * MVKCmdPipeline.h
  *
- * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,7 +19,6 @@
 #pragma once
 
 #include "MVKCommand.h"
-#include "MVKVector.h"
 #include <vector>
 
 class MVKCommandBuffer;
@@ -102,8 +101,8 @@ public:
 private:
 	VkPipelineBindPoint _pipelineBindPoint;
 	MVKPipelineLayout* _pipelineLayout;
-	MVKVector<MVKDescriptorSet*> _descriptorSets;
-	MVKVector<uint32_t>          _dynamicOffsets;
+	std::vector<MVKDescriptorSet*> _descriptorSets;
+	std::vector<uint32_t> _dynamicOffsets;
 	uint32_t _firstSet;
 };
 
@@ -129,7 +128,7 @@ private:
 	MVKPipelineLayout* _pipelineLayout;
 	VkShaderStageFlags _stageFlags;
 	uint32_t _offset;
-	MVKVector<char> _pushConstants;
+	std::vector<char> _pushConstants;
 };
 
 
@@ -184,7 +183,7 @@ private:
 	MVKDescriptorUpdateTemplate* _descUpdateTemplate;
 	MVKPipelineLayout* _pipelineLayout;
 	uint32_t _set;
-	void* _pData = nullptr;
+	void* _pData;
 };
 
 

@@ -326,6 +326,13 @@ bool View::Define(RenderSurface* renderTarget, Viewport* viewport)
         viewRect_.top_ = viewRect_.bottom_ - viewSize_.y_;
     }
 #endif
+#ifdef  URHO3D_ANGLE_VULKAN
+    else if(graphics_->isNeedsFlipY())
+    {
+        viewRect_.bottom_ = rtHeight - viewRect_.top_;
+        viewRect_.top_ = viewRect_.bottom_ - viewSize_.y_;
+    }
+#endif
 
     scene_ = viewport->GetScene();
     cullCamera_ = viewport->GetCullCamera();
@@ -652,7 +659,16 @@ void View::Render()
 
 #ifdef URHO3D_OPENGL
     if (camera_)
-        camera_->SetFlipVertical(false);
+    {
+#if defined(URHO3D_ANGLE_VULKAN)
+        if(graphics_->isNeedsFlipY())
+        {
+            camera_->SetFlipVertical(true);
+        }
+        else
+#endif
+            camera_->SetFlipVertical(false);
+    }
 #endif
 
     // Run framebuffer blitting if necessary. If scene was resolved from backbuffer, do not touch depth

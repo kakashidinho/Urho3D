@@ -29,6 +29,11 @@
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 
+#elif URHO3D_ANGLE_VULKAN
+
+#include <EGL/egl.h>
+#include <EGL/eglext.h>
+
 #else /* _MSC_VER */
 
 /* EGL headers for Visual Studio */

@@ -1,7 +1,7 @@
 /*
  * MVKPipeline.h
  *
- * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +22,6 @@
 #include "MVKDescriptorSet.h"
 #include "MVKShaderModule.h"
 #include "MVKSync.h"
-#include "MVKVector.h"
 #include <MoltenVKSPIRVToMSLConverter/SPIRVToMSLConverter.h>
 #include <unordered_set>
 #include <vector>
@@ -35,13 +34,17 @@ class MVKPipelineCache;
 
 
 #pragma mark -
-#pragma mark MVKPipelineLayout
+#pragma mark MVKShaderAuxBufferBinding
 
 struct MVKShaderAuxBufferBinding {
-	uint32_t vertex = 0;
-	uint32_t fragment = 0;
-	uint32_t compute = 0;
+	uint32_t vertex;
+	uint32_t fragment;
+	uint32_t compute;
 };
+
+
+#pragma mark -
+#pragma mark MVKPipelineLayout
 
 /** Represents a Vulkan pipeline layout. */
 class MVKPipelineLayout : public MVKBaseDeviceObject {
@@ -50,9 +53,9 @@ public:
 
 	/** Binds descriptor sets to a command encoder. */
     void bindDescriptorSets(MVKCommandEncoder* cmdEncoder,
-                            MVKVector<MVKDescriptorSet*>& descriptorSets,
+                            std::vector<MVKDescriptorSet*>& descriptorSets,
                             uint32_t firstSet,
-                            MVKVector<uint32_t>& dynamicOffsets);
+                            std::vector<uint32_t>& dynamicOffsets);
 
 	/** Populates the specified shader converter context. */
 	void populateShaderConverterContext(SPIRVToMSLConverterContext& context);
@@ -104,9 +107,14 @@ public:
 	MVKPipeline(MVKDevice* device, MVKPipelineCache* pipelineCache, MVKPipeline* parent) : MVKBaseDeviceObject(device),
 																						   _pipelineCache(pipelineCache) {}
 
+	~MVKPipeline() override {
+		[_auxBuffer release];
+	};
+
 protected:
 	MVKPipelineCache* _pipelineCache;
 	MVKShaderAuxBufferBinding _auxBufferIndex;
+	id<MTLBuffer> _auxBuffer = nil;
 
 };
 
@@ -124,6 +132,12 @@ public:
 
     /** Returns whether this pipeline permits dynamic setting of the specifie state. */
     bool supportsDynamicState(VkDynamicState state);
+
+    /** Returns whether or not the vertex shader needs a buffer to hold auxiliary state. */
+    bool needsVertexAuxBuffer() { return _needsVertexAuxBuffer; }
+
+    /** Returns whether or not the fragment shader needs a buffer to hold auxiliary state. */
+    bool needsFragmentAuxBuffer() { return _needsFragmentAuxBuffer; }
 
 	/** Constructs an instance for the device and parent (which may be NULL). */
 	MVKGraphicsPipeline(MVKDevice* device,
@@ -143,8 +157,8 @@ protected:
 	VkPipelineRasterizationStateCreateInfo _rasterInfo;
 	VkPipelineDepthStencilStateCreateInfo _depthStencilInfo;
 
-  MVKVector<MTLViewport> _mtlViewports;
-  MVKVector<MTLScissorRect> _mtlScissors;
+    std::vector<MTLViewport> _mtlViewports;
+	std::vector<MTLScissorRect> _mtlScissors;
 
 	id<MTLRenderPipelineState> _mtlPipelineState;
 	MTLCullMode _mtlCullMode;
@@ -157,8 +171,8 @@ protected:
 
 	bool _dynamicStateEnabled[VK_DYNAMIC_STATE_RANGE_SIZE];
 	bool _hasDepthStencilInfo;
-	bool _needsVertexAuxBuffer = false;
-	bool _needsFragmentAuxBuffer = false;
+	bool _needsVertexAuxBuffer;
+	bool _needsFragmentAuxBuffer;
 };
 
 
@@ -173,6 +187,9 @@ public:
 	/** Binds this pipeline to the specified command encoder. */
 	void encode(MVKCommandEncoder* cmdEncoder) override;
 
+	/** Returns whether or not the compute shader needs a buffer to hold auxiliary state. */
+	bool needsAuxBuffer() { return _needsAuxBuffer; }
+
 	/** Constructs an instance for the device and parent (which may be NULL). */
 	MVKComputePipeline(MVKDevice* device,
 					   MVKPipelineCache* pipelineCache,
@@ -186,7 +203,7 @@ protected:
 
     id<MTLComputePipelineState> _mtlPipelineState;
     MTLSize _mtlThreadgroupSize;
-    bool _needsAuxBuffer = false;
+    bool _needsAuxBuffer;
 };
 
 

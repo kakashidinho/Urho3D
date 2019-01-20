@@ -1,7 +1,7 @@
 /*
  * MVKSync.h
  *
- * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -87,6 +87,7 @@ public:
 
 private:
 	bool operator()();
+    inline void reserveImpl() { _reservationCount++; }          // Not thread-safe
     inline bool isClear() { return _reservationCount == 0; }    // Not thread-safe
 
 	std::mutex _lock;
@@ -165,8 +166,10 @@ public:
 	
 #pragma mark Construction
 
-    MVKFence(MVKDevice* device, const VkFenceCreateInfo* pCreateInfo) :
-	MVKRefCountedDeviceObject(device), _isSignaled(mvkAreFlagsEnabled(pCreateInfo->flags, VK_FENCE_CREATE_SIGNALED_BIT)) {}
+    MVKFence(MVKDevice* device, const VkFenceCreateInfo* pCreateInfo) : MVKRefCountedDeviceObject(device),
+    _isSignaled(mvkAreFlagsEnabled(pCreateInfo->flags, VK_FENCE_CREATE_SIGNALED_BIT)) {}
+
+	~MVKFence() override;
 
 protected:
 	void notifySitters();
@@ -186,7 +189,7 @@ class MVKFenceSitter : public MVKBaseObject {
 public:
 
 	/**
-	 * If this instance has been configured to wait for fences, blocks processing on the
+	 * If this instance has been configured to wait for fences, blocks processing on the 
 	 * current thread until any or all of the fences that this instance is waiting for are
 	 * signaled, or until the specified timeout in nanoseconds expires. If this instance
 	 * has not been configured to wait for fences, this function immediately returns true.
@@ -195,19 +198,25 @@ public:
 	 *
 	 * Returns true if the required fences were triggered, or false if the timeout interval expired.
 	 */
-	bool wait(uint64_t timeout = UINT64_MAX) { return _blocker.wait(timeout); }
+	bool wait(uint64_t timeout = UINT64_MAX);
 
 
 #pragma mark Construction
 
-	MVKFenceSitter(bool waitAll) : _blocker(waitAll, 0) {}
+	/** Constructs an instance with the specified type of waiting. */
+	MVKFenceSitter(bool waitAll = true) : _blocker(waitAll, 0) {}
+
+	~MVKFenceSitter() override;
 
 private:
 	friend class MVKFence;
 
-	void awaitFence(MVKFence* fence) { _blocker.reserve(); }
-	void fenceSignaled(MVKFence* fence) { _blocker.release(); }
+	void addUnsignaledFence(MVKFence* fence);
+	void fenceSignaled(MVKFence* fence);
+	void getUnsignaledFences(std::vector<MVKFence*>& fences);
 
+	std::mutex _lock;
+	std::unordered_set<MVKFence*> _unsignaledFences;
 	MVKSemaphoreImpl _blocker;
 };
 

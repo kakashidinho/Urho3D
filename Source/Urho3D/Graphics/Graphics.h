@@ -571,6 +571,10 @@ public:
     /// Return whether is using an OpenGL 3 context. Return always false on Direct3D9 & Direct3D11.
     static bool GetGL3Support();
 
+#if defined(URHO3D_ANGLE_VULKAN)
+    bool isNeedsFlipY() const { return flipY_; }
+    void setFlipY(bool flipY){flipY_ = flipY; }
+#endif
 private:
     /// Create the application window.
     bool OpenWindow(int width, int height, bool resizable, bool borderless);
@@ -798,6 +802,9 @@ private:
     static const Vector2 pixelUVOffset;
     /// OpenGL3 support flag.
     static bool gl3Support;
+#if defined(URHO3D_ANGLE_VULKAN)
+    bool flipY_{};
+#endif
 };
 
 /// Register Graphics library objects.

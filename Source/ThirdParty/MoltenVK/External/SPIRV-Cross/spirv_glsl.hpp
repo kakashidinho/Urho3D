@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2019 Arm Limited
+ * Copyright 2015-2018 ARM Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -105,7 +105,6 @@ public:
 			// Inverts gl_Position.y or equivalent.
 			bool flip_vert_y = false;
 
-			// GLSL only, for HLSL version of this option, see CompilerHLSL.
 			// If true, the backend will assume that InstanceIndex will need to apply
 			// a base instance offset. Set to false if you know you will never use base instance
 			// functionality as it might remove some internal uniforms.
@@ -347,7 +346,6 @@ protected:
 	std::unordered_set<std::string> block_output_names;
 	std::unordered_set<std::string> block_ubo_names;
 	std::unordered_set<std::string> block_ssbo_names;
-	std::unordered_set<std::string> block_names; // A union of all block_*_names.
 	std::unordered_map<std::string, std::unordered_set<uint64_t>> function_overloads;
 
 	bool processing_entry_point = false;
@@ -357,7 +355,6 @@ protected:
 	struct BackendVariations
 	{
 		std::string discard_literal = "discard";
-		std::string null_pointer_literal = "";
 		bool float_literal_suffix = false;
 		bool double_literal_suffix = true;
 		bool uint32_t_literal_suffix = true;
@@ -419,7 +416,6 @@ protected:
 	void flush_variable_declaration(uint32_t id);
 	void flush_undeclared_variables(SPIRBlock &block);
 
-	bool should_dereference(uint32_t id);
 	bool should_forward(uint32_t id);
 	void emit_mix_op(uint32_t result_type, uint32_t id, uint32_t left, uint32_t right, uint32_t lerp);
 	bool to_trivial_mix_op(const SPIRType &type, std::string &op, uint32_t left, uint32_t right, uint32_t lerp);
@@ -448,10 +444,9 @@ protected:
 	SPIRExpression &emit_op(uint32_t result_type, uint32_t result_id, const std::string &rhs, bool forward_rhs,
 	                        bool suppress_usage_tracking = false);
 	std::string access_chain_internal(uint32_t base, const uint32_t *indices, uint32_t count, bool index_is_literal,
-	                                  bool chain_only = false, bool ptr_chain = false, AccessChainMeta *meta = nullptr,
-	                                  bool register_expression_read = true);
+	                                  bool chain_only = false, AccessChainMeta *meta = nullptr);
 	std::string access_chain(uint32_t base, const uint32_t *indices, uint32_t count, const SPIRType &target_type,
-	                         AccessChainMeta *meta = nullptr, bool ptr_chain = false);
+	                         AccessChainMeta *meta = nullptr);
 
 	std::string flattened_access_chain(uint32_t base, const uint32_t *indices, uint32_t count,
 	                                   const SPIRType &target_type, uint32_t offset, uint32_t matrix_stride,
@@ -467,27 +462,21 @@ protected:
 	std::pair<std::string, uint32_t> flattened_access_chain_offset(const SPIRType &basetype, const uint32_t *indices,
 	                                                               uint32_t count, uint32_t offset,
 	                                                               uint32_t word_stride, bool *need_transpose = nullptr,
-	                                                               uint32_t *matrix_stride = nullptr,
-	                                                               bool ptr_chain = false);
+	                                                               uint32_t *matrix_stride = nullptr);
 
 	const char *index_to_swizzle(uint32_t index);
 	std::string remap_swizzle(const SPIRType &result_type, uint32_t input_components, const std::string &expr);
 	std::string declare_temporary(uint32_t type, uint32_t id);
 	void append_global_func_args(const SPIRFunction &func, uint32_t index, std::vector<std::string> &arglist);
-	std::string to_expression(uint32_t id, bool register_expression_read = true);
-	std::string to_enclosed_expression(uint32_t id, bool register_expression_read = true);
+	std::string to_expression(uint32_t id);
+	std::string to_enclosed_expression(uint32_t id);
 	std::string to_unpacked_expression(uint32_t id);
 	std::string to_enclosed_unpacked_expression(uint32_t id);
-	std::string to_dereferenced_expression(uint32_t id, bool register_expression_read = true);
-	std::string to_pointer_expression(uint32_t id);
-	std::string to_enclosed_pointer_expression(uint32_t id);
 	std::string to_extract_component_expression(uint32_t id, uint32_t index);
 	std::string enclose_expression(const std::string &expr);
-	std::string dereference_expression(const std::string &expr);
-	std::string address_of_expression(const std::string &expr);
 	void strip_enclosed_expression(std::string &expr);
 	std::string to_member_name(const SPIRType &type, uint32_t index);
-	virtual std::string to_member_reference(uint32_t base, const SPIRType &type, uint32_t index, bool ptr_chain);
+	virtual std::string to_member_reference(const SPIRVariable *var, const SPIRType &type, uint32_t index);
 	std::string type_to_glsl_constructor(const SPIRType &type);
 	std::string argument_decl(const SPIRFunction::Parameter &arg);
 	virtual std::string to_qualifiers_glsl(uint32_t id);
@@ -582,12 +571,8 @@ protected:
 	void emit_pls();
 	void remap_pls_variables();
 
-	// A variant which takes two sets of name. The secondary is only used to verify there are no collisions,
-	// but the set is not updated when we have found a new name.
-	// Used primarily when adding block interface names.
-	void add_variable(std::unordered_set<std::string> &variables_primary,
-	                  const std::unordered_set<std::string> &variables_secondary, std::string &name);
-
+	void add_variable(std::unordered_set<std::string> &variables, uint32_t id);
+	void add_variable(std::unordered_set<std::string> &variables, std::string &name);
 	void check_function_call_constraints(const uint32_t *args, uint32_t length);
 	void handle_invalid_expression(uint32_t id);
 	void find_static_extensions();
@@ -622,8 +607,6 @@ protected:
 
 	void handle_store_to_invariant_variable(uint32_t store_id, uint32_t value_id);
 	void disallow_forwarding_in_expression_chain(const SPIRExpression &expr);
-
-	bool expression_is_constant_null(uint32_t id) const;
 
 private:
 	void init()

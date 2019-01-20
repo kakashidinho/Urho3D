@@ -1,7 +1,7 @@
 /*
  * vulkan.mm
  *
- * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -369,7 +369,6 @@ MVK_PUBLIC_SYMBOL void vkGetImageSparseMemoryRequirements(
     VkSparseImageMemoryRequirements*            pSparseMemoryRequirements) {
 	
 	MVKLogUnimplemented("vkGetImageSparseMemoryRequirements");
-	*pNumRequirements = 0;
 }
 
 MVK_PUBLIC_SYMBOL void vkGetPhysicalDeviceSparseImageFormatProperties(
@@ -383,7 +382,6 @@ MVK_PUBLIC_SYMBOL void vkGetPhysicalDeviceSparseImageFormatProperties(
 	VkSparseImageFormatProperties*              pProperties) {
 
 	MVKLogUnimplemented("vkGetPhysicalDeviceSparseImageFormatProperties");
-	*pPropertyCount = 0;
 }
 
 MVK_PUBLIC_SYMBOL VkResult vkQueueBindSparse(
@@ -1574,7 +1572,6 @@ MVK_PUBLIC_SYMBOL void vkGetImageSparseMemoryRequirements2KHR(
     VkSparseImageMemoryRequirements2KHR*            pSparseMemoryRequirements) {
 
     MVKLogUnimplemented("vkGetImageSparseMemoryRequirements2KHR");
-    *pSparseMemoryRequirementCount = 0;
 }
 
 
@@ -1639,7 +1636,6 @@ MVK_PUBLIC_SYMBOL void vkGetPhysicalDeviceSparseImageFormatProperties2KHR(
     VkSparseImageFormatProperties2KHR*          pProperties) {
 
     MVKLogUnimplemented("vkGetPhysicalDeviceSparseImageFormatProperties");
-    *pPropertyCount = 0;
 }
 
 
@@ -1662,7 +1658,7 @@ MVK_PUBLIC_SYMBOL void vkGetDescriptorSetLayoutSupportKHR(
     VkDevice                                    device,
     const VkDescriptorSetLayoutCreateInfo*      pCreateInfo,
     VkDescriptorSetLayoutSupportKHR*            pSupport) {
-    MVKDevice* mvkDevice = MVKDevice::getMVKDevice(device);
+    MVKDevice* mvkDevice = (MVKDevice*)device;
     mvkDevice->getDescriptorSetLayoutSupport(pCreateInfo, pSupport);
 }
 

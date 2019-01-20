@@ -45,6 +45,10 @@
 #include "SDL_cocoaopengl.h"
 #include "SDL_assert.h"
 
+#if SDL_VIDEO_OPENGL_EGL
+#include "SDL_cocoaopengles.h"
+#endif
+
 /* #define DEBUG_COCOAWINDOW */
 
 #ifdef DEBUG_COCOAWINDOW
@@ -1354,6 +1358,19 @@ Cocoa_CreateWindow(_THIS, SDL_Window * window)
         [nswindow release];
         return -1;
     }
+
+#if SDL_VIDEO_OPENGL_EGL
+    /* The rest of this macro mess is OpenGL ES windows */
+    if (_this->gl_config.profile_mask == SDL_GL_CONTEXT_PROFILE_ES)
+    {
+        if (COCOA_GLES_SetupWindow(_this, window) < 0) {
+            Cocoa_DestroyWindow(_this, window);
+            return -1;
+        }
+        return 0;
+    }
+#endif
+
     return 0;
 }}
 

@@ -1,7 +1,7 @@
 /*
  * MVKDescriptorSet.h
  *
- * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,6 @@
 
 #include "MVKDevice.h"
 #include "MVKImage.h"
-#include "MVKVector.h"
 #include <MoltenVKSPIRVToMSLConverter/SPIRVToMSLConverter.h>
 #include <unordered_set>
 #include <unordered_map>
@@ -81,7 +80,7 @@ public:
     void bind(MVKCommandEncoder* cmdEncoder,
               MVKDescriptorBinding& descBinding,
               MVKShaderResourceBinding& dslMTLRezIdxOffsets,
-              MVKVector<uint32_t>& dynamicOffsets,
+              std::vector<uint32_t>& dynamicOffsets,
               uint32_t* pDynamicOffsetIndex);
 
     /** Encodes this binding layout and the specified descriptor binding on the specified command encoder immediately. */
@@ -102,11 +101,6 @@ public:
 	/** Constructs an instance. */
 	MVKDescriptorSetLayoutBinding(MVKDescriptorSetLayout* layout,
 								  const VkDescriptorSetLayoutBinding* pBinding);
-
-	MVKDescriptorSetLayoutBinding(const MVKDescriptorSetLayoutBinding& binding);
-
-	/** Destuctor. */
-	~MVKDescriptorSetLayoutBinding() override;
 
 protected:
 	friend class MVKDescriptorBinding;
@@ -137,7 +131,7 @@ public:
     void bindDescriptorSet(MVKCommandEncoder* cmdEncoder,
                            MVKDescriptorSet* descSet,
                            MVKShaderResourceBinding& dslMTLRezIdxOffsets,
-                           MVKVector<uint32_t>& dynamicOffsets,
+                           std::vector<uint32_t>& dynamicOffsets,
                            uint32_t* pDynamicOffsetIndex);
 
 
@@ -171,8 +165,7 @@ protected:
 	friend class MVKPipelineLayout;
 	friend class MVKDescriptorSet;
 
-	MVKVector<MVKDescriptorSetLayoutBinding> _bindings;
-	std::unordered_map<uint32_t, uint32_t> _bindingToIndex;
+	std::vector<MVKDescriptorSetLayoutBinding> _bindings;
 	MVKShaderResourceBinding _mtlResourceCounts;
 	bool _isPushDescriptorLayout : 1;
 };

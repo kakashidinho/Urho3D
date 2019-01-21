@@ -21,6 +21,6 @@
 # THE SOFTWARE.
 #
 
-$(dirname $0)/cmake_generic.sh "$@" -G Xcode
+$(dirname $0)/cmake_generic.sh  build-ios-gles "$@"  -DURHO3D_LUA=0  -G Xcode -DIOS=1 
 
 # vi: set ts=4 sw=4 expandtab:

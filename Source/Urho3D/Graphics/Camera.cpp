@@ -398,7 +398,15 @@ Ray Camera::GetScreenRay(float x, float y) const
 
     // The parameters range from 0.0 to 1.0. Expand to normalized device coordinates (-1.0 to 1.0) & flip Y axis
     x = 2.0f * x - 1.0f;
+#if defined(URHO3D_ANGLE_VULKAN)
+    if(flipVertical_ == true)
+    {
+        y = 2.0f * y - 1.0f;
+    }
+    else
+#endif
     y = 1.0f - 2.0f * y;
+
     Vector3 near(x, y, 0.0f);
     Vector3 far(x, y, 1.0f);
 

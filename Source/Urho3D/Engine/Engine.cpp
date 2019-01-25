@@ -984,6 +984,11 @@ void Engine::HandleExitRequested(StringHash eventType, VariantMap& eventData)
 
 void Engine::DoExit()
 {
+#ifdef URHO3D_ANGLE_VULKAN
+    exiting_ = true;
+    Time::Sleep(250);
+#endif
+    
     auto* graphics = GetSubsystem<Graphics>();
     if (graphics)
         graphics->Close();

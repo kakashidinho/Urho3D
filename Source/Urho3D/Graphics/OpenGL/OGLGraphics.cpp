@@ -241,10 +241,18 @@ Graphics::Graphics(Context* context) :
     shaderPath_("Shaders/GLSL/"),
     shaderExtension_(".glsl"),
     orientations_("LandscapeLeft LandscapeRight"),
+#ifdef URHO3D_ANGLE_VULKAN
+    #if defined(__APPLE__)
+        apiName_("GLES2-METAL")
+    #else
+        apiName_("GLES2-VULKAN")
+    #endif
+#else
 #ifndef GL_ES_VERSION_2_0
     apiName_("GL2")
 #else
     apiName_("GLES2")
+#endif
 #endif
 {
     SetTextureUnitMappings();

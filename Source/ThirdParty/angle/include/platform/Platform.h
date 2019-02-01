@@ -15,10 +15,15 @@
 #define EGL_PLATFORM_ANGLE_PLATFORM_METHODS_ANGLEX 0x3482
 
 #if defined(_WIN32)
-#    if !defined(LIBANGLE_IMPLEMENTATION)
-#        define ANGLE_PLATFORM_EXPORT __declspec(dllimport)
+#    ifdef URHO3D_ANGLE_VULKAN
+#        define ANGLE_PLATFORM_EXPORT
+#        define ANGLE_APIENTRY
 #    else
-#        define ANGLE_PLATFORM_EXPORT __declspec(dllexport)
+#        if !defined(LIBANGLE_IMPLEMENTATION)
+#            define ANGLE_PLATFORM_EXPORT __declspec(dllimport)
+#        else
+#            define ANGLE_PLATFORM_EXPORT __declspec(dllexport)
+#        endif
 #    endif
 #elif defined(__GNUC__) || defined(__clang__)
 #    define ANGLE_PLATFORM_EXPORT __attribute__((visibility("default")))
@@ -240,22 +245,22 @@ inline void DefaultCacheProgram(PlatformMethods *platform,
 {}
 
 // Platform methods are enumerated here once.
-#define ANGLE_PLATFORM_OP(OP)                                    \
-    OP(currentTime, CurrentTime)                                 \
-    OP(monotonicallyIncreasingTime, MonotonicallyIncreasingTime) \
-    OP(logError, LogError)                                       \
-    OP(logWarning, LogWarning)                                   \
-    OP(logInfo, LogInfo)                                         \
-    OP(getTraceCategoryEnabledFlag, GetTraceCategoryEnabledFlag) \
-    OP(addTraceEvent, AddTraceEvent)                             \
-    OP(updateTraceEventDuration, UpdateTraceEventDuration)       \
-    OP(histogramCustomCounts, HistogramCustomCounts)             \
-    OP(histogramEnumeration, HistogramEnumeration)               \
-    OP(histogramSparse, HistogramSparse)                         \
-    OP(histogramBoolean, HistogramBoolean)                       \
-    OP(overrideWorkaroundsD3D, OverrideWorkaroundsD3D)           \
-    OP(overrideFeaturesVk, OverrideFeaturesVk)                   \
-    OP(cacheProgram, CacheProgram)
+#define ANGLE_PLATFORM_OP(OP)                                \
+OP(currentTime, CurrentTime)                                 \
+OP(monotonicallyIncreasingTime, MonotonicallyIncreasingTime) \
+OP(logError, LogError)                                       \
+OP(logWarning, LogWarning)                                   \
+OP(logInfo, LogInfo)                                         \
+OP(getTraceCategoryEnabledFlag, GetTraceCategoryEnabledFlag) \
+OP(addTraceEvent, AddTraceEvent)                             \
+OP(updateTraceEventDuration, UpdateTraceEventDuration)       \
+OP(histogramCustomCounts, HistogramCustomCounts)             \
+OP(histogramEnumeration, HistogramEnumeration)               \
+OP(histogramSparse, HistogramSparse)                         \
+OP(histogramBoolean, HistogramBoolean)                       \
+OP(overrideWorkaroundsD3D, OverrideWorkaroundsD3D)           \
+OP(overrideFeaturesVk, OverrideFeaturesVk)                   \
+OP(cacheProgram, CacheProgram)
 
 #define ANGLE_PLATFORM_METHOD_DEF(Name, CapsName) CapsName##Func Name = Default##CapsName;
 

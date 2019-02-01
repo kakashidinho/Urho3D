@@ -49,7 +49,8 @@ if(APPLE)
 endif()
 
 if(WIN32)
-	add_definitions(-DVK_USE_PLATFORM_WIN32_KHR  -DVK_USE_PLATFORM_WIN32_KHX -DANGLE_PLATFORM_WINDOWS -DSPIRV_WINDOWS  /bigobj  /EHsc)
+	add_definitions(-DVK_USE_PLATFORM_WIN32_KHR  -DVK_USE_PLATFORM_WIN32_KHX -DANGLE_PLATFORM_WINDOWS -DSPIRV_WINDOWS -DWIN32_LEAN_AND_MEAN -DNOMINMAX /bigobj  /EHsc)
+  add_definitions(-DGL_API=  -DGL_APIENTRY=  -DEGLAPI=  -DANGLE_PLATFORM_EXPORT=    -DGL_APICALL=  -DGL_APIENTRY= -DANGLE_EXPORT= -DEGLAPIENTRY= -DANGLE_APIENTRY=)
 endif()
 
 if(__linux__)
@@ -1156,110 +1157,8 @@ set(spvtools_opt
 source_group("spvtools_opt"            FILES ${spvtools_opt})
 list (APPEND SOURCE_FILES ${spvtools_opt})
 
-if (WIN32)
-set(libvulkan
-      third_party/vulkan-loader/src/loader/asm_offset.c
-      third_party/vulkan-loader/src/loader/cJSON.c
-      third_party/vulkan-loader/src/loader/cJSON.h
-      third_party/vulkan-loader/src/loader/debug_utils.c
-      third_party/vulkan-loader/src/loader/debug_utils.h
-      third_party/vulkan-loader/src/loader/dev_ext_trampoline.c
-      third_party/vulkan-loader/src/loader/extension_manual.c
-      third_party/vulkan-loader/src/loader/extension_manual.h
-      third_party/vulkan-loader/src/loader/gpa_helper.h
-      third_party/vulkan-loader/src/loader/loader.c
-      third_party/vulkan-loader/src/loader/loader.h
-      third_party/vulkan-loader/src/loader/murmurhash.c
-      third_party/vulkan-loader/src/loader/murmurhash.h
-      third_party/vulkan-loader/src/loader/phys_dev_ext.c
-      third_party/vulkan-loader/src/loader/trampoline.c
-
-      # TODO(jmadill): Use assembler where available.
-      third_party/vulkan-loader/src/loader/unknown_ext_chain.c
-      third_party/vulkan-loader/src/loader/vk_loader_platform.h
-      third_party/vulkan-loader/src/loader/wsi.c
-      third_party/vulkan-loader/src/loader/wsi.h
- )
- endif()
-
-if (WIN32)
-	set (libvulkan ${libvulkan} third_party/vulkan-loader/src/loader/dirent_on_windows.c third_party/vulkan-loader/src/loader/dirent_on_windows.h)
-endif()
 
 
-source_group("libvulkan"            FILES ${libvulkan})
-list (APPEND SOURCE_FILES ${libvulkan})
-
-
-if (WIN32)
-set(core_validation_sources
-  third_party/vulkan-validation-layers/src/layers/buffer_validation.cpp
-  third_party/vulkan-validation-layers/src/layers/buffer_validation.h
-  third_party/vulkan-validation-layers/src/layers/core_validation.cpp
-  third_party/vulkan-validation-layers/src/layers/core_validation.h
-  third_party/vulkan-validation-layers/src/layers/descriptor_sets.cpp
-  third_party/vulkan-validation-layers/src/layers/descriptor_sets.h
-  third_party/vulkan-validation-layers/src/layers/shader_validation.cpp
-  third_party/vulkan-validation-layers/src/layers/shader_validation.h
-  third_party/vulkan-validation-layers/src/layers/xxhash.c
-  third_party/vulkan-validation-layers/src/layers/xxhash.h
-)
-source_group("VkLayer_core_validation"            FILES ${core_validation_sources})
-list (APPEND SOURCE_FILES ${core_validation_sources})
-endif()
-
-if (WIN32)
-set(object_tracker_sources
-  out/gen/third_party/vulkan-validation-layers/angle/vulkan/object_tracker.cpp
-  third_party/vulkan-validation-layers/src/layers/object_tracker.h
-  third_party/vulkan-validation-layers/src/layers/object_tracker_utils.cpp
-)
-source_group("VkLayer_object_tracker"            FILES ${object_tracker_sources})
-list (APPEND SOURCE_FILES ${object_tracker_sources})
-endif()
-
-if (WIN32)
-set (parameter_validation_sources
-  out/gen/third_party/vulkan-validation-layers/angle/vulkan/parameter_validation.cpp
-  third_party/vulkan-validation-layers/src/layers/parameter_validation.h
-  third_party/vulkan-validation-layers/src/layers/parameter_validation_utils.cpp
-)
-source_group("VkLayer_parameter_validation"            FILES ${parameter_validation_sources})
-list (APPEND SOURCE_FILES ${parameter_validation_sources})
-endif()
-
-if (WIN32)
-set(threading_sources
-  third_party/vulkan-validation-layers/src/layers/threading.cpp
-  third_party/vulkan-validation-layers/src/layers/threading.h
-)
-source_group("VkLayer_threading"            FILES ${threading_sources})
-list (APPEND SOURCE_FILES ${threading_sources})
-endif()
-
-if (WIN32)
-set(unique_objects_sources
-  third_party/vulkan-validation-layers/src/layers/unique_objects.cpp
-  third_party/vulkan-validation-layers/src/layers/unique_objects.h
-)
-source_group("VkLayer_unique_objects"            FILES ${unique_objects_sources})
-list (APPEND SOURCE_FILES ${unique_objects_sources})
-endif()
-
-if (WIN32)
-set(vulkan_layer_utils
-    third_party/vulkan-validation-layers/src/layers/vk_format_utils.cpp
-    third_party/vulkan-validation-layers/src/layers/vk_format_utils.h
-    third_party/vulkan-validation-layers/src/layers/vk_layer_config.cpp
-    third_party/vulkan-validation-layers/src/layers/vk_layer_config.h
-    third_party/vulkan-validation-layers/src/layers/vk_layer_extension_utils.cpp
-    third_party/vulkan-validation-layers/src/layers/vk_layer_extension_utils.h
-    third_party/vulkan-validation-layers/src/layers/vk_layer_utils.cpp
-    third_party/vulkan-validation-layers/src/layers/vk_layer_utils.h
-)
-source_group("vulkan_layer_utils"            FILES ${vulkan_layer_utils})
-list (APPEND SOURCE_FILES ${vulkan_layer_utils})
-endif()
   
   #D:\GAME-ENGINES\Urho3D\20181103\Source\ThirdParty\angle\out\Debug
 set (libangle_includes

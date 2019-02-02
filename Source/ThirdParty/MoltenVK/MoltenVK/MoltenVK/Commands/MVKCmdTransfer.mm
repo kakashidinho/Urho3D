@@ -911,6 +911,36 @@ void MVKCmdClearImage::encode(MVKCommandEncoder* cmdEncoder) {
         bool isClearingDepth = _isDepthStencilClear && mvkIsAnyFlagEnabled(srRange.aspectMask, VK_IMAGE_ASPECT_DEPTH_BIT);
         bool isClearingStencil = _isDepthStencilClear && mvkIsAnyFlagEnabled(srRange.aspectMask, VK_IMAGE_ASPECT_STENCIL_BIT);
 
+        // TBD ELI
+        // Metal doesn't allow only depth attachment without stencil attachment in case the Metal-texture-pixel-format
+        // is MTLPixelFormatDepth32Float_Stencil8 or MTLPixelFormatDepth24Unorm_Stencil8
+        if(_image->getMTLPixelFormat() == MTLPixelFormatDepth32Float_Stencil8
+#if MVK_MACOS
+            || _image->getMTLPixelFormat() == MTLPixelFormatDepth24Unorm_Stencil8
+#endif            
+           )
+        {
+            // if  one of them is true and the other is false then both should be attached
+            // The false one , should be attached and preserve the old values , MTLLoadActionLoad
+            if(isClearingDepth != isClearingStencil)
+            {
+                if(isClearingDepth == false)
+                {
+                    mtlRPDADesc = mtlRPDesc.depthAttachment;
+                    mtlRPDADesc.texture = imgMTLTex;
+                    mtlRPDADesc.loadAction = MTLLoadActionLoad;
+                    mtlRPDADesc.storeAction = MTLStoreActionStore;
+                }
+                else if(isClearingStencil == false)
+                {
+                    mtlRPSADesc = mtlRPDesc.stencilAttachment;
+                    mtlRPSADesc.texture = imgMTLTex;
+                    mtlRPSADesc.loadAction = MTLLoadActionLoad;
+                    mtlRPSADesc.storeAction = MTLStoreActionStore;
+                }
+            }
+        }
+        
 		if (isClearingColor) {
 			mtlRPCADesc = mtlRPDesc.colorAttachments[0];
 			mtlRPCADesc.texture = imgMTLTex;

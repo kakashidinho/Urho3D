@@ -1111,45 +1111,6 @@ bool ValidDstBlendFunc(const Context *context, GLenum val)
 
     return false;
 }
-
-void RecordBindTextureTypeError(Context *context, TextureType target)
-{
-    ASSERT(!context->getStateCache().isValidBindTextureType(target));
-
-    switch (target)
-    {
-        case TextureType::Rectangle:
-            ASSERT(!context->getExtensions().textureRectangle);
-            context->validationError(GL_INVALID_ENUM, kTextureRectangleNotSupported);
-            break;
-
-        case TextureType::_3D:
-        case TextureType::_2DArray:
-            ASSERT(context->getClientMajorVersion() < 3);
-            context->validationError(GL_INVALID_ENUM, kES3Required);
-            break;
-
-        case TextureType::_2DMultisample:
-            ASSERT(context->getClientVersion() < Version(3, 1) &&
-                   !context->getExtensions().textureMultisample);
-            context->validationError(GL_INVALID_ENUM, kMultisampleTextureExtensionOrES31Required);
-            break;
-
-        case TextureType::_2DMultisampleArray:
-            ASSERT(!context->getExtensions().textureStorageMultisample2DArray);
-            context->validationError(GL_INVALID_ENUM, kMultisampleArrayExtensionRequired);
-            break;
-
-        case TextureType::External:
-            ASSERT(!context->getExtensions().eglImageExternal &&
-                   !context->getExtensions().eglStreamConsumerExternal);
-            context->validationError(GL_INVALID_ENUM, kExternalTextureNotSupported);
-            break;
-
-        default:
-            context->validationError(GL_INVALID_ENUM, kInvalidTextureTarget);
-    }
-}
 }  // anonymous namespace
 
 bool ValidateES2TexImageParameters(Context *context,
@@ -3073,36 +3034,6 @@ bool ValidateFlushMappedBufferRangeEXT(Context *context,
     return ValidateFlushMappedBufferRangeBase(context, target, offset, length);
 }
 
-bool ValidateBindTexture(Context *context, TextureType target, GLuint texture)
-{
-    if (!context->getStateCache().isValidBindTextureType(target))
-    {
-        RecordBindTextureTypeError(context, target);
-        return false;
-    }
-
-    if (texture == 0)
-    {
-        return true;
-    }
-
-    Texture *textureObject = context->getTexture(texture);
-    if (textureObject && textureObject->getType() != target)
-    {
-        context->validationError(GL_INVALID_OPERATION, kTypeMismatch);
-        return false;
-    }
-
-    if (!context->getState().isBindGeneratesResourceEnabled() &&
-        !context->isTextureGenerated(texture))
-    {
-        context->validationError(GL_INVALID_OPERATION, kObjectNotGenerated);
-        return false;
-    }
-
-    return true;
-}
-
 bool ValidateBindUniformLocationCHROMIUM(Context *context,
                                          GLuint program,
                                          GLint location,
@@ -4670,73 +4601,6 @@ bool ValidateLineWidth(Context *context, GLfloat width)
     {
         context->validationError(GL_INVALID_VALUE, kInvalidWidth);
         return false;
-    }
-
-    return true;
-}
-
-bool ValidateVertexAttribPointer(Context *context,
-                                 GLuint index,
-                                 GLint size,
-                                 VertexAttribType type,
-                                 GLboolean normalized,
-                                 GLsizei stride,
-                                 const void *ptr)
-{
-    if (!ValidateVertexFormatBase(context, index, size, type, false))
-    {
-        return false;
-    }
-
-    if (stride < 0)
-    {
-        context->validationError(GL_INVALID_VALUE, kNegativeStride);
-        return false;
-    }
-
-    const Caps &caps = context->getCaps();
-    if (context->getClientVersion() >= ES_3_1)
-    {
-        if (stride > caps.maxVertexAttribStride)
-        {
-            context->validationError(GL_INVALID_VALUE, kExceedsMaxVertexAttribStride);
-            return false;
-        }
-
-        if (index >= caps.maxVertexAttribBindings)
-        {
-            context->validationError(GL_INVALID_VALUE, kExceedsMaxVertexAttribBindings);
-            return false;
-        }
-    }
-
-    // [OpenGL ES 3.0.2] Section 2.8 page 24:
-    // An INVALID_OPERATION error is generated when a non-zero vertex array object
-    // is bound, zero is bound to the ARRAY_BUFFER buffer object binding point,
-    // and the pointer argument is not NULL.
-    bool nullBufferAllowed = context->getState().areClientArraysEnabled() &&
-                             context->getState().getVertexArray()->id() == 0;
-    if (!nullBufferAllowed && context->getState().getTargetBuffer(BufferBinding::Array) == 0 &&
-        ptr != nullptr)
-    {
-        context->validationError(GL_INVALID_OPERATION, kClientDataInVertexArray);
-        return false;
-    }
-
-    if (context->getExtensions().webglCompatibility)
-    {
-        // WebGL 1.0 [Section 6.14] Fixed point support
-        // The WebGL API does not support the GL_FIXED data type.
-        if (type == VertexAttribType::Fixed)
-        {
-            context->validationError(GL_INVALID_ENUM, kFixedNotInWebGL);
-            return false;
-        }
-
-        if (!ValidateWebGLVertexAttribPointer(context, type, normalized, stride, ptr, false))
-        {
-            return false;
-        }
     }
 
     return true;
@@ -6555,7 +6419,7 @@ bool ValidateTexStorage2DEXT(Context *context,
 
 bool ValidateVertexAttribDivisorANGLE(Context *context, GLuint index, GLuint divisor)
 {
-    if (!context->getExtensions().instancedArrays)
+    if (!context->getExtensions().instancedArraysANGLE)
     {
         context->validationError(GL_INVALID_OPERATION, kExtensionNotEnabled);
         return false;
@@ -6578,6 +6442,23 @@ bool ValidateVertexAttribDivisorANGLE(Context *context, GLuint index, GLuint div
             ERR() << kAttributeZeroRequiresDivisorLimitation;
             return false;
         }
+    }
+
+    return true;
+}
+
+bool ValidateVertexAttribDivisorEXT(Context *context, GLuint index, GLuint divisor)
+{
+    if (!context->getExtensions().instancedArraysEXT)
+    {
+        context->validationError(GL_INVALID_OPERATION, kExtensionNotEnabled);
+        return false;
+    }
+
+    if (index >= MAX_VERTEX_ATTRIBS)
+    {
+        context->validationError(GL_INVALID_VALUE, kIndexExceedsMaxVertexAttribute);
+        return false;
     }
 
     return true;
@@ -6719,6 +6600,45 @@ bool ValidateProvokingVertexANGLE(Context *context, ProvokingVertex modePacked)
     }
 
     return true;
+}
+
+void RecordBindTextureTypeError(Context *context, TextureType target)
+{
+    ASSERT(!context->getStateCache().isValidBindTextureType(target));
+
+    switch (target)
+    {
+        case TextureType::Rectangle:
+            ASSERT(!context->getExtensions().textureRectangle);
+            context->validationError(GL_INVALID_ENUM, kTextureRectangleNotSupported);
+            break;
+
+        case TextureType::_3D:
+        case TextureType::_2DArray:
+            ASSERT(context->getClientMajorVersion() < 3);
+            context->validationError(GL_INVALID_ENUM, kES3Required);
+            break;
+
+        case TextureType::_2DMultisample:
+            ASSERT(context->getClientVersion() < Version(3, 1) &&
+                   !context->getExtensions().textureMultisample);
+            context->validationError(GL_INVALID_ENUM, kMultisampleTextureExtensionOrES31Required);
+            break;
+
+        case TextureType::_2DMultisampleArray:
+            ASSERT(!context->getExtensions().textureStorageMultisample2DArray);
+            context->validationError(GL_INVALID_ENUM, kMultisampleArrayExtensionRequired);
+            break;
+
+        case TextureType::External:
+            ASSERT(!context->getExtensions().eglImageExternal &&
+                   !context->getExtensions().eglStreamConsumerExternal);
+            context->validationError(GL_INVALID_ENUM, kExternalTextureNotSupported);
+            break;
+
+        default:
+            context->validationError(GL_INVALID_ENUM, kInvalidTextureTarget);
+    }
 }
 
 }  // namespace gl

@@ -30,6 +30,7 @@ enum class CommandGraphResourceType
     Framebuffer,
     Image,
     Query,
+    FenceSync,
 };
 
 // Certain functionality cannot be put in secondary command buffers, so they are special-cased in
@@ -40,6 +41,8 @@ enum class CommandGraphNodeFunction
     BeginQuery,
     EndQuery,
     WriteTimestamp,
+    SetFenceSync,
+    WaitFenceSync,
 };
 
 // Receives notifications when a command buffer is no longer able to record. Can be used with
@@ -127,6 +130,7 @@ class CommandGraphNode final : angle::NonCopyable
     CommandGraphNodeFunction getFunction() const { return mFunction; }
 
     void setQueryPool(const QueryPool *queryPool, uint32_t queryIndex);
+    void setFenceSync(const vk::Event &event);
 
     ANGLE_INLINE void addGlobalMemoryBarrier(VkFlags srcAccess, VkFlags dstAccess)
     {
@@ -168,8 +172,11 @@ class CommandGraphNode final : angle::NonCopyable
     CommandBuffer mInsideRenderPassCommands;
 
     // Special-function additional data:
+    // Queries:
     VkQueryPool mQueryPool;
     uint32_t mQueryIndex;
+    // GLsync and EGLSync:
+    VkEvent mFenceSyncEvent;
 
     // Parents are commands that must be submitted before 'this' CommandNode can be submitted.
     std::vector<CommandGraphNode *> mParents;
@@ -206,37 +213,15 @@ class CommandGraphResource : angle::NonCopyable
     // Returns true if the resource is in use by the renderer.
     bool isResourceInUse(RendererVk *renderer) const;
 
-    // Returns true if the resource has unsubmitted work pending.
-    bool hasPendingWork(RendererVk *renderer) const;
-
     // Get the current queue serial for this resource. Used to release resources, and for
     // queries, to know if the queue they are submitted on has finished execution.
     Serial getStoredQueueSerial() const { return mStoredQueueSerial; }
 
-  protected:
-    explicit CommandGraphResource(CommandGraphResourceType resourceType);
-
-    Serial mStoredQueueSerial;
-
-    // Additional diagnostic information.
-    CommandGraphResourceType mResourceType;
-
-    // Current command graph writing node.
-    CommandGraphNode *mCurrentWritingNode;
-};
-
-// Subclass of graph resources that can record command buffers. Images/Buffers/Framebuffers.
-// Does not include Query graph resources.
-class RecordableGraphResource : public CommandGraphResource
-{
-  public:
-    ~RecordableGraphResource() override;
-
     // Sets up dependency relations. 'this' resource is the resource being written to.
-    void addWriteDependency(RecordableGraphResource *writingResource);
+    void addWriteDependency(CommandGraphResource *writingResource);
 
     // Sets up dependency relations. 'this' resource is the resource being read.
-    void addReadDependency(RecordableGraphResource *readingResource);
+    void addReadDependency(CommandGraphResource *readingResource);
 
     // Updates the in-use serial tracked for this resource. Will clear dependencies if the resource
     // was not used in this set of command nodes.
@@ -297,7 +282,7 @@ class RecordableGraphResource : public CommandGraphResource
     }
 
   protected:
-    explicit RecordableGraphResource(CommandGraphResourceType resourceType);
+    explicit CommandGraphResource(CommandGraphResourceType resourceType);
 
   private:
     // Returns true if this node has a current writing node with no children.
@@ -324,24 +309,15 @@ class RecordableGraphResource : public CommandGraphResource
 
     void onWriteImpl(CommandGraphNode *writingNode, Serial currentSerial);
 
+    Serial mStoredQueueSerial;
+
     std::vector<CommandGraphNode *> mCurrentReadingNodes;
-};
 
-// Specialized command graph node for queries. Not for use with any exposed command buffers.
-class QueryGraphResource : public CommandGraphResource
-{
-  public:
-    ~QueryGraphResource() override;
+    // Current command graph writing node.
+    CommandGraphNode *mCurrentWritingNode;
 
-    void beginQuery(Context *context, const QueryPool *queryPool, uint32_t queryIndex);
-    void endQuery(Context *context, const QueryPool *queryPool, uint32_t queryIndex);
-    void writeTimestamp(Context *context, const QueryPool *queryPool, uint32_t queryIndex);
-
-  protected:
-    QueryGraphResource();
-
-  private:
-    void startNewCommands(RendererVk *renderer, CommandGraphNodeFunction function);
+    // Additional diagnostic information.
+    CommandGraphResourceType mResourceType;
 };
 
 // Translating OpenGL commands into Vulkan and submitting them immediately loses out on some
@@ -385,14 +361,23 @@ class CommandGraph final : angle::NonCopyable
     bool empty() const;
     void clear();
 
-    CommandGraphNode *getLastBarrierNode(size_t *indexOut);
-
-    void setNewBarrier(CommandGraphNode *newBarrier);
+    // The following create special-function nodes that don't require a graph resource.
+    // Queries:
+    void beginQuery(const QueryPool *queryPool, uint32_t queryIndex);
+    void endQuery(const QueryPool *queryPool, uint32_t queryIndex);
+    void writeTimestamp(const QueryPool *queryPool, uint32_t queryIndex);
+    // GLsync and EGLSync:
+    void setFenceSync(const vk::Event &event);
+    void waitFenceSync(const vk::Event &event);
 
   private:
-    void dumpGraphDotFile(std::ostream &out) const;
-
+    CommandGraphNode *allocateBarrierNode(CommandGraphResourceType resourceType,
+                                          CommandGraphNodeFunction function);
+    void setNewBarrier(CommandGraphNode *newBarrier);
+    CommandGraphNode *getLastBarrierNode(size_t *indexOut);
     void addDependenciesToNextBarrier(size_t begin, size_t end, CommandGraphNode *nextBarrier);
+
+    void dumpGraphDotFile(std::ostream &out) const;
 
     std::vector<CommandGraphNode *> mNodes;
     bool mEnableGraphDiagnostics;

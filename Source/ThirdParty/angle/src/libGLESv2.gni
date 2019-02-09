@@ -45,14 +45,17 @@ libangle_common_sources = [
   "src/common/third_party/base/anglebase/sys_byteorder.h",
   "src/common/third_party/smhasher/src/PMurHash.cpp",
   "src/common/third_party/smhasher/src/PMurHash.h",
-  "src/common/third_party/xxhash/xxhash.c",
-  "src/common/third_party/xxhash/xxhash.h",
   "src/common/tls.cpp",
   "src/common/tls.h",
   "src/common/uniform_type_info_autogen.cpp",
   "src/common/utilities.cpp",
   "src/common/utilities.h",
   "src/common/vector_utils.h",
+]
+
+xxhash_sources = [
+  "src/common/third_party/xxhash/xxhash.c",
+  "src/common/third_party/xxhash/xxhash.h",
 ]
 
 angle_system_utils_sources = [
@@ -172,6 +175,8 @@ libangle_sources = [
   "src/libANGLE/Device.h",
   "src/libANGLE/Display.cpp",
   "src/libANGLE/Display.h",
+  "src/libANGLE/EGLSync.cpp",
+  "src/libANGLE/EGLSync.h",
   "src/libANGLE/Error.cpp",
   "src/libANGLE/Error.h",
   "src/libANGLE/Error.inl",
@@ -275,6 +280,7 @@ libangle_sources = [
   "src/libANGLE/renderer/DisplayImpl.cpp",
   "src/libANGLE/renderer/DisplayImpl.h",
   "src/libANGLE/renderer/EGLImplFactory.h",
+  "src/libANGLE/renderer/EGLSyncImpl.h",
   "src/libANGLE/renderer/FenceNVImpl.h",
   "src/libANGLE/renderer/FormatID_autogen.h",
   "src/libANGLE/renderer/Format_table_autogen.cpp",
@@ -703,6 +709,8 @@ libangle_gl_egl_sources = [
   "src/libANGLE/renderer/gl/egl/RendererEGL.h",
   "src/libANGLE/renderer/gl/egl/SurfaceEGL.cpp",
   "src/libANGLE/renderer/gl/egl/SurfaceEGL.h",
+  "src/libANGLE/renderer/gl/egl/SyncEGL.cpp",
+  "src/libANGLE/renderer/gl/egl/SyncEGL.h",
   "src/libANGLE/renderer/gl/egl/WindowSurfaceEGL.cpp",
   "src/libANGLE/renderer/gl/egl/WindowSurfaceEGL.h",
 ]
@@ -803,6 +811,7 @@ libangle_vulkan_sources = [
   "src/libANGLE/renderer/vulkan/vk_mandatory_format_support_table_autogen.cpp",
   "src/libANGLE/renderer/vulkan/vk_utils.cpp",
   "src/libANGLE/renderer/vulkan/vk_utils.h",
+  "src/libANGLE/renderer/vulkan/vk_wrapper.h",
 ]
 
 libangle_vulkan_android_sources = [

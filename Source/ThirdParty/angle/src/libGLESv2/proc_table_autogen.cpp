@@ -31,6 +31,7 @@ ProcEntry g_procTable[] = {
     {"eglBindTexImage", P(EGL_BindTexImage)},
     {"eglChooseConfig", P(EGL_ChooseConfig)},
     {"eglClientWaitSync", P(EGL_ClientWaitSync)},
+    {"eglClientWaitSyncKHR", P(EGL_ClientWaitSyncKHR)},
     {"eglCopyBuffers", P(EGL_CopyBuffers)},
     {"eglCreateContext", P(EGL_CreateContext)},
     {"eglCreateDeviceANGLE", P(EGL_CreateDeviceANGLE)},
@@ -46,6 +47,7 @@ ProcEntry g_procTable[] = {
     {"eglCreateStreamKHR", P(EGL_CreateStreamKHR)},
     {"eglCreateStreamProducerD3DTextureANGLE", P(EGL_CreateStreamProducerD3DTextureANGLE)},
     {"eglCreateSync", P(EGL_CreateSync)},
+    {"eglCreateSyncKHR", P(EGL_CreateSyncKHR)},
     {"eglCreateWindowSurface", P(EGL_CreateWindowSurface)},
     {"eglDebugMessageControlKHR", P(EGL_DebugMessageControlKHR)},
     {"eglDestroyContext", P(EGL_DestroyContext)},
@@ -54,6 +56,7 @@ ProcEntry g_procTable[] = {
     {"eglDestroyStreamKHR", P(EGL_DestroyStreamKHR)},
     {"eglDestroySurface", P(EGL_DestroySurface)},
     {"eglDestroySync", P(EGL_DestroySync)},
+    {"eglDestroySyncKHR", P(EGL_DestroySyncKHR)},
     {"eglGetCompositorTimingANDROID", P(EGL_GetCompositorTimingANDROID)},
     {"eglGetCompositorTimingSupportedANDROID", P(EGL_GetCompositorTimingSupportedANDROID)},
     {"eglGetConfigAttrib", P(EGL_GetConfigAttrib)},
@@ -70,6 +73,7 @@ ProcEntry g_procTable[] = {
     {"eglGetPlatformDisplayEXT", P(EGL_GetPlatformDisplayEXT)},
     {"eglGetProcAddress", P(EGL_GetProcAddress)},
     {"eglGetSyncAttrib", P(EGL_GetSyncAttrib)},
+    {"eglGetSyncAttribKHR", P(EGL_GetSyncAttribKHR)},
     {"eglGetSyncValuesCHROMIUM", P(EGL_GetSyncValuesCHROMIUM)},
     {"eglInitialize", P(EGL_Initialize)},
     {"eglLabelObjectKHR", P(EGL_LabelObjectKHR)},
@@ -111,6 +115,7 @@ ProcEntry g_procTable[] = {
     {"eglWaitGL", P(EGL_WaitGL)},
     {"eglWaitNative", P(EGL_WaitNative)},
     {"eglWaitSync", P(EGL_WaitSync)},
+    {"eglWaitSyncKHR", P(EGL_WaitSyncKHR)},
     {"glActiveShaderProgram", P(gl::ActiveShaderProgram)},
     {"glActiveShaderProgramContextANGLE", P(gl::ActiveShaderProgramContextANGLE)},
     {"glActiveTexture", P(gl::ActiveTexture)},
@@ -354,6 +359,8 @@ ProcEntry g_procTable[] = {
     {"glDrawArraysInstancedANGLE", P(gl::DrawArraysInstancedANGLE)},
     {"glDrawArraysInstancedANGLEContextANGLE", P(gl::DrawArraysInstancedANGLEContextANGLE)},
     {"glDrawArraysInstancedContextANGLE", P(gl::DrawArraysInstancedContextANGLE)},
+    {"glDrawArraysInstancedEXT", P(gl::DrawArraysInstancedEXT)},
+    {"glDrawArraysInstancedEXTContextANGLE", P(gl::DrawArraysInstancedEXTContextANGLE)},
     {"glDrawBuffers", P(gl::DrawBuffers)},
     {"glDrawBuffersContextANGLE", P(gl::DrawBuffersContextANGLE)},
     {"glDrawBuffersEXT", P(gl::DrawBuffersEXT)},
@@ -366,6 +373,8 @@ ProcEntry g_procTable[] = {
     {"glDrawElementsInstancedANGLE", P(gl::DrawElementsInstancedANGLE)},
     {"glDrawElementsInstancedANGLEContextANGLE", P(gl::DrawElementsInstancedANGLEContextANGLE)},
     {"glDrawElementsInstancedContextANGLE", P(gl::DrawElementsInstancedContextANGLE)},
+    {"glDrawElementsInstancedEXT", P(gl::DrawElementsInstancedEXT)},
+    {"glDrawElementsInstancedEXTContextANGLE", P(gl::DrawElementsInstancedEXTContextANGLE)},
     {"glDrawRangeElements", P(gl::DrawRangeElements)},
     {"glDrawRangeElementsContextANGLE", P(gl::DrawRangeElementsContextANGLE)},
     {"glDrawTexfOES", P(gl::DrawTexfOES)},
@@ -1336,6 +1345,8 @@ ProcEntry g_procTable[] = {
     {"glVertexAttribDivisorANGLE", P(gl::VertexAttribDivisorANGLE)},
     {"glVertexAttribDivisorANGLEContextANGLE", P(gl::VertexAttribDivisorANGLEContextANGLE)},
     {"glVertexAttribDivisorContextANGLE", P(gl::VertexAttribDivisorContextANGLE)},
+    {"glVertexAttribDivisorEXT", P(gl::VertexAttribDivisorEXT)},
+    {"glVertexAttribDivisorEXTContextANGLE", P(gl::VertexAttribDivisorEXTContextANGLE)},
     {"glVertexAttribFormat", P(gl::VertexAttribFormat)},
     {"glVertexAttribFormatContextANGLE", P(gl::VertexAttribFormatContextANGLE)},
     {"glVertexAttribI4i", P(gl::VertexAttribI4i)},
@@ -1363,5 +1374,5 @@ ProcEntry g_procTable[] = {
     {"glWeightPointerOES", P(gl::WeightPointerOES)},
     {"glWeightPointerOESContextANGLE", P(gl::WeightPointerOESContextANGLE)}};
 
-size_t g_numProcs = 1279;
+size_t g_numProcs = 1290;
 }  // namespace egl

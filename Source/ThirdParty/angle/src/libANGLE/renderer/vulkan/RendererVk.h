@@ -45,7 +45,10 @@ class RendererVk : angle::NonCopyable
     RendererVk();
     ~RendererVk();
 
-    angle::Result initialize(DisplayVk *displayVk, egl::Display *display, const char *wsiName);
+    angle::Result initialize(DisplayVk *displayVk,
+                             egl::Display *display,
+                             const char *wsiExtension,
+                             const char *wsiLayer);
     void onDestroy(vk::Context *context);
 
     void notifyDeviceLost();
@@ -107,8 +110,14 @@ class RendererVk : angle::NonCopyable
     // mLastCompletedQueueSerial, for example for when the application busy waits on a query
     // result).
     angle::Result checkCompletedCommands(vk::Context *context);
+
     // Wait for completion of batches until (at least) batch with given serial is finished.
     angle::Result finishToSerial(vk::Context *context, Serial serial);
+    // A variant of finishToSerial that can time out.  Timeout status returned in outTimedOut.
+    angle::Result finishToSerialOrTimeout(vk::Context *context,
+                                          Serial serial,
+                                          uint64_t timeout,
+                                          bool *outTimedOut);
 
     uint32_t getQueueFamilyIndex() const { return mCurrentQueueFamilyIndex; }
 

@@ -50,13 +50,11 @@ angle::Result QueryVk::begin(const gl::Context *context)
                 contextVk, &mQueryHelperTimeElapsedBegin));
         }
 
-        mQueryHelperTimeElapsedBegin.writeTimestamp(contextVk,
-                                                    mQueryHelperTimeElapsedBegin.getQueryPool(),
-                                                    mQueryHelperTimeElapsedBegin.getQuery());
+        mQueryHelperTimeElapsedBegin.writeTimestamp(contextVk);
     }
     else
     {
-        mQueryHelper.beginQuery(contextVk, mQueryHelper.getQueryPool(), mQueryHelper.getQuery());
+        mQueryHelper.beginQuery(contextVk);
     }
 
     return angle::Result::Continue;
@@ -68,12 +66,11 @@ angle::Result QueryVk::end(const gl::Context *context)
 
     if (getType() == gl::QueryType::TimeElapsed)
     {
-        mQueryHelper.writeTimestamp(contextVk, mQueryHelper.getQueryPool(),
-                                    mQueryHelper.getQuery());
+        mQueryHelper.writeTimestamp(contextVk);
     }
     else
     {
-        mQueryHelper.endQuery(contextVk, mQueryHelper.getQueryPool(), mQueryHelper.getQuery());
+        mQueryHelper.endQuery(contextVk);
     }
 
     return angle::Result::Continue;
@@ -92,7 +89,7 @@ angle::Result QueryVk::queryCounter(const gl::Context *context)
 
     ASSERT(getType() == gl::QueryType::Timestamp);
 
-    mQueryHelper.writeTimestamp(contextVk, mQueryHelper.getQueryPool(), mQueryHelper.getQuery());
+    mQueryHelper.writeTimestamp(contextVk);
 
     return angle::Result::Continue;
 }
@@ -123,7 +120,7 @@ angle::Result QueryVk::getResult(const gl::Context *context, bool wait)
     // may not have been performed by the GPU yet.  To avoid a race condition in this case, wait
     // for the batch to finish first before querying (or return not-ready if not waiting).
     ANGLE_TRY(renderer->checkCompletedCommands(contextVk));
-    if (mQueryHelper.isResourceInUse(renderer))
+    if (renderer->isSerialInUse(mQueryHelper.getStoredQueueSerial()))
     {
         if (!wait)
         {
@@ -146,6 +143,8 @@ angle::Result QueryVk::getResult(const gl::Context *context, bool wait)
     }
     ANGLE_VK_TRY(contextVk, result);
 
+    double timestampPeriod = renderer->getPhysicalDeviceProperties().limits.timestampPeriod;
+
     // Fix up the results to what OpenGL expects.
     switch (getType())
     {
@@ -155,6 +154,7 @@ angle::Result QueryVk::getResult(const gl::Context *context, bool wait)
             mCachedResult = !!mCachedResult;
             break;
         case gl::QueryType::Timestamp:
+            mCachedResult = static_cast<uint64_t>(mCachedResult * timestampPeriod);
             break;
         case gl::QueryType::TimeElapsed:
         {
@@ -169,6 +169,8 @@ angle::Result QueryVk::getResult(const gl::Context *context, bool wait)
             ANGLE_VK_TRY(contextVk, result);
 
             mCachedResult = timeElapsedEnd - mCachedResult;
+            mCachedResult = static_cast<uint64_t>(mCachedResult * timestampPeriod);
+
             break;
         }
         default:

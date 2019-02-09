@@ -191,7 +191,8 @@ Extensions::Extensions()
       blendMinMax(false),
       framebufferBlit(false),
       framebufferMultisample(false),
-      instancedArrays(false),
+      instancedArraysANGLE(false),
+      instancedArraysEXT(false),
       packReverseRowOrder(false),
       standardDerivatives(false),
       shaderTextureLOD(false),
@@ -206,6 +207,7 @@ Extensions::Extensions()
       eglImage(false),
       eglImageExternal(false),
       eglImageExternalEssl3(false),
+      eglSync(false),
       eglStreamConsumerExternal(false),
       unpackSubimage(false),
       packSubimage(false),
@@ -852,7 +854,8 @@ const ExtensionInfoMap &GetExtensionInfoMap()
         map["GL_EXT_blend_minmax"] = enableableExtension(&Extensions::blendMinMax);
         map["GL_ANGLE_framebuffer_blit"] = enableableExtension(&Extensions::framebufferBlit);
         map["GL_ANGLE_framebuffer_multisample"] = enableableExtension(&Extensions::framebufferMultisample);
-        map["GL_ANGLE_instanced_arrays"] = enableableExtension(&Extensions::instancedArrays);
+        map["GL_ANGLE_instanced_arrays"] = enableableExtension(&Extensions::instancedArraysANGLE);
+        map["GL_EXT_instanced_arrays"] = enableableExtension(&Extensions::instancedArraysEXT);
         map["GL_ANGLE_pack_reverse_row_order"] = enableableExtension(&Extensions::packReverseRowOrder);
         map["GL_OES_standard_derivatives"] = enableableExtension(&Extensions::standardDerivatives);
         map["GL_EXT_shader_texture_lod"] = enableableExtension(&Extensions::shaderTextureLOD);
@@ -866,6 +869,7 @@ const ExtensionInfoMap &GetExtensionInfoMap()
         map["GL_OES_EGL_image"] = enableableExtension(&Extensions::eglImage);
         map["GL_OES_EGL_image_external"] = enableableExtension(&Extensions::eglImageExternal);
         map["GL_OES_EGL_image_external_essl3"] = enableableExtension(&Extensions::eglImageExternalEssl3);
+        map["GL_OES_EGL_sync"] = esOnlyExtension(&Extensions::eglSync);
         map["GL_NV_EGL_stream_consumer_external"] = enableableExtension(&Extensions::eglStreamConsumerExternal);
         map["GL_EXT_unpack_subimage"] = enableableExtension(&Extensions::unpackSubimage);
         map["GL_NV_pack_subimage"] = enableableExtension(&Extensions::packSubimage);
@@ -1356,6 +1360,8 @@ DisplayExtensions::DisplayExtensions()
       streamConsumerGLTexture(false),
       streamConsumerGLTextureYUV(false),
       streamProducerD3DTexture(false),
+      fenceSync(false),
+      waitSync(false),
       createContextWebGLCompatibility(false),
       createContextBindGeneratesResource(false),
       getSyncValues(false),
@@ -1371,7 +1377,8 @@ DisplayExtensions::DisplayExtensions()
       presentationTime(false),
       blobCache(false),
       imageNativeBuffer(false),
-      getFrameTimestamps(false)
+      getFrameTimestamps(false),
+      recordable(false)
 {}
 
 std::vector<std::string> DisplayExtensions::getStrings() const
@@ -1404,6 +1411,8 @@ std::vector<std::string> DisplayExtensions::getStrings() const
     InsertExtensionString("EGL_KHR_stream",                                      stream,                             &extensionStrings);
     InsertExtensionString("EGL_KHR_stream_consumer_gltexture",                   streamConsumerGLTexture,            &extensionStrings);
     InsertExtensionString("EGL_NV_stream_consumer_gltexture_yuv",                streamConsumerGLTextureYUV,         &extensionStrings);
+    InsertExtensionString("EGL_KHR_fence_sync",                                  fenceSync,                          &extensionStrings);
+    InsertExtensionString("EGL_KHR_wait_sync",                                   waitSync,                           &extensionStrings);
     InsertExtensionString("EGL_ANGLE_flexible_surface_compatibility",            flexibleSurfaceCompatibility,       &extensionStrings);
     InsertExtensionString("EGL_ANGLE_stream_producer_d3d_texture",               streamProducerD3DTexture,           &extensionStrings);
     InsertExtensionString("EGL_ANGLE_create_context_webgl_compatibility",        createContextWebGLCompatibility,    &extensionStrings);
@@ -1422,6 +1431,7 @@ std::vector<std::string> DisplayExtensions::getStrings() const
     InsertExtensionString("EGL_ANDROID_blob_cache",                              blobCache,                          &extensionStrings);
     InsertExtensionString("EGL_ANDROID_image_native_buffer",                     imageNativeBuffer,                  &extensionStrings);
     InsertExtensionString("EGL_ANDROID_get_frame_timestamps",                    getFrameTimestamps,                 &extensionStrings);
+    InsertExtensionString("EGL_ANDROID_recordable",                              recordable,                 &extensionStrings);
     // TODO(jmadill): Enable this when complete.
     //InsertExtensionString("KHR_create_context_no_error",                       createContextNoError,               &extensionStrings);
     // clang-format on

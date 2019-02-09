@@ -325,20 +325,33 @@ bool ValidateDrawArraysInstancedANGLE(Context *context,
                                       GLint first,
                                       GLsizei count,
                                       GLsizei primcount);
+bool ValidateDrawArraysInstancedEXT(Context *context,
+                                    PrimitiveMode mode,
+                                    GLint first,
+                                    GLsizei count,
+                                    GLsizei primcount);
 
-bool ValidateDrawElementsInstancedCommon(Context *context,
-                                         PrimitiveMode mode,
-                                         GLsizei count,
-                                         DrawElementsType type,
-                                         const void *indices,
-                                         GLsizei primcount);
+bool ValidateDrawElementsInstancedBase(Context *context,
+                                       PrimitiveMode mode,
+                                       GLsizei count,
+                                       DrawElementsType type,
+                                       const void *indices,
+                                       GLsizei primcount);
 bool ValidateDrawElementsInstancedANGLE(Context *context,
                                         PrimitiveMode mode,
                                         GLsizei count,
                                         DrawElementsType type,
                                         const void *indices,
                                         GLsizei primcount);
+bool ValidateDrawElementsInstancedEXT(Context *context,
+                                      PrimitiveMode mode,
+                                      GLsizei count,
+                                      DrawElementsType type,
+                                      const void *indices,
+                                      GLsizei primcount);
+
 bool ValidateDrawInstancedANGLE(Context *context);
+bool ValidateDrawInstancedEXT(Context *context);
 
 bool ValidateFramebufferTextureBase(Context *context,
                                     GLenum target,
@@ -488,11 +501,61 @@ bool ValidateGetVertexAttribBase(Context *context,
                                  bool pointer,
                                  bool pureIntegerEntryPoint);
 
-bool ValidateVertexFormatBase(Context *context,
-                              GLuint attribIndex,
-                              GLint size,
-                              VertexAttribType type,
-                              GLboolean pureInteger);
+ANGLE_INLINE bool ValidateVertexFormat(Context *context,
+                                       GLuint index,
+                                       GLint size,
+                                       VertexAttribTypeCase validation)
+{
+    const Caps &caps = context->getCaps();
+    if (index >= caps.maxVertexAttributes)
+    {
+        context->validationError(GL_INVALID_VALUE, err::kIndexExceedsMaxVertexAttribute);
+        return false;
+    }
+
+    switch (validation)
+    {
+        case VertexAttribTypeCase::Invalid:
+            context->validationError(GL_INVALID_ENUM, err::kInvalidType);
+            return false;
+        case VertexAttribTypeCase::Valid:
+            if (size < 1 || size > 4)
+            {
+                context->validationError(GL_INVALID_VALUE, err::kInvalidVertexAttrSize);
+                return false;
+            }
+            break;
+        case VertexAttribTypeCase::ValidSize4Only:
+            if (size != 4)
+            {
+                context->validationError(GL_INVALID_OPERATION,
+                                         err::kInvalidVertexAttribSize2101010);
+                return false;
+            }
+            break;
+    }
+
+    return true;
+}
+
+// Note: These byte, short, and int types are all converted to float for the shader.
+ANGLE_INLINE bool ValidateFloatVertexFormat(Context *context,
+                                            GLuint index,
+                                            GLint size,
+                                            VertexAttribType type)
+{
+    return ValidateVertexFormat(context, index, size,
+                                context->getStateCache().getVertexAttribTypeValidation(type));
+}
+
+ANGLE_INLINE bool ValidateIntegerVertexFormat(Context *context,
+                                              GLuint index,
+                                              GLint size,
+                                              VertexAttribType type)
+{
+    return ValidateVertexFormat(
+        context, index, size, context->getStateCache().getIntegerVertexAttribTypeValidation(type));
+}
 
 bool ValidateWebGLFramebufferAttachmentClearType(Context *context,
                                                  GLint drawbuffer,
@@ -611,8 +674,8 @@ bool ValidateSampleMaskiBase(Context *context, GLuint maskNumber, GLbitfield mas
 // Utility macro for handling implementation methods inside Validation.
 #define ANGLE_HANDLE_VALIDATION_ERR(X) \
     (void)(X);                         \
-    return false;
-#define ANGLE_VALIDATION_TRY(EXPR) ANGLE_TRY_TEMPLATE(EXPR, ANGLE_HANDLE_VALIDATION_ERR);
+    return false
+#define ANGLE_VALIDATION_TRY(EXPR) ANGLE_TRY_TEMPLATE(EXPR, ANGLE_HANDLE_VALIDATION_ERR)
 
 // We should check with Khronos if returning INVALID_FRAMEBUFFER_OPERATION is OK when querying
 // implementation format info for incomplete framebuffers. It seems like these queries are
@@ -647,6 +710,11 @@ ANGLE_INLINE bool ValidateDrawAttribs(Context *context, int64_t maxVertex)
 
 ANGLE_INLINE bool ValidateDrawArraysAttribs(Context *context, GLint first, GLsizei count)
 {
+    if (!context->isBufferAccessValidationEnabled())
+    {
+        return true;
+    }
+
     // Check the computation of maxVertex doesn't overflow.
     // - first < 0 has been checked as an error condition.
     // - if count <= 0, skip validating no-op draw calls.
@@ -665,6 +733,11 @@ ANGLE_INLINE bool ValidateDrawArraysAttribs(Context *context, GLint first, GLsiz
 
 ANGLE_INLINE bool ValidateDrawInstancedAttribs(Context *context, GLint primcount)
 {
+    if (!context->isBufferAccessValidationEnabled())
+    {
+        return true;
+    }
+
     if ((primcount - 1) > context->getStateCache().getInstancedVertexElementLimit())
     {
         RecordDrawAttribsError(context);
@@ -847,7 +920,7 @@ ANGLE_INLINE bool ValidateDrawElementsCommon(Context *context,
         }
     }
 
-    if (!context->getExtensions().robustBufferAccessBehavior && primcount > 0)
+    if (context->isBufferAccessValidationEnabled() && primcount > 0)
     {
         // Use the parameter buffer to retrieve and cache the index range.
         IndexRange indexRange{IndexRange::Undefined()};

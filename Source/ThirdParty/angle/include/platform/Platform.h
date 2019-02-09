@@ -19,11 +19,11 @@
 #        define ANGLE_PLATFORM_EXPORT
 #        define ANGLE_APIENTRY
 #    else
-#        if !defined(LIBANGLE_IMPLEMENTATION)
-#            define ANGLE_PLATFORM_EXPORT __declspec(dllimport)
-#        else
-#            define ANGLE_PLATFORM_EXPORT __declspec(dllexport)
-#        endif
+#    if !defined(LIBANGLE_IMPLEMENTATION)
+#        define ANGLE_PLATFORM_EXPORT __declspec(dllimport)
+#    else
+#        define ANGLE_PLATFORM_EXPORT __declspec(dllexport)
+#    endif
 #    endif
 #elif defined(__GNUC__) || defined(__clang__)
 #    define ANGLE_PLATFORM_EXPORT __attribute__((visibility("default")))
@@ -245,22 +245,22 @@ inline void DefaultCacheProgram(PlatformMethods *platform,
 {}
 
 // Platform methods are enumerated here once.
-#define ANGLE_PLATFORM_OP(OP)                                \
-OP(currentTime, CurrentTime)                                 \
-OP(monotonicallyIncreasingTime, MonotonicallyIncreasingTime) \
-OP(logError, LogError)                                       \
-OP(logWarning, LogWarning)                                   \
-OP(logInfo, LogInfo)                                         \
-OP(getTraceCategoryEnabledFlag, GetTraceCategoryEnabledFlag) \
-OP(addTraceEvent, AddTraceEvent)                             \
-OP(updateTraceEventDuration, UpdateTraceEventDuration)       \
-OP(histogramCustomCounts, HistogramCustomCounts)             \
-OP(histogramEnumeration, HistogramEnumeration)               \
-OP(histogramSparse, HistogramSparse)                         \
-OP(histogramBoolean, HistogramBoolean)                       \
-OP(overrideWorkaroundsD3D, OverrideWorkaroundsD3D)           \
-OP(overrideFeaturesVk, OverrideFeaturesVk)                   \
-OP(cacheProgram, CacheProgram)
+#define ANGLE_PLATFORM_OP(OP)                                    \
+    OP(currentTime, CurrentTime)                                 \
+    OP(monotonicallyIncreasingTime, MonotonicallyIncreasingTime) \
+    OP(logError, LogError)                                       \
+    OP(logWarning, LogWarning)                                   \
+    OP(logInfo, LogInfo)                                         \
+    OP(getTraceCategoryEnabledFlag, GetTraceCategoryEnabledFlag) \
+    OP(addTraceEvent, AddTraceEvent)                             \
+    OP(updateTraceEventDuration, UpdateTraceEventDuration)       \
+    OP(histogramCustomCounts, HistogramCustomCounts)             \
+    OP(histogramEnumeration, HistogramEnumeration)               \
+    OP(histogramSparse, HistogramSparse)                         \
+    OP(histogramBoolean, HistogramBoolean)                       \
+    OP(overrideWorkaroundsD3D, OverrideWorkaroundsD3D)           \
+    OP(overrideFeaturesVk, OverrideFeaturesVk)                   \
+    OP(cacheProgram, CacheProgram)
 
 #define ANGLE_PLATFORM_METHOD_DEF(Name, CapsName) CapsName##Func Name = Default##CapsName;
 
@@ -273,7 +273,7 @@ struct ANGLE_PLATFORM_EXPORT PlatformMethods
     // adds or removes new members.
     void *context = 0;
 
-    ANGLE_PLATFORM_OP(ANGLE_PLATFORM_METHOD_DEF);
+    ANGLE_PLATFORM_OP(ANGLE_PLATFORM_METHOD_DEF)
 };
 
 inline PlatformMethods::PlatformMethods() = default;

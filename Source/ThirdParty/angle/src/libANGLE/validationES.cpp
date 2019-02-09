@@ -2840,7 +2840,7 @@ bool ValidateDrawArraysInstancedANGLE(Context *context,
                                       GLsizei count,
                                       GLsizei primcount)
 {
-    if (!context->getExtensions().instancedArrays)
+    if (!context->getExtensions().instancedArraysANGLE)
     {
         context->validationError(GL_INVALID_OPERATION, kExtensionNotEnabled);
         return false;
@@ -2852,6 +2852,26 @@ bool ValidateDrawArraysInstancedANGLE(Context *context,
     }
 
     return ValidateDrawInstancedANGLE(context);
+}
+
+bool ValidateDrawArraysInstancedEXT(Context *context,
+                                    PrimitiveMode mode,
+                                    GLint first,
+                                    GLsizei count,
+                                    GLsizei primcount)
+{
+    if (!context->getExtensions().instancedArraysEXT)
+    {
+        context->validationError(GL_INVALID_OPERATION, kExtensionNotEnabled);
+        return false;
+    }
+
+    if (!ValidateDrawArraysInstancedBase(context, mode, first, count, primcount))
+    {
+        return false;
+    }
+
+    return true;
 }
 
 const char *ValidateDrawElementsStates(Context *context)
@@ -2906,16 +2926,6 @@ const char *ValidateDrawElementsStates(Context *context)
     return nullptr;
 }
 
-bool ValidateDrawElementsInstancedCommon(Context *context,
-                                         PrimitiveMode mode,
-                                         GLsizei count,
-                                         DrawElementsType type,
-                                         const void *indices,
-                                         GLsizei primcount)
-{
-    return ValidateDrawElementsInstancedBase(context, mode, count, type, indices, primcount);
-}
-
 bool ValidateDrawElementsInstancedANGLE(Context *context,
                                         PrimitiveMode mode,
                                         GLsizei count,
@@ -2923,7 +2933,7 @@ bool ValidateDrawElementsInstancedANGLE(Context *context,
                                         const void *indices,
                                         GLsizei primcount)
 {
-    if (!context->getExtensions().instancedArrays)
+    if (!context->getExtensions().instancedArraysANGLE)
     {
         context->validationError(GL_INVALID_OPERATION, kExtensionNotEnabled);
         return false;
@@ -2935,6 +2945,27 @@ bool ValidateDrawElementsInstancedANGLE(Context *context,
     }
 
     return ValidateDrawInstancedANGLE(context);
+}
+
+bool ValidateDrawElementsInstancedEXT(Context *context,
+                                      PrimitiveMode mode,
+                                      GLsizei count,
+                                      DrawElementsType type,
+                                      const void *indices,
+                                      GLsizei primcount)
+{
+    if (!context->getExtensions().instancedArraysEXT)
+    {
+        context->validationError(GL_INVALID_OPERATION, kExtensionNotEnabled);
+        return false;
+    }
+
+    if (!ValidateDrawElementsInstancedBase(context, mode, count, type, indices, primcount))
+    {
+        return false;
+    }
+
+    return true;
 }
 
 bool ValidateFramebufferTextureBase(Context *context,
@@ -4800,92 +4831,6 @@ bool ValidateGetInternalformativRobustANGLE(Context *context,
     return true;
 }
 
-bool ValidateVertexFormatBase(Context *context,
-                              GLuint attribIndex,
-                              GLint size,
-                              VertexAttribType type,
-                              GLboolean pureInteger)
-{
-    const Caps &caps = context->getCaps();
-    if (attribIndex >= caps.maxVertexAttributes)
-    {
-        context->validationError(GL_INVALID_VALUE, kIndexExceedsMaxVertexAttribute);
-        return false;
-    }
-
-    if (size < 1 || size > 4)
-    {
-        context->validationError(GL_INVALID_VALUE, kInvalidVertexAttrSize);
-        return false;
-    }
-
-    // This validation could be improved using a table and better encapsulation.
-    switch (type)
-    {
-        case VertexAttribType::Byte:
-        case VertexAttribType::UnsignedByte:
-        case VertexAttribType::Short:
-        case VertexAttribType::UnsignedShort:
-            break;
-
-        case VertexAttribType::Int:
-        case VertexAttribType::UnsignedInt:
-            if (context->getClientMajorVersion() < 3)
-            {
-                context->validationError(GL_INVALID_ENUM, kEnumRequiresGLES30);
-                return false;
-            }
-            break;
-
-        case VertexAttribType::Fixed:
-        case VertexAttribType::Float:
-            if (pureInteger)
-            {
-                context->validationError(GL_INVALID_ENUM, kInvalidTypePureInt);
-                return false;
-            }
-            break;
-
-        case VertexAttribType::HalfFloat:
-            if (context->getClientMajorVersion() < 3)
-            {
-                context->validationError(GL_INVALID_ENUM, kEnumRequiresGLES30);
-                return false;
-            }
-            if (pureInteger)
-            {
-                context->validationError(GL_INVALID_ENUM, kInvalidTypePureInt);
-                return false;
-            }
-            break;
-
-        case VertexAttribType::Int2101010:
-        case VertexAttribType::UnsignedInt2101010:
-            if (context->getClientMajorVersion() < 3)
-            {
-                context->validationError(GL_INVALID_ENUM, kEnumRequiresGLES30);
-                return false;
-            }
-            if (pureInteger)
-            {
-                context->validationError(GL_INVALID_ENUM, kInvalidTypePureInt);
-                return false;
-            }
-            if (size != 4)
-            {
-                context->validationError(GL_INVALID_OPERATION, kInvalidVertexAttribSize2101010);
-                return false;
-            }
-            break;
-
-        default:
-            context->validationError(GL_INVALID_ENUM, kInvalidType);
-            return false;
-    }
-
-    return true;
-}
-
 // Perform validation from WebGL 2 section 5.10 "Invalid Clears":
 // In the WebGL 2 API, trying to perform a clear when there is a mismatch between the type of the
 // specified clear value and the type of a buffer that is being cleared generates an
@@ -5317,7 +5262,8 @@ bool ValidateGetVertexAttribBase(Context *context,
                     GL_VERTEX_ATTRIB_ARRAY_DIVISOR == GL_VERTEX_ATTRIB_ARRAY_DIVISOR_ANGLE,
                     "ANGLE extension enums not equal to GL enums.");
                 if (context->getClientMajorVersion() < 3 &&
-                    !context->getExtensions().instancedArrays)
+                    !context->getExtensions().instancedArraysANGLE &&
+                    !context->getExtensions().instancedArraysEXT)
                 {
                     context->validationError(GL_INVALID_ENUM, kEnumNotSupported);
                     return false;

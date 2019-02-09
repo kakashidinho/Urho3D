@@ -12,11 +12,8 @@
 
 #include "libANGLE/renderer/vulkan/iOS/WindowSurfaceVkiOS.h"
 
-#include "libANGLE/renderer/vulkan/RendererVk.h"
-#include <Metal/Metal.h>
-#include <QuartzCore/CAMetalLayer.h>
 
-#import <UIKit/UIKit.h>
+
 
 #define METALVIEW_TAG 255
 
@@ -96,7 +93,7 @@ WindowSurfaceVkiOS::WindowSurfaceVkiOS(const egl::SurfaceState &surfaceState,
                                            EGLNativeWindowType window,
                                            EGLint width,
                                            EGLint height)
-    : WindowSurfaceVk(surfaceState, window, width, height)
+    : WindowSurfaceVk(surfaceState, window, width, height) , mMetalView(NULL)
 {
 }
 
@@ -117,6 +114,7 @@ angle::Result WindowSurfaceVkiOS::createSurfaceVk(vk::Context *context, gl::Exte
         if ([[subview layer]  isKindOfClass:[CAMetalLayer class]])
         {
             createInfo.pView  = (__bridge void *)subview;
+            mMetalView = subview;
             break;
         }
         
@@ -124,13 +122,47 @@ angle::Result WindowSurfaceVkiOS::createSurfaceVk(vk::Context *context, gl::Exte
     
     if(createInfo.pView ==  NULL)
     {
-        createInfo.pView  = (__bridge void *)AddMetalView(view);
+        mMetalView = AddMetalView(view);
+        createInfo.pView  = (__bridge void *)mMetalView;
     }
+    
+    
     
     ANGLE_VK_TRY(context, vkCreateIOSSurfaceMVK(context->getRenderer()->getInstance(),&createInfo, nullptr, &mSurface));
 
     CGRect viewport = [view bounds];
     *extentsOut = gl::Extents(viewport.size.width, viewport.size.height, 0);
+    return angle::Result::Continue;
+}
+    
+angle::Result WindowSurfaceVkiOS::getCurrentWindowSize(vk::Context *context, gl::Extents *extentsOut)
+{
+    if(mMetalView == NULL)
+    {
+        UIWindow *  uiWindow = (__bridge UIWindow *)mNativeWindowType;
+        UIView *view = uiWindow.rootViewController.view;
+        NSArray<__kindof UIView *> *subviews = [view subviews];
+        
+        for (int i = 0; i < [subviews count]; i++)
+        {
+            UIView *subview  = [subviews objectAtIndex:i];
+            if ([[subview layer]  isKindOfClass:[CAMetalLayer class]])
+            {
+                mMetalView  = subview;
+                break;
+            }
+            
+        }
+    }
+    
+    ANGLE_VK_CHECK(context, (mMetalView != NULL) , VK_ERROR_INITIALIZATION_FAILED);
+    
+    if(mMetalView != NULL)
+    {
+        CGRect viewport = [mMetalView bounds];
+        *extentsOut = gl::Extents(viewport.size.width, viewport.size.height, 0);
+    }
+    
     return angle::Result::Continue;
 }
 

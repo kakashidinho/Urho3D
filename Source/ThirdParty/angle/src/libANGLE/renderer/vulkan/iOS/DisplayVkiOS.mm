@@ -61,7 +61,7 @@ bool DisplayVkiOS::checkConfigSupport(egl::Config *config)
     return true;
 }
 
-const char *DisplayVkiOS::getWSIName() const
+const char *DisplayVkiOS::getWSIExtension() const
 {
     return VK_MVK_IOS_SURFACE_EXTENSION_NAME;
 }

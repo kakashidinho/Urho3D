@@ -60,7 +60,7 @@ bool DisplayVkMacOS::checkConfigSupport(egl::Config *config)
     return true;
 }
 
-const char *DisplayVkMacOS::getWSIName() const
+const char *DisplayVkMacOS::getWSIExtension() const
 {
     return VK_MVK_MACOS_SURFACE_EXTENSION_NAME;
 }

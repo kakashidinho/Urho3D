@@ -18,11 +18,6 @@ namespace rx
 {
 class BufferVk;
 
-namespace vk
-{
-class RecordableGraphResource;
-}  // namespace vk
-
 class VertexArrayVk : public VertexArrayImpl
 {
   public:
@@ -86,10 +81,6 @@ class VertexArrayVk : public VertexArrayImpl
                                          const void *indices);
 
   private:
-    void setPackedInputInfo(ContextVk *contextVk,
-                            size_t attribIndex,
-                            const gl::VertexAttribute &attrib,
-                            const gl::VertexBinding &binding);
     void setDefaultPackedInput(ContextVk *contextVk, size_t attribIndex);
 
     angle::Result streamIndexData(ContextVk *contextVk,
@@ -100,11 +91,13 @@ class VertexArrayVk : public VertexArrayImpl
     angle::Result convertVertexBufferGpu(ContextVk *contextVk,
                                          BufferVk *srcBuffer,
                                          const gl::VertexBinding &binding,
-                                         size_t attribIndex);
+                                         size_t attribIndex,
+                                         const vk::Format &vertexFormat);
     angle::Result convertVertexBufferCpu(ContextVk *contextVk,
                                          BufferVk *srcBuffer,
                                          const gl::VertexBinding &binding,
-                                         size_t attribIndex);
+                                         size_t attribIndex,
+                                         const vk::Format &vertexFormat);
     void ensureConversionReleased(RendererVk *renderer, size_t attribIndex);
 
     angle::Result syncDirtyAttrib(ContextVk *contextVk,
@@ -115,8 +108,6 @@ class VertexArrayVk : public VertexArrayImpl
     gl::AttribArray<VkBuffer> mCurrentArrayBufferHandles;
     gl::AttribArray<VkDeviceSize> mCurrentArrayBufferOffsets;
     gl::AttribArray<vk::BufferHelper *> mCurrentArrayBuffers;
-    gl::AttribArray<const vk::Format *> mCurrentArrayBufferFormats;
-    gl::AttribArray<GLuint> mCurrentArrayBufferStrides;
     gl::AttribArray<vk::DynamicBuffer> mCurrentArrayBufferConversion;
     gl::AttribArray<bool> mCurrentArrayBufferConversionCanRelease;
     VkDeviceSize mCurrentElementArrayBufferOffset;

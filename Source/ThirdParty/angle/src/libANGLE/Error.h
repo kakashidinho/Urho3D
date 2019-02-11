@@ -90,22 +90,22 @@ using ErrorStream = angle::ErrorStreamBase<Error, EGLint, EGL_SUCCESS, EGLint, E
 
 }  // namespace priv
 
-using EglNotInitialized    = priv::ErrorStream<EGL_NOT_INITIALIZED>;
 using EglBadAccess         = priv::ErrorStream<EGL_BAD_ACCESS>;
 using EglBadAlloc          = priv::ErrorStream<EGL_BAD_ALLOC>;
 using EglBadAttribute      = priv::ErrorStream<EGL_BAD_ATTRIBUTE>;
 using EglBadConfig         = priv::ErrorStream<EGL_BAD_CONFIG>;
 using EglBadContext        = priv::ErrorStream<EGL_BAD_CONTEXT>;
 using EglBadCurrentSurface = priv::ErrorStream<EGL_BAD_CURRENT_SURFACE>;
+using EglBadDevice         = priv::ErrorStream<EGL_BAD_DEVICE_EXT>;
 using EglBadDisplay        = priv::ErrorStream<EGL_BAD_DISPLAY>;
 using EglBadMatch          = priv::ErrorStream<EGL_BAD_MATCH>;
 using EglBadNativeWindow   = priv::ErrorStream<EGL_BAD_NATIVE_WINDOW>;
 using EglBadParameter      = priv::ErrorStream<EGL_BAD_PARAMETER>;
+using EglBadState          = priv::ErrorStream<EGL_BAD_STATE_KHR>;
+using EglBadStream         = priv::ErrorStream<EGL_BAD_STREAM_KHR>;
 using EglBadSurface        = priv::ErrorStream<EGL_BAD_SURFACE>;
 using EglContextLost       = priv::ErrorStream<EGL_CONTEXT_LOST>;
-using EglBadStream         = priv::ErrorStream<EGL_BAD_STREAM_KHR>;
-using EglBadState          = priv::ErrorStream<EGL_BAD_STATE_KHR>;
-using EglBadDevice         = priv::ErrorStream<EGL_BAD_DEVICE_EXT>;
+using EglNotInitialized    = priv::ErrorStream<EGL_NOT_INITIALIZED>;
 
 inline Error NoError()
 {
@@ -129,7 +129,7 @@ inline Error NoError()
     } while (0)
 
 #define ANGLE_RETURN(X) return X;
-#define ANGLE_TRY(EXPR) ANGLE_TRY_TEMPLATE(EXPR, ANGLE_RETURN);
+#define ANGLE_TRY(EXPR) ANGLE_TRY_TEMPLATE(EXPR, ANGLE_RETURN)
 
 // TODO(jmadill): Remove after EGL error refactor. http://anglebug.com/3041
 #define ANGLE_SWALLOW_ERR(EXPR)                                       \
@@ -147,13 +147,14 @@ inline Error NoError()
 #undef ANGLE_CONCAT1
 
 #define ANGLE_CHECK(CONTEXT, EXPR, MESSAGE, ERROR)                                    \
+    do                                                                                \
     {                                                                                 \
         if (ANGLE_UNLIKELY(!(EXPR)))                                                  \
         {                                                                             \
             CONTEXT->handleError(ERROR, MESSAGE, __FILE__, ANGLE_FUNCTION, __LINE__); \
             return angle::Result::Stop;                                               \
         }                                                                             \
-    }
+    } while (0)
 
 namespace angle
 {

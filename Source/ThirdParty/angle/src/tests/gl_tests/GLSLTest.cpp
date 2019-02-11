@@ -1911,13 +1911,8 @@ TEST_P(GLSLTest_ES3, AmbiguousFunctionCall2x2)
 // the function name being too long.
 TEST_P(GLSLTest_ES3, LargeNumberOfFloat4Parameters)
 {
-    // TODO(cwallez@chromium.org): crashing on Mac ASAN, see http://anglebug.com/3087
-    ANGLE_SKIP_TEST_IF(IsOSX() && (IsNVIDIA() || IsIntel()));
-
     std::stringstream vertexShaderStream;
-    // This fails on Macos if the number of parameters is larger than 978 when linking in parallel.
-    // http://anglebug.com/3047
-    const unsigned int paramCount = (IsOSX() ? 978u : 1024u);
+    const unsigned int paramCount = 1024u;
 
     vertexShaderStream << "#version 300 es\n"
                           "precision highp float;\n"
@@ -1929,12 +1924,13 @@ TEST_P(GLSLTest_ES3, LargeNumberOfFloat4Parameters)
     }
     vertexShaderStream << "vec4 aLast)\n"
                           "{\n"
-                          "    return ";
+                          "    vec4 sum = vec4(0.0, 0.0, 0.0, 0.0);\n";
     for (unsigned int i = 0; i < paramCount; ++i)
     {
-        vertexShaderStream << "a" << i << " + ";
+        vertexShaderStream << "    sum += a" << i << ";\n";
     }
-    vertexShaderStream << "aLast;\n"
+    vertexShaderStream << "    sum += aLast;\n"
+                          "    return sum;\n "
                           "}\n"
                           "void main()\n"
                           "{\n"
@@ -4700,6 +4696,9 @@ TEST_P(GLSLTest, PointCoordConsistency)
     // AMD's OpenGL drivers may have the same issue. http://anglebug.com/1643
     ANGLE_SKIP_TEST_IF(IsAMD() && IsWindows() && IsOpenGL());
 
+    // http://anglebug.com/2599: Fails on the 5x due to driver bug.
+    ANGLE_SKIP_TEST_IF(IsAndroid() && IsVulkan());
+
     constexpr char kPointCoordVS[] = R"(attribute vec2 position;
 uniform vec2 viewportSize;
 void main()
@@ -5093,6 +5092,27 @@ void main()
 
     ANGLE_GL_PROGRAM(program, essl3_shaders::vs::Simple(), kFS);
     drawQuad(program, essl3_shaders::PositionAttrib(), 0.5f, 1.0f, true);
+    EXPECT_PIXEL_COLOR_EQ(0, 0, GLColor::green);
+}
+
+// Test initializing an array with the same name of previously declared array
+TEST_P(GLSLTest_ES3, InitSameNameArray)
+{
+    constexpr char kFS[] = R"(#version 300 es
+      precision highp float;
+      out vec4 my_FragColor;
+
+      void main()
+      {
+          float arr[2] = float[2](1.0, 1.0);
+          {
+              float arr[2] = arr;
+              my_FragColor = vec4(0.0, arr[0], 0.0, arr[1]);
+          }
+      })";
+
+    ANGLE_GL_PROGRAM(program, essl3_shaders::vs::Simple(), kFS);
+    drawQuad(program, essl31_shaders::PositionAttrib(), 0.5f, 1.0f, true);
     EXPECT_PIXEL_COLOR_EQ(0, 0, GLColor::green);
 }
 

@@ -53,6 +53,8 @@ void GenerateCaps(const VkPhysicalDeviceProperties &physicalDeviceProperties,
     // Only expose robust buffer access if the physical device supports it.
     outExtensions->robustBufferAccessBehavior = physicalDeviceFeatures.robustBufferAccess;
 
+    outExtensions->eglSync = true;
+
     // We use secondary command buffers almost everywhere and they require a feature to be
     // able to execute in the presence of queries.  As a result, we won't support queries
     // unless that feature is available.
@@ -233,8 +235,8 @@ egl::Config GenerateDefaultConfig(const RendererVk *renderer,
     config.blueSize           = colorFormat.blueBits;
     config.alphaSize          = colorFormat.alphaBits;
     config.alphaMaskSize      = 0;
-    config.bindToTextureRGB   = EGL_FALSE;
-    config.bindToTextureRGBA  = EGL_FALSE;
+    config.bindToTextureRGB   = colorFormat.format == GL_RGB;
+    config.bindToTextureRGBA  = colorFormat.format == GL_RGBA || colorFormat.format == GL_BGRA_EXT;
     config.colorBufferType    = EGL_RGB_BUFFER;
     config.configCaveat       = EGL_NONE;
     config.conformant         = 0;
@@ -246,7 +248,7 @@ egl::Config GenerateDefaultConfig(const RendererVk *renderer,
     config.maxPBufferHeight   = physicalDeviceProperties.limits.maxImageDimension2D;
     config.maxPBufferPixels   = ComputeMaximumPBufferPixels(physicalDeviceProperties);
     config.maxSwapInterval    = 1;
-    config.minSwapInterval    = 1;
+    config.minSwapInterval    = 0;
     config.nativeRenderable   = EGL_TRUE;
     config.nativeVisualID     = 0;
     config.nativeVisualType   = EGL_NONE;

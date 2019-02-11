@@ -1,4 +1,4 @@
-# Copyright 2014-2015 The Chromium Authors. All rights reserved.
+# Copyright 2019 The ANGLE Project Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -30,6 +30,7 @@ if (!build_with_chromium) {
     deps = [
       ":angle_shader_translator",
       ":translator_fuzzer",
+      ":xxhash_fuzzer",
       "//samples:all",
       "//src/tests:all",
     ]
@@ -122,10 +123,16 @@ config("extra_warnings") {
   }
   if (is_clang) {
     cflags += [
+      # Remove when crbug.com/926235 is resolved.
+      "-Wextra-semi",
+
+      # Enable after anglebug.com/3128 is fixed.
+      # "-Wextra-semi-stmt",
+
       # Remove when crbug.com/428099 is resolved.
       "-Winconsistent-missing-override",
-      "-Wunneeded-internal-declaration",
       "-Wnon-virtual-dtor",
+      "-Wunneeded-internal-declaration",
     ]
   }
 }
@@ -152,9 +159,14 @@ if (is_win && target_cpu != "arm64") {
   }
 }
 
+config("includes_config") {
+  include_dirs = [ "include" ]
+}
+
 # Holds the shared includes so we only need to list them once.
 angle_source_set("includes") {
   sources = libangle_includes
+  public_configs = [ ":includes_config" ]
 }
 
 angle_static_library("preprocessor") {
@@ -192,12 +204,30 @@ angle_source_set("angle_system_utils") {
   sources = angle_system_utils_sources
 }
 
+angle_source_set("xxhash") {
+  sources = xxhash_sources
+  configs -= [ "${angle_root}:extra_warnings" ]
+}
+
+fuzzer_test("xxhash_fuzzer") {
+  sources = [
+    "src/common/third_party/xxhash/xxhash_fuzzer.cpp",
+  ]
+  deps = [
+    ":xxhash",
+  ]
+}
+
 angle_static_library("angle_common") {
   sources = libangle_common_sources
 
   configs += [
     ":angle_common_config",
     ":debug_annotations_config",
+  ]
+
+  deps = [
+    ":xxhash",
   ]
 
   public_deps = [
@@ -444,21 +474,39 @@ config("libANGLE_config") {
 }
 
 if (angle_enable_vulkan) {
+  config("vulkan_config") {
+    if (is_win) {
+      defines = [
+        "VK_USE_PLATFORM_WIN32_KHR",
+        "VK_USE_PLATFORM_WIN32_KHX",
+      ]
+    }
+    if (is_linux) {
+      defines = [
+        "VK_USE_PLATFORM_XCB_KHR",
+        "VK_USE_PLATFORM_XCB_KHX",
+      ]
+    }
+    if (is_android) {
+      defines = [
+        "VK_USE_PLATFORM_ANDROID_KHR",
+        "VK_USE_PLATFORM_ANDROID_KHX",
+      ]
+      libs = [ "vulkan" ]
+    }
+  }
+
   # Use this target to include everything ANGLE needs for Vulkan.
   group("angle_vulkan") {
-    deps = [
-      "$angle_root/third_party/glslang:glslang",
-    ]
     public_deps = [
       "$angle_root/third_party/vulkan-headers:vulkan_headers",
     ]
-    public_configs = [
-      "$angle_root/third_party/glslang:glslang_config",
-      "$angle_root/third_party/vulkan-validation-layers:vulkan_config",
-    ]
+    public_configs = [ ":vulkan_config" ]
     data_deps = []
     if (!is_android) {
-      deps += [ "$angle_root/third_party/vulkan-loader:libvulkan" ]
+      deps = [
+        "$angle_root/third_party/vulkan-loader:libvulkan",
+      ]
       data_deps += [ "$angle_root/third_party/vulkan-tools:VkICD_mock_icd" ]
       public_configs +=
           [ "$angle_root/third_party/vulkan-loader:vulkan_loader_config" ]
@@ -574,7 +622,12 @@ angle_static_library("libANGLE") {
       sources += libangle_vulkan_android_sources
       libs += [ "vulkan" ]
     }
-    deps += [ ":angle_vulkan" ]
+    deps += [
+      ":angle_vulkan",
+      "${angle_glslang_dir}:glslang_default_resource_limits_sources",
+      "${angle_glslang_dir}:glslang_sources",
+      "${angle_spirv_tools_dir}:spvtools_val",
+    ]
     public_deps += [ "$angle_root/third_party/vulkan-headers:vulkan_headers" ]
 
     # Include generated shaders.
@@ -943,8 +996,15 @@ angle_shared_library("libfeature_support${angle_libs_suffix}") {
 
   public_configs += [
     ":angle_feature_support_config",
-    "third_party/jsoncpp:jsoncpp_config",
+    "${angle_jsoncpp_dir}:jsoncpp_config",
   ]
+
+  if (is_mac && !is_component_build) {
+    ldflags = [
+      "-install_name",
+      "@rpath/${target_name}.dylib",
+    ]
+  }
 
   sources = [
     "src/feature_support_util/feature_support_util.cpp",
@@ -953,7 +1013,7 @@ angle_shared_library("libfeature_support${angle_libs_suffix}") {
 
   deps = [
     ":angle_gpu_info_util",
-    "third_party/jsoncpp:jsoncpp",
+    "${angle_jsoncpp_dir}:jsoncpp",
   ]
 }
 

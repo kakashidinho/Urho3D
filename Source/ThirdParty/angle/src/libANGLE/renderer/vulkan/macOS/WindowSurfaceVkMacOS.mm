@@ -11,10 +11,7 @@
 
 #include "libANGLE/renderer/vulkan/macos/WindowSurfaceVkMacOS.h"
 
-#include "libANGLE/renderer/vulkan/RendererVk.h"
-#include <Cocoa/Cocoa.h>
-#include <Metal/Metal.h>
-#include <QuartzCore/CAMetalLayer.h>
+
 #define METALVIEW_TAG 255
 
 @interface MetalView : NSView {
@@ -105,7 +102,7 @@ WindowSurfaceVkMacOS::WindowSurfaceVkMacOS(const egl::SurfaceState &surfaceState
                                            EGLNativeWindowType window,
                                            EGLint width,
                                            EGLint height)
-    : WindowSurfaceVk(surfaceState, window, width, height)
+    : WindowSurfaceVk(surfaceState, window, width, height) , mMetalView(NULL)
 {
 }
 
@@ -125,6 +122,7 @@ angle::Result WindowSurfaceVkMacOS::createSurfaceVk(vk::Context *context, gl::Ex
         if ([[subview layer]  isKindOfClass:[CAMetalLayer class]])
         {
             createInfo.pView  = subview;
+            mMetalView = subview;
             break;
         }
 
@@ -132,7 +130,8 @@ angle::Result WindowSurfaceVkMacOS::createSurfaceVk(vk::Context *context, gl::Ex
     
     if(createInfo.pView ==  NULL)
     {
-        createInfo.pView  = AddMetalView(view);
+        mMetalView = AddMetalView(view);
+        createInfo.pView = mMetalView;
     }
  
     ANGLE_VK_TRY(context, vkCreateMacOSSurfaceMVK(context->getRenderer()->getInstance(),
@@ -142,6 +141,36 @@ angle::Result WindowSurfaceVkMacOS::createSurfaceVk(vk::Context *context, gl::Ex
     NSRect viewport = [view bounds];
     
     *extentsOut = gl::Extents(viewport.size.width, viewport.size.height, 0);
+    return angle::Result::Continue;
+}
+    
+angle::Result WindowSurfaceVkMacOS::getCurrentWindowSize(vk::Context *context, gl::Extents *extentsOut)
+{
+    if(mMetalView == NULL)
+    {
+        NSWindow *  nswindow = (__bridge NSWindow *)mNativeWindowType;
+        NSView *view = [nswindow contentView];
+        NSArray<__kindof NSView *> *subviews = [view subviews];
+        for (int i = 0; i < [subviews count]; i++)
+        {
+            NSView *subview  = [subviews objectAtIndex:i];
+            if ([[subview layer]  isKindOfClass:[CAMetalLayer class]])
+            {
+                mMetalView  = subview;
+                break;
+            }
+            
+        }
+    }
+    
+    ANGLE_VK_CHECK(context, (mMetalView != NULL) , VK_ERROR_INITIALIZATION_FAILED);
+    
+    if(mMetalView != NULL)
+    {
+        NSRect viewport = [mMetalView bounds];
+        *extentsOut = gl::Extents(viewport.size.width, viewport.size.height, 0);
+    }
+    
     return angle::Result::Continue;
 }
 

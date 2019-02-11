@@ -1123,12 +1123,13 @@ void GenerateCaps(const FunctionsGL *functions,
                                      functions->hasGLESExtension("GL_OES_texture_border_clamp") ||
                                      functions->hasGLESExtension("GL_EXT_texture_border_clamp") ||
                                      functions->hasGLESExtension("GL_NV_texture_border_clamp");
-    extensions->instancedArrays = functions->isAtLeastGL(gl::Version(3, 1)) ||
-                                  (functions->hasGLExtension("GL_ARB_instanced_arrays") &&
-                                   (functions->hasGLExtension("GL_ARB_draw_instanced") ||
-                                    functions->hasGLExtension("GL_EXT_draw_instanced"))) ||
-                                  functions->isAtLeastGLES(gl::Version(3, 0)) ||
-                                  functions->hasGLESExtension("GL_EXT_instanced_arrays");
+    extensions->instancedArraysANGLE = functions->isAtLeastGL(gl::Version(3, 1)) ||
+                                       (functions->hasGLExtension("GL_ARB_instanced_arrays") &&
+                                        (functions->hasGLExtension("GL_ARB_draw_instanced") ||
+                                         functions->hasGLExtension("GL_EXT_draw_instanced"))) ||
+                                       functions->isAtLeastGLES(gl::Version(3, 0)) ||
+                                       functions->hasGLESExtension("GL_EXT_instanced_arrays");
+    extensions->instancedArraysEXT = extensions->instancedArraysANGLE;
     extensions->unpackSubimage = functions->standard == STANDARD_GL_DESKTOP ||
                                  functions->isAtLeastGLES(gl::Version(3, 0)) ||
                                  functions->hasGLESExtension("GL_EXT_unpack_subimage");
@@ -1149,6 +1150,8 @@ void GenerateCaps(const FunctionsGL *functions,
     extensions->eglImageExternal = functions->hasGLESExtension("GL_OES_EGL_image_external");
     extensions->eglImageExternalEssl3 =
         functions->hasGLESExtension("GL_OES_EGL_image_external_essl3");
+
+    extensions->eglSync = functions->hasGLESExtension("GL_OES_EGL_sync");
 
     if (functions->isAtLeastGL(gl::Version(3, 3)) ||
         functions->hasGLExtension("GL_ARB_timer_query") ||
@@ -1446,7 +1449,7 @@ void GenerateWorkarounds(const FunctionsGL *functions, WorkaroundsGL *workaround
 
     workarounds->dontRelinkProgramsInParallel = IsAndroid() || (IsWindows() && IsIntel(vendor));
 
-    workarounds->disableWorkerContexts = true;
+    workarounds->disableWorkerContexts = !IsApple();
 }
 
 void ApplyWorkarounds(const FunctionsGL *functions, gl::Workarounds *workarounds)

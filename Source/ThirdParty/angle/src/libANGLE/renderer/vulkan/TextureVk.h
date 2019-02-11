@@ -18,106 +18,6 @@
 namespace rx
 {
 
-class PixelBuffer final : angle::NonCopyable
-{
-  public:
-    PixelBuffer(RendererVk *renderer);
-    ~PixelBuffer();
-
-    void release(RendererVk *renderer);
-
-    void removeStagedUpdates(RendererVk *renderer, const gl::ImageIndex &index);
-
-    angle::Result stageSubresourceUpdate(ContextVk *contextVk,
-                                         const gl::ImageIndex &index,
-                                         const gl::Extents &extents,
-                                         const gl::Offset &offset,
-                                         const gl::InternalFormat &formatInfo,
-                                         const gl::PixelUnpackState &unpack,
-                                         GLenum type,
-                                         const uint8_t *pixels);
-
-    angle::Result stageSubresourceUpdateAndGetData(ContextVk *contextVk,
-                                                   size_t allocationSize,
-                                                   const gl::ImageIndex &imageIndex,
-                                                   const gl::Extents &extents,
-                                                   const gl::Offset &offset,
-                                                   uint8_t **destData);
-
-    angle::Result stageSubresourceUpdateFromFramebuffer(const gl::Context *context,
-                                                        const gl::ImageIndex &index,
-                                                        const gl::Rectangle &sourceArea,
-                                                        const gl::Offset &dstOffset,
-                                                        const gl::Extents &dstExtent,
-                                                        const gl::InternalFormat &formatInfo,
-                                                        FramebufferVk *framebufferVk);
-
-    void stageSubresourceUpdateFromImage(vk::ImageHelper *image,
-                                         const gl::ImageIndex &index,
-                                         const gl::Offset &destOffset,
-                                         const gl::Extents &extents);
-
-    // This will use the underlying dynamic buffer to allocate some memory to be used as a src or
-    // dst.
-    angle::Result allocate(ContextVk *contextVk,
-                           size_t sizeInBytes,
-                           uint8_t **ptrOut,
-                           VkBuffer *handleOut,
-                           VkDeviceSize *offsetOut,
-                           bool *newBufferAllocatedOut);
-
-    angle::Result flushUpdatesToImage(ContextVk *contextVk,
-                                      uint32_t levelCount,
-                                      vk::ImageHelper *image,
-                                      vk::CommandBuffer *commandBuffer);
-
-    bool empty() const;
-
-  private:
-    struct SubresourceUpdate
-    {
-        SubresourceUpdate();
-        SubresourceUpdate(VkBuffer bufferHandle, const VkBufferImageCopy &copyRegion);
-        SubresourceUpdate(vk::ImageHelper *image, const VkImageCopy &copyRegion);
-        SubresourceUpdate(const SubresourceUpdate &other);
-
-        void release(RendererVk *renderer);
-
-        const VkImageSubresourceLayers &dstSubresource() const
-        {
-            return updateSource == UpdateSource::Buffer ? buffer.copyRegion.imageSubresource
-                                                        : image.copyRegion.dstSubresource;
-        }
-        bool isUpdateToLayerLevel(uint32_t layerIndex, uint32_t levelIndex) const;
-
-        enum class UpdateSource
-        {
-            Buffer,
-            Image,
-        };
-        struct BufferUpdate
-        {
-            VkBuffer bufferHandle;
-            VkBufferImageCopy copyRegion;
-        };
-        struct ImageUpdate
-        {
-            vk::ImageHelper *image;
-            VkImageCopy copyRegion;
-        };
-
-        UpdateSource updateSource;
-        union
-        {
-            BufferUpdate buffer;
-            ImageUpdate image;
-        };
-    };
-
-    vk::DynamicBuffer mStagingBuffer;
-    std::vector<SubresourceUpdate> mSubresourceUpdates;
-};
-
 class TextureVk : public TextureImpl
 {
   public:
@@ -229,14 +129,14 @@ class TextureVk : public TextureImpl
 
     const vk::ImageHelper &getImage() const
     {
-        ASSERT(mImage.valid());
-        return mImage;
+        ASSERT(mImage && mImage->valid());
+        return *mImage;
     }
 
     vk::ImageHelper &getImage()
     {
-        ASSERT(mImage.valid());
-        return mImage;
+        ASSERT(mImage && mImage->valid());
+        return *mImage;
     }
 
     const vk::ImageView &getReadImageView() const;
@@ -249,6 +149,10 @@ class TextureVk : public TextureImpl
     angle::Result ensureImageInitialized(ContextVk *contextVk);
 
   private:
+    void releaseAndDeleteImage(const gl::Context *context, RendererVk *renderer);
+    angle::Result ensureImageAllocated(RendererVk *renderer);
+    void setImageHelper(RendererVk *renderer, vk::ImageHelper *imageHelper, bool selfOwned);
+
     angle::Result redefineImage(const gl::Context *context,
                                 const gl::ImageIndex &index,
                                 const gl::InternalFormat &internalFormat,
@@ -308,8 +212,12 @@ class TextureVk : public TextureImpl
                             const gl::Extents &extents,
                             const uint32_t levelCount,
                             vk::CommandBuffer *commandBuffer);
-    void releaseImage(const gl::Context *context, RendererVk *renderer);
+    void releaseImage(RendererVk *renderer);
+    void releaseStagingBuffer(RendererVk *renderer);
     uint32_t getLevelCount() const;
+    angle::Result initImageViews(ContextVk *contextVk,
+                                 const vk::Format &format,
+                                 uint32_t levelCount);
     angle::Result initCubeMapRenderTargets(ContextVk *contextVk);
 
     angle::Result ensureImageInitializedImpl(ContextVk *contextVk,
@@ -317,7 +225,8 @@ class TextureVk : public TextureImpl
                                              uint32_t levelCount,
                                              const vk::Format &format);
 
-    vk::ImageHelper mImage;
+    bool mOwnsImage;
+    vk::ImageHelper *mImage;
     vk::ImageView mDrawBaseLevelImageView;
     vk::ImageView mReadBaseLevelImageView;
     vk::ImageView mReadMipmapImageView;
@@ -326,8 +235,6 @@ class TextureVk : public TextureImpl
 
     RenderTargetVk mRenderTarget;
     std::vector<RenderTargetVk> mCubeMapRenderTargets;
-
-    PixelBuffer mPixelBuffer;
 };
 
 }  // namespace rx

@@ -24,6 +24,7 @@
 #include "compiler/translator/InfoSink.h"
 #include "compiler/translator/Pragma.h"
 #include "compiler/translator/SymbolTable.h"
+#include "compiler/translator/ValidateAST.h"
 #include "third_party/compiler/ArrayBoundsClamper.h"
 
 namespace sh
@@ -145,7 +146,8 @@ class TCompiler : public TShHandleBase
   protected:
     // Add emulated functions to the built-in function emulator.
     virtual void initBuiltInFunctionEmulator(BuiltInFunctionEmulator *emu,
-                                             ShCompileOptions compileOptions){};
+                                             ShCompileOptions compileOptions)
+    {}
     // Translate to object code. May generate performance warnings through the diagnostics.
     virtual void translate(TIntermBlock *root,
                            ShCompileOptions compileOptions,
@@ -277,6 +279,9 @@ class TCompiler : public TShHandleBase
     NameMap mNameMap;
 
     TPragma mPragma;
+
+    // Track what should be validated given passes currently applied.
+    ValidateASTOptions mValidateASTOptions;
 };
 
 //

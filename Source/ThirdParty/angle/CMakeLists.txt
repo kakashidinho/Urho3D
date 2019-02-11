@@ -195,6 +195,8 @@ set (libangle_sources
   src/libANGLE/Device.h
   src/libANGLE/Display.cpp
   src/libANGLE/Display.h
+  src/libANGLE/EGLSync.cpp
+  src/libANGLE/EGLSync.h
   src/libANGLE/Error.cpp
   src/libANGLE/Error.h
   src/libANGLE/Error.inl
@@ -737,6 +739,8 @@ set (angle_translator_sources
   src/compiler/translator/OutputVulkanGLSL.h
   src/compiler/translator/TranslatorVulkan.cpp
   src/compiler/translator/TranslatorVulkan.h
+  src/compiler/translator/ValidateAST.cpp
+  src/compiler/translator/ValidateAST.h
   src/compiler/fuzz/translator_fuzzer.cpp
 )
 source_group("translator"            FILES ${angle_translator_sources})
@@ -959,7 +963,6 @@ set(spvtools_val
     third_party/spirv-tools/src/source/val/validate_decorations.cpp
     third_party/spirv-tools/src/source/val/validate_derivatives.cpp
     third_party/spirv-tools/src/source/val/validate_execution_limitations.cpp
-    third_party/spirv-tools/src/source/val/validate_ext_inst.cpp
     third_party/spirv-tools/src/source/val/validate_function.cpp
     third_party/spirv-tools/src/source/val/validate_id.cpp
     third_party/spirv-tools/src/source/val/validate_image.cpp

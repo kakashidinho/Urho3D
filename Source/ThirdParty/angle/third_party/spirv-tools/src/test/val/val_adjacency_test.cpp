@@ -53,7 +53,8 @@ OpFunctionEnd
 
   CompileSuccessfully(module);
   EXPECT_EQ(SPV_ERROR_INVALID_ID, ValidateInstructions());
-  EXPECT_THAT(getDiagnosticString(), HasSubstr("ID 1 has not been defined"));
+  EXPECT_THAT(getDiagnosticString(),
+              HasSubstr("ID 1[%bool] has not been defined"));
 }
 
 TEST_F(ValidateAdjacency, OpLoopMergeEndsModuleFail) {
@@ -120,6 +121,7 @@ std::string GenerateShaderCode(
 %zero = OpConstant %int 0
 %int_1 = OpConstant %int 1
 %func = OpTypeFunction %void
+%func_int = OpTypePointer Function %int
 %main = OpFunction %void None %func
 %main_entry = OpLabel
 )";
@@ -311,6 +313,68 @@ OpNop
   EXPECT_THAT(getDiagnosticString(),
               HasSubstr("OpPhi must appear within a non-entry block before all "
                         "non-OpPhi instructions"));
+}
+
+TEST_F(ValidateAdjacency, OpVariableInFunctionGood) {
+  const std::string body = R"(
+OpLine %string 1 1
+%var = OpVariable %func_int Function
+OpLine %string 2 1
+OpNop
+OpLine %string 3 1
+OpNop
+)";
+
+  CompileSuccessfully(GenerateShaderCode(body));
+  EXPECT_EQ(SPV_SUCCESS, ValidateInstructions());
+}
+
+TEST_F(ValidateAdjacency, OpVariableInFunctionMultipleGood) {
+  const std::string body = R"(
+OpLine %string 1 1
+%1 = OpVariable %func_int Function
+OpLine %string 2 1
+%2 = OpVariable %func_int Function
+%3 = OpVariable %func_int Function
+OpNop
+OpLine %string 3 1
+OpNop
+)";
+
+  CompileSuccessfully(GenerateShaderCode(body));
+  EXPECT_EQ(SPV_SUCCESS, ValidateInstructions());
+}
+
+TEST_F(ValidateAdjacency, OpVariableInFunctionBad) {
+  const std::string body = R"(
+%1 = OpUndef %int
+%2 = OpVariable %func_int Function
+)";
+
+  CompileSuccessfully(GenerateShaderCode(body));
+  EXPECT_EQ(SPV_ERROR_INVALID_DATA, ValidateInstructions());
+  EXPECT_THAT(getDiagnosticString(),
+              HasSubstr("All OpVariable instructions in a function must be the "
+                        "first instructions"));
+}
+
+TEST_F(ValidateAdjacency, OpVariableInFunctionMultipleBad) {
+  const std::string body = R"(
+OpNop
+%1 = OpVariable %func_int Function
+OpLine %string 1 1
+%2 = OpVariable %func_int Function
+OpNop
+OpNop
+OpLine %string 2 1
+%3 = OpVariable %func_int Function
+)";
+
+  CompileSuccessfully(GenerateShaderCode(body));
+  EXPECT_EQ(SPV_ERROR_INVALID_DATA, ValidateInstructions());
+  EXPECT_THAT(getDiagnosticString(),
+              HasSubstr("All OpVariable instructions in a function must be the "
+                        "first instructions"));
 }
 
 TEST_F(ValidateAdjacency, OpLoopMergePreceedsOpBranchSuccess) {

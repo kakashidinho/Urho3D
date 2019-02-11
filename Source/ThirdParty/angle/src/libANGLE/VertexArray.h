@@ -63,7 +63,7 @@ class VertexArrayState final : angle::NonCopyable
         return mVertexAttributes[attribIndex].bindingIndex;
     }
 
-    void setAttribBinding(size_t attribIndex, GLuint newBindingIndex);
+    void setAttribBinding(const Context *context, size_t attribIndex, GLuint newBindingIndex);
 
     // Extra validation performed on the Vertex Array.
     bool hasEnabledNullPointerClientArray() const;
@@ -287,16 +287,16 @@ class VertexArray final : public angle::ObserverInterface,
     void setDirtyAttribBit(size_t attribIndex, DirtyAttribBitType dirtyAttribBit);
     void setDirtyBindingBit(size_t bindingIndex, DirtyBindingBitType dirtyBindingBit);
 
-    void updateObserverBinding(size_t bindingIndex);
     DirtyBitType getDirtyBitFromIndex(bool contentsChanged, angle::SubjectIndex index) const;
     void setDependentDirtyBit(const gl::Context *context,
                               bool contentsChanged,
                               angle::SubjectIndex index);
 
     // These are used to optimize draw call validation.
-    void updateCachedBufferBindingSize(VertexBinding *binding);
+    void updateCachedBufferBindingSize(const Context *context, VertexBinding *binding);
     void updateCachedTransformFeedbackBindingValidation(size_t bindingIndex, const Buffer *buffer);
-    void updateCachedMappedArrayBuffers(VertexBinding *binding);
+    void updateCachedMappedArrayBuffers(bool isMapped, const AttributesMask &boundAttributesMask);
+    void updateCachedMappedArrayBuffersBinding(const VertexBinding &binding);
 
     angle::Result getIndexRangeImpl(const Context *context,
                                     DrawElementsType type,

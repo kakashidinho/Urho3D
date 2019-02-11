@@ -1305,6 +1305,9 @@ void SimpleStateChangeTest::simpleDrawWithColor(const GLColor &color)
 // frame.
 TEST_P(SimpleStateChangeTest, DrawArraysThenDrawElements)
 {
+    // http://anglebug.com/3124: Flaky on Nexus5X.
+    ANGLE_SKIP_TEST_IF(IsAndroid() && IsVulkan());
+
     ANGLE_GL_PROGRAM(program, essl1_shaders::vs::Simple(), essl1_shaders::fs::Blue());
     glUseProgram(program);
 
@@ -2480,6 +2483,12 @@ class WebGL2ValidationStateChangeTest : public ValidationStateChangeTest
 class ValidationStateChangeTestES31 : public ANGLETest
 {};
 
+class WebGLComputeValidationStateChangeTest : public ANGLETest
+{
+  public:
+    WebGLComputeValidationStateChangeTest() { setWebGLCompatibilityEnabled(true); }
+};
+
 // Tests that mapping and unmapping an array buffer in various ways causes rendering to fail.
 // This isn't guaranteed to produce an error by GL. But we assume ANGLE always errors.
 TEST_P(ValidationStateChangeTest, MapBufferAndDraw)
@@ -2626,7 +2635,7 @@ TEST_P(ValidationStateChangeTestES31, MapBufferAndDrawWithDivisor)
 }
 
 // Tests that changing a vertex binding with glVertexAttribDivisor updates the buffer size check.
-TEST_P(ValidationStateChangeTestES31, DrawPastEndOfBufferWithDivisor)
+TEST_P(WebGLComputeValidationStateChangeTest, DrawPastEndOfBufferWithDivisor)
 {
     // Initialize program and set up state.
     ANGLE_GL_PROGRAM(program, kColorVS, kColorFS);
@@ -3379,3 +3388,4 @@ ANGLE_INSTANTIATE_TEST(SimpleStateChangeTestES31, ES31_OPENGL(), ES31_D3D11());
 ANGLE_INSTANTIATE_TEST(ValidationStateChangeTest, ES3_D3D11(), ES3_OPENGL());
 ANGLE_INSTANTIATE_TEST(WebGL2ValidationStateChangeTest, ES3_D3D11(), ES3_OPENGL());
 ANGLE_INSTANTIATE_TEST(ValidationStateChangeTestES31, ES31_OPENGL(), ES31_D3D11());
+ANGLE_INSTANTIATE_TEST(WebGLComputeValidationStateChangeTest, ES31_D3D11(), ES31_OPENGL());

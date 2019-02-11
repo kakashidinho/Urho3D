@@ -155,7 +155,6 @@
 1340 WIN : dEQP-EGL.functional.resize.pixel_density.* = SKIP
 
 // Windows OpenGL failures
-2546 WIN : dEQP-EGL.functional.fence_sync.invalid.* = SKIP
 2546 WIN : dEQP-EGL.functional.resize.surface_size.shrink = SKIP
 2546 WIN : dEQP-EGL.functional.reusable_sync.invalid.* = SKIP
 2546 WIN : dEQP-EGL.functional.color_clears.multi_thread.* = FAIL
@@ -179,7 +178,6 @@
 2635 WIN VULKAN : dEQP-EGL.functional.resize.surface_size.stretch_width = FAIL
 2635 WIN VULKAN : dEQP-EGL.functional.wide_color.pbuffer_8888_colorspace_default = FAIL
 2716 WIN VULKAN : dEQP-EGL.functional.preserve_swap.no_preserve.* = FAIL
-2811 WIN VULKAN : dEQP-EGL.functional.swap_buffers_with_damage.resize* = SKIP
 
 // Linux failures
 2546 LINUX : dEQP-EGL.functional.color_clears.multi_context.gles1.rgba8888_pixmap = SKIP
@@ -245,6 +243,9 @@
 2507 ANDROID GLES : dEQP-EGL.functional.image.modify.tex_rgb565_tex_subimage_rgb8 = FAIL
 2507 ANDROID GLES : dEQP-EGL.functional.image.modify.tex_rgba4_tex_subimage_rgba8 = FAIL
 2716 ANDROID GLES : dEQP-EGL.functional.preserve_swap.preserve.* = FAIL
+
+// Seems to crash on the 5x. Possibly other Android devices.
+3113 ANDROID GLES : dEQP-EGL.functional.reusable_sync.* = SKIP
 
 // Android failures
 2546 ANDROID : dEQP-EGL.functional.buffer_age.* = FAIL

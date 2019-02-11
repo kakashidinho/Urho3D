@@ -11,6 +11,7 @@
 
 #include "common/mathutil.h"
 #include "common/utilities.h"
+#include "compiler/translator/Common.h"
 
 namespace sh
 {
@@ -42,7 +43,7 @@ class BlockLayoutMapVisitor : public BlockEncoderVisitor
 template <typename VarT>
 void GetInterfaceBlockInfo(const std::vector<VarT> &fields,
                            const std::string &prefix,
-                           sh::BlockLayoutEncoder *encoder,
+                           BlockLayoutEncoder *encoder,
                            bool inRowMajorLayout,
                            BlockLayoutMap *blockInfoOut)
 {
@@ -74,7 +75,6 @@ void TraverseStructArrayVariable(const ShaderVariable &variable,
     for (unsigned int arrayElement = 0u; arrayElement < count; ++arrayElement)
     {
         visitor->enterArrayElement(variable, arrayElement);
-
         ShaderVariable elementVar = variable;
         elementVar.indexIntoArray(arrayElement);
 
@@ -133,7 +133,7 @@ void TraverseArrayOfArraysVariable(const ShaderVariable &variable,
 
 std::string CollapseNameStack(const std::vector<std::string> &nameStack)
 {
-    std::stringstream strstr;
+    std::stringstream strstr = sh::InitializeStream<std::stringstream>();
     for (const std::string &part : nameStack)
     {
         strstr << part;
@@ -186,6 +186,19 @@ BlockMemberInfo BlockLayoutEncoder::encodeType(GLenum type,
     advanceOffset(type, arraySizes, isRowMajorMatrix, arrayStride, matrixStride);
 
     return memberInfo;
+}
+
+size_t BlockLayoutEncoder::getShaderVariableSize(const ShaderVariable &structVar, bool isRowMajor)
+{
+    size_t currentOffset = mCurrentOffset;
+    mCurrentOffset       = 0;
+    BlockEncoderVisitor visitor("", "", this);
+    enterAggregateType(structVar);
+    TraverseShaderVariables(structVar.fields, isRowMajor, &visitor);
+    exitAggregateType(structVar);
+    size_t structVarSize = getCurrentOffset();
+    mCurrentOffset       = currentOffset;
+    return structVarSize;
 }
 
 // static
@@ -323,7 +336,7 @@ size_t Std430BlockEncoder::getTypeBaseAlignment(GLenum type, bool isRowMajorMatr
 
 void GetInterfaceBlockInfo(const std::vector<InterfaceBlockField> &fields,
                            const std::string &prefix,
-                           sh::BlockLayoutEncoder *encoder,
+                           BlockLayoutEncoder *encoder,
                            BlockLayoutMap *blockInfoOut)
 {
     // Matrix packing is always recorded in individual fields, so they'll set the row major layout
@@ -333,7 +346,7 @@ void GetInterfaceBlockInfo(const std::vector<InterfaceBlockField> &fields,
 
 void GetUniformBlockInfo(const std::vector<Uniform> &uniforms,
                          const std::string &prefix,
-                         sh::BlockLayoutEncoder *encoder,
+                         BlockLayoutEncoder *encoder,
                          BlockLayoutMap *blockInfoOut)
 {
     // Matrix packing is always recorded in individual fields, so they'll set the row major layout
@@ -403,7 +416,7 @@ void VariableNameVisitor::exitArray(const ShaderVariable &arrayVar)
 void VariableNameVisitor::enterArrayElement(const ShaderVariable &arrayVar,
                                             unsigned int arrayElement)
 {
-    std::stringstream strstr;
+    std::stringstream strstr = sh::InitializeStream<std::stringstream>();
     strstr << "[" << arrayElement << "]";
     std::string elementString = strstr.str();
     mNameStack.push_back(elementString);
@@ -478,14 +491,60 @@ BlockEncoderVisitor::~BlockEncoderVisitor() = default;
 
 void BlockEncoderVisitor::enterStructAccess(const ShaderVariable &structVar, bool isRowMajor)
 {
+    mStructStackSize++;
+    if (!mIsTopLevelArrayStrideReady)
+    {
+        size_t structSize = mEncoder->getShaderVariableSize(structVar, isRowMajor);
+        mTopLevelArrayStride *= structSize;
+        mIsTopLevelArrayStrideReady = true;
+    }
+
     VariableNameVisitor::enterStructAccess(structVar, isRowMajor);
     mEncoder->enterAggregateType(structVar);
 }
 
 void BlockEncoderVisitor::exitStructAccess(const ShaderVariable &structVar, bool isRowMajor)
 {
+    mStructStackSize--;
     mEncoder->exitAggregateType(structVar);
     VariableNameVisitor::exitStructAccess(structVar, isRowMajor);
+}
+
+void BlockEncoderVisitor::enterArrayElement(const sh::ShaderVariable &arrayVar,
+                                            unsigned int arrayElement)
+{
+    if (mStructStackSize == 0 && !arrayVar.hasParentArrayIndex())
+    {
+        // From the ES 3.1 spec "7.3.1.1 Naming Active Resources":
+        // For an active shader storage block member declared as an array of an aggregate type,
+        // an entry will be generated only for the first array element, regardless of its type.
+        // Such block members are referred to as top-level arrays. If the block member is an
+        // aggregate type, the enumeration rules are then applied recursively.
+        if (arrayElement == 0)
+        {
+            mTopLevelArraySize          = arrayVar.getOutermostArraySize();
+            mTopLevelArrayStride        = arrayVar.getInnerArraySizeProduct();
+            mIsTopLevelArrayStrideReady = false;
+        }
+        else
+        {
+            mSkipEnabled = true;
+        }
+    }
+    VariableNameVisitor::enterArrayElement(arrayVar, arrayElement);
+}
+
+void BlockEncoderVisitor::exitArrayElement(const sh::ShaderVariable &arrayVar,
+                                           unsigned int arrayElement)
+{
+    if (mStructStackSize == 0 && !arrayVar.hasParentArrayIndex())
+    {
+        mTopLevelArraySize          = 1;
+        mTopLevelArrayStride        = 0;
+        mIsTopLevelArrayStrideReady = true;
+        mSkipEnabled                = false;
+    }
+    VariableNameVisitor::exitArrayElement(arrayVar, arrayElement);
 }
 
 void BlockEncoderVisitor::visitNamedVariable(const ShaderVariable &variable,
@@ -501,6 +560,13 @@ void BlockEncoderVisitor::visitNamedVariable(const ShaderVariable &variable,
     }
     BlockMemberInfo variableInfo =
         mEncoder->encodeType(variable.type, innermostArraySize, isRowMajor);
+    if (!mIsTopLevelArrayStrideReady)
+    {
+        ASSERT(mTopLevelArrayStride);
+        mTopLevelArrayStride *= variableInfo.arrayStride;
+        mIsTopLevelArrayStrideReady = true;
+    }
+    variableInfo.topLevelArrayStride = mTopLevelArrayStride;
     encodeVariable(variable, variableInfo, name, mappedName);
 }
 

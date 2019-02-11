@@ -140,8 +140,7 @@ foreach(script_and_dep, helper_script_and_deps) {
   }
 }
 
-raw_spirv_tools_dir =
-    rebase_path("$angle_root/third_party/spirv-tools/src", root_build_dir)
+raw_spirv_tools_dir = rebase_path("${angle_spirv_tools_dir}", root_build_dir)
 
 spirv_git_is_present = exec_script("$angle_root/src/commit_id.py",
                                    [
@@ -157,7 +156,7 @@ if (spirv_use_commit_id) {
   action("spirv_tools_external_revision_generate") {
     script = "src/scripts/external_revision_generator.py"
     inputs = [
-      "$angle_root/DEPS",
+      "//DEPS",
     ]
     outputs = [
       "$vulkan_gen_dir/spirv_tools_commit_id.h",
@@ -198,30 +197,11 @@ group("vulkan_generate_helper_files") {
   }
 }
 
-config("vulkan_config") {
-  if (is_win) {
-    defines = [
-      "VK_USE_PLATFORM_WIN32_KHR",
-      "VK_USE_PLATFORM_WIN32_KHX",
-    ]
-  }
-  if (is_linux) {
-    defines = [
-      "VK_USE_PLATFORM_XCB_KHR",
-      "VK_USE_PLATFORM_XCB_KHX",
-    ]
-  }
-  if (is_android) {
-    defines = [
-      "VK_USE_PLATFORM_ANDROID_KHR",
-      "VK_USE_PLATFORM_ANDROID_KHX",
-    ]
-  }
-  defines += [ "API_NAME=\"Vulkan\"" ]
-}
-
 config("vulkan_internal_config") {
-  defines = [ "VULKAN_NON_CMAKE_BUILD" ]
+  defines = [
+    "VULKAN_NON_CMAKE_BUILD",
+    "API_NAME=\"Vulkan\"",
+  ]
   if (is_clang || !is_win) {
     cflags = [ "-Wno-unused-function" ]
   }
@@ -295,7 +275,7 @@ layers = [
   [
     "object_tracker",
     object_tracker_sources,
-    ":vulkan_gen_object_tracker_cpp",
+    ":vulkan_gen_object_tracker",
   ],
   [
     "parameter_validation",
@@ -357,7 +337,7 @@ source_set("vulkan_layer_utils") {
     "src/layers/vk_layer_utils.h",
   ]
   public_configs = [
-    ":vulkan_config",
+    "$angle_root:vulkan_config",
     ":vulkan_internal_config",
   ]
   configs -= [ "//build/config/compiler:chromium_code" ]
@@ -369,19 +349,13 @@ source_set("vulkan_layer_utils") {
 }
 
 config("vulkan_core_validation_config") {
-  include_dirs = [ "$angle_root/third_party/glslang/src" ]
-}
-
-if (build_with_chromium) {
-  spvtools_dir = "//third_party/SPIRV-Tools/src"
-} else {
-  spvtools_dir = "${angle_root}/third_party/spirv-tools/src"
+  include_dirs = [ "${angle_glslang_dir}" ]
 }
 
 source_set("vulkan_core_validation_glslang") {
   public_deps = [
-    "${spvtools_dir}:spvtools",
-    "${spvtools_dir}:spvtools_val",
+    "${angle_spirv_tools_dir}:spvtools",
+    "${angle_spirv_tools_dir}:spvtools_val",
   ]
   public_configs = [ ":vulkan_core_validation_config" ]
 }
@@ -392,9 +366,9 @@ config("vulkan_parameter_validation_config") {
   }
 }
 
-# This special action is needed to remove the generated param header.
-# Otherwise the param gen cpp file will pick up the old file and the
-# build will fail. It's a bit unfortunate but necessary.
+# These special "clean" actions are needed to remove generated headers.
+# Otherwise the cpp files will pick up the old generated files
+# and the build will fail. It's a bit unfortunate but necessary.
 action("vulkan_clean_parameter_gen_header") {
   script = "$angle_root/scripts/remove_file_if_exists.py"
   inputs = parameter_validation_sources
@@ -410,12 +384,34 @@ action("vulkan_clean_parameter_gen_header") {
   ]
 }
 
+action("vulkan_clean_tracker_gen_header") {
+  script = "$angle_root/scripts/remove_file_if_exists.py"
+  inputs = object_tracker_sources
+  deps = [
+    ":vulkan_gen_object_tracker_cpp",
+  ]
+  outputs = [
+    "$vulkan_gen_dir/object_tracker_h_is_removed",
+  ]
+  args = [
+    "$raw_vulkan_gen_dir/object_tracker.h",
+    "$raw_vulkan_gen_dir/object_tracker_h_is_removed",
+  ]
+}
+
 source_set("vulkan_gen_parameter_validation") {
   deps = [
     ":vulkan_clean_parameter_gen_header",
     ":vulkan_gen_parameter_validation_cpp",
   ]
   public_configs = [ ":vulkan_parameter_validation_config" ]
+}
+
+source_set("vulkan_gen_object_tracker") {
+  deps = [
+    ":vulkan_clean_tracker_gen_header",
+    ":vulkan_gen_object_tracker_cpp",
+  ]
 }
 
 foreach(layer_info, layers) {

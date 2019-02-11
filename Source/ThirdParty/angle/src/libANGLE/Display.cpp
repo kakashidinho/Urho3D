@@ -22,9 +22,12 @@
 #include "common/debug.h"
 #include "common/mathutil.h"
 #include "common/platform.h"
+#include "common/string_utils.h"
+#include "common/system_utils.h"
 #include "common/utilities.h"
 #include "libANGLE/Context.h"
 #include "libANGLE/Device.h"
+#include "libANGLE/EGLSync.h"
 #include "libANGLE/Image.h"
 #include "libANGLE/ResourceManager.h"
 #include "libANGLE/Stream.h"
@@ -138,11 +141,50 @@ rx::DisplayImpl *CreateDisplayFromDevice(Device *eglDevice, const DisplayState &
     return impl;
 }
 
+// On platforms with support for multiple back-ends, allow an environment variable to control
+// the default.  This is useful to run angle with benchmarks without having to modify the
+// benchmark source.  Possible values for this environment variable (ANGLE_DEFAULT_PLATFORM)
+// are: vulkan, gl, d3d11.
+EGLAttrib GetDisplayTypeFromEnvironment()
+{
+    std::string angleDefaultEnv = angle::GetEnvironmentVar("ANGLE_DEFAULT_PLATFORM");
+    angle::ToLower(&angleDefaultEnv);
+
+#if defined(ANGLE_ENABLE_VULKAN)
+    if (angleDefaultEnv == "vulkan")
+    {
+        return EGL_PLATFORM_ANGLE_TYPE_VULKAN_ANGLE;
+    }
+#endif
+
+#if defined(ANGLE_ENABLE_OPENGL)
+    if (angleDefaultEnv == "gl")
+    {
+        return EGL_PLATFORM_ANGLE_TYPE_OPENGLES_ANGLE;
+    }
+#endif
+
+#if defined(ANGLE_ENABLE_D3D11)
+    if (angleDefaultEnv == "d3d11")
+    {
+        return EGL_PLATFORM_ANGLE_TYPE_D3D11_ANGLE;
+    }
+#endif
+
+    return EGL_PLATFORM_ANGLE_TYPE_DEFAULT_ANGLE;
+}
+
 rx::DisplayImpl *CreateDisplayFromAttribs(const AttributeMap &attribMap, const DisplayState &state)
 {
     rx::DisplayImpl *impl = nullptr;
     EGLAttrib displayType =
         attribMap.get(EGL_PLATFORM_ANGLE_TYPE_ANGLE, EGL_PLATFORM_ANGLE_TYPE_DEFAULT_ANGLE);
+
+    if (displayType == EGL_PLATFORM_ANGLE_TYPE_DEFAULT_ANGLE)
+    {
+        displayType = GetDisplayTypeFromEnvironment();
+    }
+
     switch (displayType)
     {
         case EGL_PLATFORM_ANGLE_TYPE_DEFAULT_ANGLE:
@@ -580,6 +622,11 @@ Error Display::terminate(const Thread *thread)
         destroyStream(*mStreamSet.begin());
     }
 
+    while (!mSyncSet.empty())
+    {
+        destroySync(*mSyncSet.begin());
+    }
+
     while (!mState.surfaceSet.empty())
     {
         ANGLE_TRY(destroySurface(*mState.surfaceSet.begin()));
@@ -800,16 +847,20 @@ Error Display::createContext(const Config *configuration,
 
     gl::MemoryProgramCache *cachePointer = &mMemoryProgramCache;
 
-    // Check context creation attributes to see if we should enable the cache.
-    if (mAttributeMap.get(EGL_CONTEXT_PROGRAM_BINARY_CACHE_ENABLED_ANGLE, EGL_TRUE) == EGL_FALSE)
+    // Check context creation attributes to see if we are using EGL_ANGLE_program_cache_control.
+    // If not, keep caching enabled for EGL_ANDROID_blob_cache, which can have its callbacks set
+    // at any time.
+    bool usesProgramCacheControl =
+        mAttributeMap.contains(EGL_CONTEXT_PROGRAM_BINARY_CACHE_ENABLED_ANGLE);
+    if (usesProgramCacheControl)
     {
-        cachePointer = nullptr;
-    }
-
-    // A program cache size of zero indicates it should be disabled.
-    if (mMemoryProgramCache.maxSize() == 0)
-    {
-        cachePointer = nullptr;
+        bool programCacheControlEnabled =
+            mAttributeMap.get(EGL_CONTEXT_PROGRAM_BINARY_CACHE_ENABLED_ANGLE, GL_FALSE);
+        // A program cache size of zero indicates it should be disabled.
+        if (!programCacheControlEnabled || mMemoryProgramCache.maxSize() == 0)
+        {
+            cachePointer = nullptr;
+        }
     }
 
     gl::Context *context =
@@ -821,6 +872,29 @@ Error Display::createContext(const Config *configuration,
 
     ASSERT(outContext != nullptr);
     *outContext = context;
+    return NoError();
+}
+
+Error Display::createSync(EGLenum type, const AttributeMap &attribs, Sync **outSync)
+{
+    ASSERT(isInitialized());
+
+    if (mImplementation->testDeviceLost())
+    {
+        ANGLE_TRY(restoreLostDevice());
+    }
+
+    angle::UniqueObjectPointer<egl::Sync, Display> syncPtr(new Sync(mImplementation, type, attribs),
+                                                           this);
+
+    ANGLE_TRY(syncPtr->initialize(this));
+
+    Sync *sync = syncPtr.release();
+
+    sync->addRef();
+    mSyncSet.insert(sync);
+
+    *outSync = sync;
     return NoError();
 }
 
@@ -934,6 +1008,14 @@ Error Display::destroyContext(const Thread *thread, gl::Context *context)
     return NoError();
 }
 
+void Display::destroySync(egl::Sync *sync)
+{
+    auto iter = mSyncSet.find(sync);
+    ASSERT(iter != mSyncSet.end());
+    (*iter)->release(this);
+    mSyncSet.erase(iter);
+}
+
 bool Display::isDeviceLost() const
 {
     ASSERT(isInitialized());
@@ -1019,6 +1101,11 @@ bool Display::isValidStream(const Stream *stream) const
     return mStreamSet.find(const_cast<Stream *>(stream)) != mStreamSet.end();
 }
 
+bool Display::isValidSync(const Sync *sync) const
+{
+    return mSyncSet.find(const_cast<Sync *>(sync)) != mSyncSet.end();
+}
+
 bool Display::hasExistingWindowSurface(EGLNativeWindowType window)
 {
     WindowSurfaceMap *windowSurfaces = GetWindowSurfaces();
@@ -1066,8 +1153,8 @@ static ClientExtensions GenerateClientExtensions()
 #endif
 
     extensions.clientGetAllProcAddresses = true;
-    extensions.explicitContext           = true;
     extensions.debug                     = true;
+    extensions.explicitContext           = true;
 
     return extensions;
 }
@@ -1121,6 +1208,10 @@ void Display::initDisplayExtensions()
 
     // Blob cache extension is provided by the ANGLE frontend
     mDisplayExtensions.blobCache = true;
+
+    // The EGL_ANDROID_recordable extension is provided by the ANGLE frontend, and will always say
+    // that ANativeWindow is not recordable.
+    mDisplayExtensions.recordable = true;
 
     mDisplayExtensionString = GenerateExtensionsString(mDisplayExtensions);
 }
@@ -1313,6 +1404,16 @@ EGLint Display::programCacheResize(EGLint limit, EGLenum mode)
             UNREACHABLE();
             return 0;
     }
+}
+
+Error Display::clientWaitSync(Sync *sync, EGLint flags, EGLTime timeout, EGLint *outResult)
+{
+    return sync->clientWait(this, flags, timeout, outResult);
+}
+
+Error Display::waitSync(Sync *sync, EGLint flags)
+{
+    return sync->serverWait(this, flags);
 }
 
 }  // namespace egl

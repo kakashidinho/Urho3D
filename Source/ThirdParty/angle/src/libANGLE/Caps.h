@@ -284,7 +284,10 @@ struct Extensions
     bool framebufferMultisample;
 
     // GL_ANGLE_instanced_arrays
-    bool instancedArrays;
+    bool instancedArraysANGLE;
+
+    // GL_EXT_instanced_arrays
+    bool instancedArraysEXT;
 
     // GL_ANGLE_pack_reverse_row_order
     bool packReverseRowOrder;
@@ -325,6 +328,9 @@ struct Extensions
 
     // GL_OES_EGL_image_external_essl3
     bool eglImageExternalEssl3;
+
+    // GL_OES_EGL_sync
+    bool eglSync;
 
     // NV_EGL_stream_consumer_external
     bool eglStreamConsumerExternal;
@@ -787,6 +793,12 @@ struct DisplayExtensions
     // EGL_ANGLE_stream_producer_d3d_texture
     bool streamProducerD3DTexture;
 
+    // EGL_KHR_fence_sync
+    bool fenceSync;
+
+    // EGL_KHR_wait_sync
+    bool waitSync;
+
     // EGL_ANGLE_create_context_webgl_compatibility
     bool createContextWebGLCompatibility;
 
@@ -834,6 +846,9 @@ struct DisplayExtensions
 
     // EGL_ANDROID_get_frame_timestamps
     bool getFrameTimestamps;
+
+    // EGL_ANDROID_recordable
+    bool recordable;
 };
 
 struct DeviceExtensions

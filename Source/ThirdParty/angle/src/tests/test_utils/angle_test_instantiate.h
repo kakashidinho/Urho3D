@@ -14,8 +14,15 @@
 
 namespace angle
 {
-
+struct SystemInfo;
 struct PlatformParameters;
+
+// Operating systems
+bool IsAndroid();
+bool IsLinux();
+bool IsOSX();
+bool IsOzone();
+bool IsWindows();
 
 bool IsPlatformAvailable(const PlatformParameters &param);
 
@@ -50,7 +57,13 @@ std::vector<T> FilterTestParams(const std::vector<T> &params)
     INSTANTIATE_TEST_CASE_P(, testName,                                          \
                             testing::ValuesIn(::angle::FilterTestParams(         \
                                 testName##params, ArraySize(testName##params))), \
-                            testing::PrintToStringParamName());
+                            testing::PrintToStringParamName())
+
+// Checks if a config is expected to be supported by checking a system-based white list.
+bool IsConfigWhitelisted(const SystemInfo &systemInfo, const PlatformParameters &param);
+
+// Determines if a config is supported by trying to initialize it. Does not require SystemInfo.
+bool IsConfigSupported(const PlatformParameters &param);
 
 }  // namespace angle
 

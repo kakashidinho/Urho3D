@@ -186,7 +186,6 @@ class GTEST_API_ UntypedFunctionMockerBase {
   // this information in the global mock registry.  Will be called
   // whenever an EXPECT_CALL() or ON_CALL() is executed on this mock
   // method.
-  // FIXME: rename to SetAndRegisterOwner().
   void RegisterOwner(const void* mock_obj)
       GTEST_LOCK_EXCLUDED_(g_gmock_mutex);
 
@@ -302,11 +301,9 @@ class OnCallSpec : public UntypedOnCallSpecBase {
       : UntypedOnCallSpecBase(a_file, a_line),
         matchers_(matchers),
         // By default, extra_matcher_ should match anything.  However,
-        // we cannot initialize it with _ as that triggers a compiler
-        // bug in Symbian's C++ compiler (cannot decide between two
-        // overloaded constructors of Matcher<const ArgumentTuple&>).
-        extra_matcher_(A<const ArgumentTuple&>()) {
-  }
+        // we cannot initialize it with _ as that causes ambiguity between
+        // Matcher's copy and move constructor for some argument types.
+        extra_matcher_(A<const ArgumentTuple&>()) {}
 
   // Implements the .With() clause.
   OnCallSpec& With(const Matcher<const ArgumentTuple&>& m) {
@@ -897,13 +894,12 @@ class TypedExpectation : public ExpectationBase {
         owner_(owner),
         matchers_(m),
         // By default, extra_matcher_ should match anything.  However,
-        // we cannot initialize it with _ as that triggers a compiler
-        // bug in Symbian's C++ compiler (cannot decide between two
-        // overloaded constructors of Matcher<const ArgumentTuple&>).
+        // we cannot initialize it with _ as that causes ambiguity between
+        // Matcher's copy and move constructor for some argument types.
         extra_matcher_(A<const ArgumentTuple&>()),
         repeated_action_(DoDefault()) {}
 
-  virtual ~TypedExpectation() {
+  ~TypedExpectation() override {
     // Check the validity of the action count if it hasn't been done
     // yet (for example, if the expectation was never used).
     CheckActionCountIfNotDone();
@@ -1069,7 +1065,7 @@ class TypedExpectation : public ExpectationBase {
 
   // If this mock method has an extra matcher (i.e. .With(matcher)),
   // describes it to the ostream.
-  virtual void MaybeDescribeExtraMatcherTo(::std::ostream* os) {
+  void MaybeDescribeExtraMatcherTo(::std::ostream* os) override {
     if (extra_matcher_specified_) {
       *os << "    Expected args: ";
       extra_matcher_.DescribeTo(os);
@@ -1083,9 +1079,7 @@ class TypedExpectation : public ExpectationBase {
 
   // Returns an Expectation object that references and co-owns this
   // expectation.
-  virtual Expectation GetHandle() {
-    return owner_->GetHandleOf(this);
-  }
+  Expectation GetHandle() override { return owner_->GetHandleOf(this); }
 
   // The following methods will be called only after the EXPECT_CALL()
   // statement finishes and when the current thread holds
@@ -1208,9 +1202,6 @@ class TypedExpectation : public ExpectationBase {
       mocker->DescribeDefaultActionTo(args, what);
       DescribeCallCountTo(why);
 
-      // FIXME: allow the user to control whether
-      // unexpected calls should fail immediately or continue using a
-      // flag --gmock_unexpected_calls_are_fatal.
       return nullptr;
     }
 
@@ -1387,7 +1378,7 @@ class ActionResultHolder : public UntypedActionResultHolderBase {
   }
 
   // Prints the held value as an action's result to os.
-  virtual void PrintAsActionResult(::std::ostream* os) const {
+  void PrintAsActionResult(::std::ostream* os) const override {
     *os << "\n          Returns: ";
     // T may be a reference type, so we don't use UniversalPrint().
     UniversalPrinter<T>::Print(result_.Peek(), os);
@@ -1431,7 +1422,7 @@ class ActionResultHolder<void> : public UntypedActionResultHolderBase {
  public:
   void Unwrap() { }
 
-  virtual void PrintAsActionResult(::std::ostream* /* os */) const {}
+  void PrintAsActionResult(::std::ostream* /* os */) const override {}
 
   // Performs the given mock function's default action and returns ownership
   // of an empty ActionResultHolder*.
@@ -1462,7 +1453,7 @@ template <typename F>
 class FunctionMocker;
 
 template <typename R, typename... Args>
-class FunctionMocker<R(Args...)> : public UntypedFunctionMockerBase {
+class FunctionMocker<R(Args...)> final : public UntypedFunctionMockerBase {
   using F = R(Args...);
 
  public:
@@ -1490,8 +1481,7 @@ class FunctionMocker<R(Args...)> : public UntypedFunctionMockerBase {
   // The destructor verifies that all expectations on this mock
   // function have been satisfied.  If not, it will report Google Test
   // non-fatal failures for the violations.
-  virtual ~FunctionMocker()
-        GTEST_LOCK_EXCLUDED_(g_gmock_mutex) {
+  ~FunctionMocker() override GTEST_LOCK_EXCLUDED_(g_gmock_mutex) {
     MutexLock l(&g_gmock_mutex);
     VerifyAndClearExpectationsLocked();
     Mock::UnregisterLocked(this);
@@ -1547,9 +1537,9 @@ class FunctionMocker<R(Args...)> : public UntypedFunctionMockerBase {
   // the error message to describe the call in the case the default
   // action fails.  The caller is responsible for deleting the result.
   // L = *
-  virtual UntypedActionResultHolderBase* UntypedPerformDefaultAction(
+  UntypedActionResultHolderBase* UntypedPerformDefaultAction(
       void* untyped_args,  // must point to an ArgumentTuple
-      const std::string& call_description) const {
+      const std::string& call_description) const override {
     ArgumentTuple* args = static_cast<ArgumentTuple*>(untyped_args);
     return ResultHolder::PerformDefaultAction(this, std::move(*args),
                                               call_description);
@@ -1559,8 +1549,8 @@ class FunctionMocker<R(Args...)> : public UntypedFunctionMockerBase {
   // the action's result.  The caller is responsible for deleting the
   // result.
   // L = *
-  virtual UntypedActionResultHolderBase* UntypedPerformAction(
-      const void* untyped_action, void* untyped_args) const {
+  UntypedActionResultHolderBase* UntypedPerformAction(
+      const void* untyped_action, void* untyped_args) const override {
     // Make a copy of the action before performing it, in case the
     // action deletes the mock object (and thus deletes itself).
     const Action<F> action = *static_cast<const Action<F>*>(untyped_action);
@@ -1570,7 +1560,7 @@ class FunctionMocker<R(Args...)> : public UntypedFunctionMockerBase {
 
   // Implements UntypedFunctionMockerBase::ClearDefaultActionsLocked():
   // clears the ON_CALL()s set on this mock function.
-  virtual void ClearDefaultActionsLocked()
+  void ClearDefaultActionsLocked() override
       GTEST_EXCLUSIVE_LOCK_REQUIRED_(g_gmock_mutex) {
     g_gmock_mutex.AssertHeld();
 
@@ -1674,10 +1664,9 @@ class FunctionMocker<R(Args...)> : public UntypedFunctionMockerBase {
   // Writes a message that the call is uninteresting (i.e. neither
   // explicitly expected nor explicitly unexpected) to the given
   // ostream.
-  virtual void UntypedDescribeUninterestingCall(
-      const void* untyped_args,
-      ::std::ostream* os) const
-          GTEST_LOCK_EXCLUDED_(g_gmock_mutex) {
+  void UntypedDescribeUninterestingCall(const void* untyped_args,
+                                        ::std::ostream* os) const override
+      GTEST_LOCK_EXCLUDED_(g_gmock_mutex) {
     const ArgumentTuple& args =
         *static_cast<const ArgumentTuple*>(untyped_args);
     *os << "Uninteresting mock function call - ";
@@ -1702,11 +1691,10 @@ class FunctionMocker<R(Args...)> : public UntypedFunctionMockerBase {
   // section.  The reason is that we have no control on what the
   // action does (it can invoke an arbitrary user function or even a
   // mock function) and excessive locking could cause a dead lock.
-  virtual const ExpectationBase* UntypedFindMatchingExpectation(
-      const void* untyped_args,
-      const void** untyped_action, bool* is_excessive,
-      ::std::ostream* what, ::std::ostream* why)
-          GTEST_LOCK_EXCLUDED_(g_gmock_mutex) {
+  const ExpectationBase* UntypedFindMatchingExpectation(
+      const void* untyped_args, const void** untyped_action, bool* is_excessive,
+      ::std::ostream* what, ::std::ostream* why) override
+      GTEST_LOCK_EXCLUDED_(g_gmock_mutex) {
     const ArgumentTuple& args =
         *static_cast<const ArgumentTuple*>(untyped_args);
     MutexLock l(&g_gmock_mutex);
@@ -1728,8 +1716,8 @@ class FunctionMocker<R(Args...)> : public UntypedFunctionMockerBase {
   }
 
   // Prints the given function arguments to the ostream.
-  virtual void UntypedPrintArgs(const void* untyped_args,
-                                ::std::ostream* os) const {
+  void UntypedPrintArgs(const void* untyped_args,
+                        ::std::ostream* os) const override {
     const ArgumentTuple& args =
         *static_cast<const ArgumentTuple*>(untyped_args);
     UniversalPrint(args, os);

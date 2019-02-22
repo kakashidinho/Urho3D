@@ -76,6 +76,8 @@
 #       else
 #           include "libANGLE/renderer/vulkan/macos/DisplayVkMacOS.h"
 #       endif
+#    elif defined(ANGLE_PLATFORM_FUCHSIA)
+#        include "libANGLE/renderer/vulkan/fuchsia/DisplayVkFuchsia.h"
 #    else
 #        error Unsupported Vulkan platform.
 #    endif
@@ -197,6 +199,9 @@ rx::DisplayImpl *CreateDisplayFromAttribs(const AttributeMap &attribMap, const D
 #   ifndef URHO3D_ANGLE_VULKAN
             impl = new rx::DisplayCGL(state);
 #   endif
+=======
+#elif defined(ANGLE_PLATFORM_FUCHSIA)
+            impl = new rx::DisplayVkFuchsia(state);
 #elif defined(ANGLE_USE_OZONE)
             impl = new rx::DisplayOzone(state);
 #elif defined(ANGLE_PLATFORM_ANDROID)
@@ -275,6 +280,8 @@ rx::DisplayImpl *CreateDisplayFromAttribs(const AttributeMap &attribMap, const D
 #       else
             impl  =  new rx::DisplayVkMacOS(state);
 #       endif //  VK_USE_PLATFORM_IOS_MVK
+#    elif defined(ANGLE_PLATFORM_FUCHSIA)
+            impl = new rx::DisplayVkFuchsia(state);
 #    else
 #        error Unsupported Vulkan platform.
 #    endif
@@ -518,6 +525,8 @@ Error Display::initialize()
     }
 
     gl::InitializeDebugAnnotations(&mAnnotator);
+
+    gl::InitializeDebugMutexIfNeeded();
 
     SCOPED_ANGLE_HISTOGRAM_TIMER("GPU.ANGLE.DisplayInitializeMS");
     TRACE_EVENT0("gpu.angle", "egl::Display::initialize");

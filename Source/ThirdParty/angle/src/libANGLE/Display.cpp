@@ -199,7 +199,6 @@ rx::DisplayImpl *CreateDisplayFromAttribs(const AttributeMap &attribMap, const D
 #   ifndef URHO3D_ANGLE_VULKAN
             impl = new rx::DisplayCGL(state);
 #   endif
-=======
 #elif defined(ANGLE_PLATFORM_FUCHSIA)
             impl = new rx::DisplayVkFuchsia(state);
 #elif defined(ANGLE_USE_OZONE)

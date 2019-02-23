@@ -514,6 +514,17 @@ TEST_P(ImageTest, ANGLEExtensionAvailability)
             EXPECT_FALSE(hasExternalESSL3Ext());
         }
     }
+    else if (IsVulkan())
+    {
+        EXPECT_TRUE(hasOESExt());
+        EXPECT_TRUE(hasExternalExt());
+        EXPECT_TRUE(hasBaseExt());
+        EXPECT_TRUE(has2DTextureExt());
+        EXPECT_TRUE(hasCubemapExt());
+        EXPECT_TRUE(hasRenderbufferExt());
+        // TODO(geofflang): Support GL_OES_EGL_image_external_essl3. http://anglebug.com/2668
+        EXPECT_FALSE(hasExternalESSL3Ext());
+    }
     else
     {
         EXPECT_FALSE(hasOESExt());
@@ -1209,6 +1220,9 @@ TEST_P(ImageTest, SourceCubeTargetRenderbuffer)
     EGLWindow *window = getEGLWindow();
     ANGLE_SKIP_TEST_IF(!hasOESExt() || !hasBaseExt() || !hasCubemapExt());
 
+    // http://anglebug.com/3145
+    ANGLE_SKIP_TEST_IF(IsVulkan() && IsIntel() && IsFuchsia());
+
     GLubyte data[24] = {
         255, 0, 255, 255, 255, 255, 255, 255, 255, 0, 0, 255,
         0,   0, 255, 255, 0,   255, 0,   255, 0,   0, 0, 255,
@@ -1845,6 +1859,10 @@ TEST_P(ImageTest, RespecificationOfOtherLevel)
     // Respecification of textures that does not change the size of the level attached to the EGL
     // image does not cause orphaning on Qualcomm devices. http://anglebug.com/2744
     ANGLE_SKIP_TEST_IF(IsAndroid() && IsOpenGLES());
+
+    // It is undefined what happens to the mip 0 of the dest texture after it is orphaned. Some
+    // backends explicitly copy the data but Vulkan does not.
+    ANGLE_SKIP_TEST_IF(IsVulkan());
 
     EGLWindow *window = getEGLWindow();
     ANGLE_SKIP_TEST_IF(!hasOESExt() || !hasBaseExt() || !has2DTextureExt());

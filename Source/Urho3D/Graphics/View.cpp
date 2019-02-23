@@ -577,6 +577,13 @@ void View::Render()
         return;
     }
 
+#if defined(URHO3D_ANGLE_VULKAN)
+    if(camera_ != NULL && graphics_->isNeedsFlipY())
+    {
+        camera_->SetFlipVertical(true);
+    }
+#endif
+    
     UpdateGeometries();
 
     // Allocate screen buffers as necessary

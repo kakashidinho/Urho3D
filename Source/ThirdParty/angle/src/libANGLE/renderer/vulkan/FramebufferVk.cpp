@@ -297,10 +297,9 @@ angle::Result FramebufferVk::clear(const gl::Context *context, GLbitfield mask)
 
         ASSERT(colorRenderTarget);
         vk::ImageHelper *image = colorRenderTarget->getImageForWrite(&mFramebuffer);
-        GLint mipLevelToClear  = (attachment->type() == GL_TEXTURE) ? attachment->mipLevel() : 0;
 
         // If we're clearing a cube map face ensure we only clear the selected layer.
-        image->clearColorLayer(modifiedClearColorValue, mipLevelToClear, 1,
+        image->clearColorLayer(modifiedClearColorValue, colorRenderTarget->getLevelIndex(), 1,
                                colorRenderTarget->getLayerIndex(), 1, commandBuffer);
     }
 
@@ -422,19 +421,30 @@ angle::Result FramebufferVk::blitWithCopy(ContextVk *contextVk,
                                           bool blitDepthBuffer,
                                           bool blitStencilBuffer)
 {
-    vk::ImageHelper *writeImage = drawRenderTarget->getImageForWrite(&mFramebuffer);
+    VkImageAspectFlags aspectMask =
+        vk::GetDepthStencilAspectFlagsForCopy(blitDepthBuffer, blitStencilBuffer);
 
     vk::CommandBuffer *commandBuffer;
     ANGLE_TRY(mFramebuffer.recordCommands(contextVk, &commandBuffer));
 
+    vk::ImageHelper *writeImage = drawRenderTarget->getImageForWrite(&mFramebuffer);
+    writeImage->changeLayout(writeImage->getAspectFlags(), vk::ImageLayout::TransferDst,
+                             commandBuffer);
+
     vk::ImageHelper *readImage = readRenderTarget->getImageForRead(
         &mFramebuffer, vk::ImageLayout::TransferSrc, commandBuffer);
 
-    VkImageAspectFlags aspectMask =
-        vk::GetDepthStencilAspectFlagsForCopy(blitDepthBuffer, blitStencilBuffer);
+    VkImageSubresourceLayers readSubresource = {};
+    readSubresource.aspectMask               = aspectMask;
+    readSubresource.mipLevel                 = 0;
+    readSubresource.baseArrayLayer           = 0;
+    readSubresource.layerCount               = 1;
+
+    VkImageSubresourceLayers writeSubresource = readSubresource;
+
     vk::ImageHelper::Copy(readImage, writeImage, gl::Offset(), gl::Offset(),
-                          gl::Extents(copyArea.width, copyArea.height, 1), aspectMask,
-                          commandBuffer);
+                          gl::Extents(copyArea.width, copyArea.height, 1), readSubresource,
+                          writeSubresource, commandBuffer);
     return angle::Result::Continue;
 }
 
@@ -1138,7 +1148,7 @@ angle::Result FramebufferVk::readPixelsImpl(ContextVk *contextVk,
     region.imageSubresource.aspectMask     = copyAspectFlags;
     region.imageSubresource.baseArrayLayer = renderTarget->getLayerIndex();
     region.imageSubresource.layerCount     = 1;
-    region.imageSubresource.mipLevel       = 0;
+    region.imageSubresource.mipLevel       = renderTarget->getLevelIndex();
 
     commandBuffer->copyImageToBuffer(srcImage->getImage(), srcImage->getCurrentLayout(),
                                      bufferHandle, 1, &region);

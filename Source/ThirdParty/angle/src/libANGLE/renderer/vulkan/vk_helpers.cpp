@@ -29,7 +29,7 @@ constexpr VkBufferUsageFlags kLineLoopDynamicBufferUsage =
 constexpr int kLineLoopDynamicBufferMinSize = 1024 * 1024;
 
 // This is an arbitrary max. We can change this later if necessary.
-constexpr uint32_t kDefaultDescriptorPoolMaxSets = 2048;
+constexpr uint32_t kDefaultDescriptorPoolMaxSets = 128;
 
 struct ImageMemoryBarrierData
 {
@@ -1338,10 +1338,11 @@ angle::Result ImageHelper::initImageView(Context *context,
                                          VkImageAspectFlags aspectMask,
                                          const gl::SwizzleState &swizzleMap,
                                          ImageView *imageViewOut,
+                                         uint32_t baseMipLevel,
                                          uint32_t levelCount)
 {
-    return initLayerImageView(context, textureType, aspectMask, swizzleMap, imageViewOut, 0,
-                              levelCount, 0, mLayerCount);
+    return initLayerImageView(context, textureType, aspectMask, swizzleMap, imageViewOut,
+                              baseMipLevel, levelCount, 0, mLayerCount);
 }
 
 angle::Result ImageHelper::initLayerImageView(Context *context,
@@ -1400,12 +1401,12 @@ void ImageHelper::init2DWeakReference(VkImage handle,
 {
     ASSERT(!valid());
 
-    mExtents    = extents;
-    mFormat     = &format;
-    mSamples    = samples;
+    mExtents       = extents;
+    mFormat        = &format;
+    mSamples       = samples;
     mCurrentLayout = ImageLayout::Undefined;
-    mLayerCount = 1;
-    mLevelCount = 1;
+    mLayerCount    = 1;
+    mLevelCount    = 1;
 
     mImage.setHandle(handle);
 }
@@ -1606,32 +1607,27 @@ void ImageHelper::Copy(ImageHelper *srcImage,
                        const gl::Offset &srcOffset,
                        const gl::Offset &dstOffset,
                        const gl::Extents &copySize,
-                       VkImageAspectFlags aspectMask,
+                       const VkImageSubresourceLayers &srcSubresource,
+                       const VkImageSubresourceLayers &dstSubresource,
                        CommandBuffer *commandBuffer)
 {
     ASSERT(commandBuffer->valid() && srcImage->valid() && dstImage->valid());
 
-    srcImage->changeLayout(srcImage->getAspectFlags(), ImageLayout::TransferSrc, commandBuffer);
-    dstImage->changeLayout(dstImage->getAspectFlags(), ImageLayout::TransferDst, commandBuffer);
+    ASSERT(srcImage->getCurrentLayout() == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    ASSERT(dstImage->getCurrentLayout() == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
-    VkImageCopy region                   = {};
-    region.srcSubresource.aspectMask     = aspectMask;
-    region.srcSubresource.mipLevel       = 0;
-    region.srcSubresource.baseArrayLayer = 0;
-    region.srcSubresource.layerCount     = 1;
-    region.srcOffset.x                   = srcOffset.x;
-    region.srcOffset.y                   = srcOffset.y;
-    region.srcOffset.z                   = srcOffset.z;
-    region.dstSubresource.aspectMask     = aspectMask;
-    region.dstSubresource.mipLevel       = 0;
-    region.dstSubresource.baseArrayLayer = 0;
-    region.dstSubresource.layerCount     = 1;
-    region.dstOffset.x                   = dstOffset.x;
-    region.dstOffset.y                   = dstOffset.y;
-    region.dstOffset.z                   = dstOffset.z;
-    region.extent.width                  = copySize.width;
-    region.extent.height                 = copySize.height;
-    region.extent.depth                  = copySize.depth;
+    VkImageCopy region    = {};
+    region.srcSubresource = srcSubresource;
+    region.srcOffset.x    = srcOffset.x;
+    region.srcOffset.y    = srcOffset.y;
+    region.srcOffset.z    = srcOffset.z;
+    region.dstSubresource = dstSubresource;
+    region.dstOffset.x    = dstOffset.x;
+    region.dstOffset.y    = dstOffset.y;
+    region.dstOffset.z    = dstOffset.z;
+    region.extent.width   = copySize.width;
+    region.extent.height  = copySize.height;
+    region.extent.depth   = copySize.depth;
 
     commandBuffer->copyImage(srcImage->getImage(), srcImage->getCurrentLayout(),
                              dstImage->getImage(), dstImage->getCurrentLayout(), 1, &region);
@@ -1958,7 +1954,8 @@ angle::Result ImageHelper::allocateStagingMemory(ContextVk *contextVk,
                                    newBufferAllocatedOut);
 }
 
-angle::Result ImageHelper::flushStagedUpdates(ContextVk *contextVk,
+angle::Result ImageHelper::flushStagedUpdates(Context *context,
+                                              uint32_t baseLevel,
                                               uint32_t levelCount,
                                               vk::CommandBuffer *commandBuffer)
 {
@@ -1967,9 +1964,9 @@ angle::Result ImageHelper::flushStagedUpdates(ContextVk *contextVk,
         return angle::Result::Continue;
     }
 
-    RendererVk *renderer = contextVk->getRenderer();
+    RendererVk *renderer = context->getRenderer();
 
-    ANGLE_TRY(mStagingBuffer.flush(contextVk));
+    ANGLE_TRY(mStagingBuffer.flush(context));
 
     std::vector<SubresourceUpdate> updatesToKeep;
 
@@ -1985,7 +1982,7 @@ angle::Result ImageHelper::flushStagedUpdates(ContextVk *contextVk,
         // It's possible we've accumulated updates that are no longer applicable if the image has
         // never been flushed but the image description has changed. Check if this level exist for
         // this image.
-        if (updateMipLevel >= levelCount)
+        if (updateMipLevel < baseLevel || updateMipLevel >= baseLevel + levelCount)
         {
             updatesToKeep.emplace_back(update);
             continue;
@@ -2025,7 +2022,7 @@ angle::Result ImageHelper::flushStagedUpdates(ContextVk *contextVk,
 
     if (mSubresourceUpdates.empty())
     {
-        mStagingBuffer.releaseRetainedBuffers(contextVk->getRenderer());
+        mStagingBuffer.releaseRetainedBuffers(context->getRenderer());
     }
     else
     {

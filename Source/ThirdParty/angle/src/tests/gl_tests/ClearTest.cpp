@@ -152,8 +152,6 @@ class VulkanClearTest : public ClearTest
         ASSERT_GL_NO_ERROR();
     }
 
-    void TearDown() override { ANGLETest::TearDown(); }
-
     void bindColorStencilFBO()
     {
         glBindFramebuffer(GL_FRAMEBUFFER, mColorStencilFBO);
@@ -187,6 +185,26 @@ TEST_P(ClearTest, DefaultFramebuffer)
     glClearColor(0.25f, 0.5f, 0.5f, 0.5f);
     glClear(GL_COLOR_BUFFER_BIT);
     EXPECT_PIXEL_NEAR(0, 0, 64, 128, 128, 128, 1.0);
+}
+
+// Test clearing the default framebuffer with scissor and mask
+// This forces down path that uses draw to do clear
+TEST_P(ClearTest, EmptyScissor)
+{
+    // These configs have bug that fails this test.
+    // These configs are unmaintained so skipping.
+    ANGLE_SKIP_TEST_IF(IsIntel() && IsD3D9());
+    ANGLE_SKIP_TEST_IF(IsOSX());
+    glClearColor(0.25f, 0.5f, 0.5f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glEnable(GL_SCISSOR_TEST);
+    glScissor(-10, 0, 5, 5);
+    glClearColor(0.5f, 0.25f, 0.75f, 0.5f);
+    glColorMask(GL_TRUE, GL_FALSE, GL_TRUE, GL_TRUE);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glDisable(GL_SCISSOR_TEST);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    EXPECT_PIXEL_NEAR(0, 0, 64, 128, 128, 255, 1.0);
 }
 
 // Test clearing the RGB default framebuffer and verify that the alpha channel is not cleared
@@ -366,7 +384,7 @@ TEST_P(ClearTest, Depth16Scissored)
 {
     // Crashes on NVIDIA and Android in FramebufferVk::clearWithClearAttachments.
     // http://anglebug.com/3081
-    ANGLE_SKIP_TEST_IF(IsNVIDIA() || IsAndroid());
+    ANGLE_SKIP_TEST_IF(IsNVIDIA() || IsAndroid() || IsFuchsia());
 
     GLRenderbuffer renderbuffer;
     glBindRenderbuffer(GL_RENDERBUFFER, renderbuffer);
@@ -398,7 +416,7 @@ TEST_P(ClearTest, Stencil8Scissored)
 {
     // Crashes on NVIDIA and Android in FramebufferVk::clearWithClearAttachments.
     // http://anglebug.com/3081
-    ANGLE_SKIP_TEST_IF(IsNVIDIA() || IsAndroid());
+    ANGLE_SKIP_TEST_IF(IsNVIDIA() || IsAndroid() || IsFuchsia());
 
     GLRenderbuffer renderbuffer;
     glBindRenderbuffer(GL_RENDERBUFFER, renderbuffer);
@@ -422,6 +440,57 @@ TEST_P(ClearTest, Stencil8Scissored)
         glClearStencil(static_cast<int>(perc * 255.0f));
         glClear(GL_STENCIL_BUFFER_BIT);
     }
+}
+
+// Covers a bug in the Vulkan back-end where starting a new command buffer in
+// the masked clear would not trigger descriptor sets to be re-bound.
+TEST_P(ClearTest, MaskedClearThenDrawWithUniform)
+{
+    // Initialize a program with a uniform.
+    ANGLE_GL_PROGRAM(program, essl1_shaders::vs::Simple(), essl1_shaders::fs::UniformColor());
+    glUseProgram(program);
+
+    GLint uniLoc = glGetUniformLocation(program, essl1_shaders::ColorUniform());
+    ASSERT_NE(-1, uniLoc);
+    glUniform4f(uniLoc, 0.0f, 1.0f, 0.0f, 1.0f);
+
+    // Initialize position attribute.
+    GLint posLoc = glGetAttribLocation(program, essl1_shaders::PositionAttrib());
+    ASSERT_NE(-1, posLoc);
+    setupQuadVertexBuffer(0.5f, 1.0f);
+    glVertexAttribPointer(posLoc, 3, GL_FLOAT, GL_FALSE, 0, nullptr);
+    glEnableVertexAttribArray(posLoc);
+
+    // Initialize a simple FBO.
+    constexpr GLsizei kSize = 2;
+    GLTexture clearTexture;
+    glBindTexture(GL_TEXTURE_2D, clearTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, kSize, kSize, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+
+    GLFramebuffer fbo;
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, clearTexture, 0);
+
+    glViewport(0, 0, kSize, kSize);
+
+    // Clear and draw to flush out dirty bits.
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+
+    // Flush to trigger a new serial.
+    glFlush();
+
+    // Enable color mask and draw again to trigger the bug.
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_FALSE);
+    glClearColor(1.0f, 0.0f, 0.0f, 0.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+
+    ASSERT_GL_NO_ERROR();
+    EXPECT_PIXEL_COLOR_EQ(0, 0, GLColor::green);
 }
 
 // Requires ES3

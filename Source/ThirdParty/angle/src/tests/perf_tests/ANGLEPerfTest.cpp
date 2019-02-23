@@ -214,11 +214,16 @@ void ANGLEPerfTest::run()
     // Do another warmup run. Seems to consistently improve results.
     doRunLoop(kMaximumRunTimeSeconds);
 
+    double totalTime = 0.0;
     for (unsigned int trial = 0; trial < kNumTrials; ++trial)
     {
         doRunLoop(kMaximumRunTimeSeconds);
-        printResults();
+        totalTime += printResults();
     }
+    double average = totalTime / kNumTrials;
+    std::ostringstream averageString;
+    averageString << "for " << kNumTrials << " runs";
+    printResult("average", average, averageString.str(), false);
 }
 
 void ANGLEPerfTest::doRunLoop(double maxRunTime)
@@ -268,7 +273,7 @@ void ANGLEPerfTest::SetUp() {}
 
 void ANGLEPerfTest::TearDown() {}
 
-void ANGLEPerfTest::printResults()
+double ANGLEPerfTest::printResults()
 {
     double elapsedTimeSeconds[2] = {
         mTimer->getElapsedTime(),
@@ -283,6 +288,7 @@ void ANGLEPerfTest::printResults()
     // If measured gpu time is non-zero, print that too.
     size_t clocksToOutput = mGPUTimeNs > 0 ? 2 : 1;
 
+    double retValue = 0.0;
     for (size_t i = 0; i < clocksToOutput; ++i)
     {
         double secondsPerStep = elapsedTimeSeconds[i] / static_cast<double>(mNumStepsPerformed);
@@ -292,14 +298,17 @@ void ANGLEPerfTest::printResults()
         if (secondsPerIteration > 1e-3)
         {
             double microSecondsPerIteration = secondsPerIteration * kMicroSecondsPerSecond;
+            retValue                        = microSecondsPerIteration;
             printResult(clockNames[i], microSecondsPerIteration, "us", true);
         }
         else
         {
             double nanoSecPerIteration = secondsPerIteration * kNanoSecondsPerSecond;
+            retValue                   = nanoSecPerIteration;
             printResult(clockNames[i], nanoSecPerIteration, "ns", true);
         }
     }
+    return retValue;
 }
 
 double ANGLEPerfTest::normalizedTime(size_t value) const
@@ -510,13 +519,11 @@ void ANGLERenderTest::step()
     else
     {
         drawBenchmark();
-        // Swap is needed so that the GPU driver will occasionally flush its internal command queue
-        // to the GPU. The null device benchmarks are only testing CPU overhead, so they don't need
-        // to swap.
-        if (mTestParams.eglParameters.deviceType != EGL_PLATFORM_ANGLE_DEVICE_TYPE_NULL_ANGLE)
-        {
-            mGLWindow->swap();
-        }
+        // Swap is needed so that the GPU driver will occasionally flush its
+        // internal command queue to the GPU. This is enabled for null back-end
+        // devices because some back-ends (e.g. Vulkan) also accumulate internal
+        // command queues.
+        mGLWindow->swap();
         mOSWindow->messageLoop();
     }
 }

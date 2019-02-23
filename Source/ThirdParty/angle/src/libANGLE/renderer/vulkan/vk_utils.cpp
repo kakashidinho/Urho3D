@@ -480,6 +480,14 @@ PFN_vkDestroyDebugUtilsMessengerEXT vkDestroyDebugUtilsMessengerEXT = nullptr;
 PFN_vkCreateDebugReportCallbackEXT vkCreateDebugReportCallbackEXT   = nullptr;
 PFN_vkDestroyDebugReportCallbackEXT vkDestroyDebugReportCallbackEXT = nullptr;
 
+// VK_KHR_get_physical_device_properties2
+PFN_vkGetPhysicalDeviceProperties2KHR vkGetPhysicalDeviceProperties2KHR = nullptr;
+
+#if defined(ANGLE_PLATFORM_FUCHSIA)
+// VK_FUCHSIA_imagepipe_surface
+PFN_vkCreateImagePipeSurfaceFUCHSIA vkCreateImagePipeSurfaceFUCHSIA = nullptr;
+#endif
+
 #define GET_FUNC(vkName)                                                                   \
     do                                                                                     \
     {                                                                                      \
@@ -498,6 +506,18 @@ void InitDebugReportEXTFunctions(VkInstance instance)
     GET_FUNC(vkCreateDebugReportCallbackEXT);
     GET_FUNC(vkDestroyDebugReportCallbackEXT);
 }
+
+void InitGetPhysicalDeviceProperties2KHRFunctions(VkInstance instance)
+{
+    GET_FUNC(vkGetPhysicalDeviceProperties2KHR);
+}
+
+#if defined(ANGLE_PLATFORM_FUCHSIA)
+void InitImagePipeSurfaceFUCHSIAFunctions(VkInstance instance)
+{
+    GET_FUNC(vkCreateImagePipeSurfaceFUCHSIA);
+}
+#endif
 
 #undef GET_FUNC
 
@@ -692,6 +712,7 @@ VkImageType GetImageType(gl::TextureType textureType)
         case gl::TextureType::_2DMultisample:
         case gl::TextureType::_2DMultisampleArray:
         case gl::TextureType::CubeMap:
+        case gl::TextureType::External:
             return VK_IMAGE_TYPE_2D;
         case gl::TextureType::_3D:
             return VK_IMAGE_TYPE_3D;
@@ -708,6 +729,7 @@ VkImageViewType GetImageViewType(gl::TextureType textureType)
     {
         case gl::TextureType::_2D:
         case gl::TextureType::_2DMultisample:
+        case gl::TextureType::External:
             return VK_IMAGE_VIEW_TYPE_2D;
         case gl::TextureType::_2DArray:
         case gl::TextureType::_2DMultisampleArray:

@@ -139,6 +139,8 @@ class TextureVk : public TextureImpl
         return *mImage;
     }
 
+    void releaseOwnershipOfImage(const gl::Context *context);
+
     const vk::ImageView &getReadImageView() const;
     angle::Result getLayerLevelDrawImageView(vk::Context *context,
                                              size_t layer,
@@ -149,9 +151,20 @@ class TextureVk : public TextureImpl
     angle::Result ensureImageInitialized(ContextVk *contextVk);
 
   private:
+    // Transform an image index from the frontend into one that can be used on the backing
+    // ImageHelper, taking into account mipmap or cube face offsets
+    gl::ImageIndex getNativeImageIndex(const gl::ImageIndex &inputImageIndex) const;
+    uint32_t getNativeImageLevel(uint32_t frontendLevel) const;
+    uint32_t getNativeImageLayer(uint32_t frontendLayer) const;
+
     void releaseAndDeleteImage(const gl::Context *context, RendererVk *renderer);
     angle::Result ensureImageAllocated(RendererVk *renderer);
-    void setImageHelper(RendererVk *renderer, vk::ImageHelper *imageHelper, bool selfOwned);
+    void setImageHelper(RendererVk *renderer,
+                        vk::ImageHelper *imageHelper,
+                        gl::TextureType imageType,
+                        uint32_t imageLevelOffset,
+                        uint32_t imageLayerOffset,
+                        bool selfOwned);
 
     angle::Result redefineImage(const gl::Context *context,
                                 const gl::ImageIndex &index,
@@ -194,6 +207,14 @@ class TextureVk : public TextureImpl
                                      bool unpackUnmultiplyAlpha,
                                      TextureVk *source);
 
+    angle::Result copySubImageImplWithTransfer(ContextVk *contextVk,
+                                               const gl::ImageIndex &index,
+                                               const gl::Offset &destOffset,
+                                               const vk::Format &destFormat,
+                                               size_t sourceLevel,
+                                               const gl::Rectangle &sourceArea,
+                                               vk::ImageHelper *srcImage);
+
     angle::Result copySubImageImplWithDraw(ContextVk *contextVk,
                                            const gl::ImageIndex &index,
                                            const gl::Offset &destOffset,
@@ -226,7 +247,19 @@ class TextureVk : public TextureImpl
                                              const vk::Format &format);
 
     bool mOwnsImage;
+
+    gl::TextureType mImageNativeType;
+
+    // The layer offset to apply when converting from a frontend texture layer to a texture layer in
+    // mImage. Used when this texture sources a cube map face or 3D texture layer from an EGL image.
+    uint32_t mImageLayerOffset;
+
+    // The level offset to apply when converting from a frontend texture level to texture level in
+    // mImage.
+    uint32_t mImageLevelOffset;
+
     vk::ImageHelper *mImage;
+
     vk::ImageView mDrawBaseLevelImageView;
     vk::ImageView mReadBaseLevelImageView;
     vk::ImageView mReadMipmapImageView;

@@ -552,6 +552,7 @@ class ImageHelper final : public CommandGraphResource
                                 VkImageAspectFlags aspectMask,
                                 const gl::SwizzleState &swizzleMap,
                                 ImageView *imageViewOut,
+                                uint32_t baseMipLevel,
                                 uint32_t levelCount);
     // Create a 2D[Array] for staging purposes.  Used by:
     //
@@ -613,7 +614,8 @@ class ImageHelper final : public CommandGraphResource
                      const gl::Offset &srcOffset,
                      const gl::Offset &dstOffset,
                      const gl::Extents &copySize,
-                     VkImageAspectFlags aspectMask,
+                     const VkImageSubresourceLayers &srcSubresources,
+                     const VkImageSubresourceLayers &dstSubresources,
                      CommandBuffer *commandBuffer);
 
     angle::Result generateMipmapsWithBlit(ContextVk *contextVk, GLuint maxLevel);
@@ -659,7 +661,8 @@ class ImageHelper final : public CommandGraphResource
                                         VkDeviceSize *offsetOut,
                                         bool *newBufferAllocatedOut);
 
-    angle::Result flushStagedUpdates(ContextVk *contextVk,
+    angle::Result flushStagedUpdates(Context *context,
+                                     uint32_t baseLevel,
                                      uint32_t levelCount,
                                      vk::CommandBuffer *commandBuffer);
 

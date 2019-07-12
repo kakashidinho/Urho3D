@@ -261,7 +261,8 @@ MovePtr<Display> createDisplay (const vk::Platform&	platform,
 	}
 	catch (const tcu::NotSupportedError& e)
 	{
-		if (isExtensionSupported(supportedExtensions, RequiredExtension(getExtensionName(wsiType))))
+		if (isExtensionSupported(supportedExtensions, RequiredExtension(getExtensionName(wsiType))) &&
+		    platform.hasDisplay(wsiType))
 		{
 			// If VK_KHR_{platform}_surface was supported, vk::Platform implementation
 			// must support creating native display & window for that WSI type.
@@ -949,7 +950,7 @@ tcu::TestStatus surfaceFormatRenderTest (Context& context,
 
 				renderer.recordFrame(commandBuffer, imageNdx, frameNdx);
 				VK_CHECK(vkd.queueSubmit(devHelper.queue, 1u, &submitInfo, imageReadyFence));
-				VK_CHECK(vkd.queuePresentKHR(devHelper.queue, &presentInfo));
+				VK_CHECK_WSI(vkd.queuePresentKHR(devHelper.queue, &presentInfo));
 			}
 		}
 

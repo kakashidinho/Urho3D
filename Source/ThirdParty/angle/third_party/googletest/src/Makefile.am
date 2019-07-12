@@ -1,5 +1,7 @@
+# Note: automake support is community-based. The maintaners do not use automake
+# internally.
+
 ## Process this file with automake to produce Makefile.in
-ACLOCAL_AMFLAGS = -I m4
 
 AUTOMAKE_OPTIONS = foreign
 

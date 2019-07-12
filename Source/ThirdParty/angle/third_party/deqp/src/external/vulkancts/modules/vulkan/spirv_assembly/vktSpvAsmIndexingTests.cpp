@@ -27,6 +27,7 @@
 #include "vktSpvAsmGraphicsShaderTestUtil.hpp"
 
 #include "tcuStringTemplate.hpp"
+#include "tcuVectorUtil.hpp"
 
 namespace vkt
 {
@@ -81,7 +82,7 @@ void addComputeIndexingStructTests (tcu::TestCaseGroup* group)
 
 	indexSelectorData.reserve(numItems);
 	for (deUint32 numIdx = 0; numIdx < numItems; ++numIdx)
-		indexSelectorData.push_back(UVec4(rnd.getUint32() % 32, rnd.getUint32() % 32, rnd.getUint32() % 4, rnd.getUint32() % 4));
+		indexSelectorData.push_back(tcu::randomVector<deUint32, 4>(rnd, UVec4(0), UVec4(31, 31, 3, 3)));
 
 	for (int chainOpIdx = 0; chainOpIdx < CHAIN_OP_LAST; ++chainOpIdx)
 	{
@@ -297,7 +298,7 @@ void addGraphicsIndexingStructTests (tcu::TestCaseGroup* group)
 
 	indexSelectorData.reserve(numItems);
 	for (deUint32 numIdx = 0; numIdx < numItems; ++numIdx)
-		indexSelectorData.push_back(UVec4(rnd.getUint32() % 32, rnd.getUint32() % 32, rnd.getUint32() % 4, rnd.getUint32() % 4));
+		indexSelectorData.push_back(tcu::randomVector<deUint32, 4>(rnd, UVec4(0), UVec4(31, 31, 3, 3)));
 
 	getDefaultColors(defaultColors);
 
@@ -311,7 +312,6 @@ void addGraphicsIndexingStructTests (tcu::TestCaseGroup* group)
 				const string				testName		= chainOpTestNames[chainOpIdx] + string(sign == 0 ? "_u" : "_s") + de::toString(idxSize);
 				VulkanFeatures				vulkanFeatures;
 				vector<string>				extensions;
-				vector<string>				features;
 				SpecConstants				noSpecConstants;
 				PushConstants				noPushConstants;
 				GraphicsInterfaces			noInterfaces;
@@ -432,7 +432,7 @@ void addGraphicsIndexingStructTests (tcu::TestCaseGroup* group)
 				if (idxSize == 16)
 				{
 					fragments["capability"] = "OpCapability Int16\n";
-					features.push_back("shaderInt16");
+					vulkanFeatures.coreFeatures.shaderInt16 = VK_TRUE;
 					specs["convert"] = "OpUConvert";
 					specs["intdecl"] =	"                      %u16 = OpTypeInt 16 0\n"
 								"                      %i16 = OpTypeInt 16 1\n";
@@ -440,7 +440,7 @@ void addGraphicsIndexingStructTests (tcu::TestCaseGroup* group)
 				else if (idxSize == 64)
 				{
 					fragments["capability"] = "OpCapability Int64\n";
-					features.push_back("shaderInt64");
+					vulkanFeatures.coreFeatures.shaderInt64 = VK_TRUE;
 					specs["convert"] = "OpUConvert";
 					specs["intdecl"] =	"                      %u64 = OpTypeInt 64 0\n"
 								"                      %i64 = OpTypeInt 64 1\n";
@@ -487,13 +487,16 @@ void addGraphicsIndexingStructTests (tcu::TestCaseGroup* group)
 
 				resources.outputs.push_back(Resource(BufferSp(new Float32Buffer(outputData)), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER));
 
+				vulkanFeatures.coreFeatures.vertexPipelineStoresAndAtomics	= true;
+				vulkanFeatures.coreFeatures.fragmentStoresAndAtomics		= true;
+
 				fragments["pre_main"]	= preMain.specialize(specs);
 				fragments["decoration"]	= decoration.specialize(specs);
 				fragments["testfun"]	= testFun.specialize(specs);
 
 				createTestsForAllStages(
 						testName.c_str(), defaultColors, defaultColors, fragments, noSpecConstants,
-						noPushConstants, resources, noInterfaces, extensions, features, vulkanFeatures, structGroup.get());
+						noPushConstants, resources, noInterfaces, extensions, vulkanFeatures, structGroup.get());
 			}
 		}
 	}
@@ -676,7 +679,14 @@ void addComputeIndexingNon16BaseAlignmentTests (tcu::TestCaseGroup* group)
 
 	inputData.reserve(numInputFloats);
 	for (deUint32 numIdx = 0; numIdx < numInputFloats; ++numIdx)
-		inputData.push_back(rnd.getFloat());
+	{
+		float f = rnd.getFloat();
+
+		// CPU might not use the same rounding mode as the GPU. Use whole numbers to avoid rounding differences.
+		f = deFloatFloor(f);
+
+		inputData.push_back(f);
+	}
 
 	spec.inputs.push_back(Resource(BufferSp(new Float32Buffer(inputData)), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER));
 

@@ -2865,8 +2865,17 @@ void Graphics::CheckFeatureSupport()
         // iOS hack: depth renderbuffer seems to fail, so use depth textures for everything if supported
         glesDepthStencilFormat = GL_DEPTH_COMPONENT;
 #endif
+#ifdef URHO3D_ANGLE_VULKAN
+		// TBD ELI 2 - needs more investigation on the shadows side
+		//shadowMapFormat_ = GL_DEPTH_COMPONENT;
+		//hiresShadowMapFormat_ = GL_DEPTH_COMPONENT24;
+		shadowMapFormat_ = 0;
+		hiresShadowMapFormat_ = 0;
+		//glesDepthStencilFormat = GL_DEPTH_COMPONENT;
+#else
         shadowMapFormat_ = GL_DEPTH_COMPONENT;
         hiresShadowMapFormat_ = 0;
+#endif
         // WebGL shadow map rendering seems to be extremely slow without an attached dummy color texture
         #ifdef __EMSCRIPTEN__
         dummyColorFormat_ = GetRGBAFormat();

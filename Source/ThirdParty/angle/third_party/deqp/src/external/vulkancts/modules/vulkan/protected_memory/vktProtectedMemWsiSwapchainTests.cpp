@@ -100,6 +100,17 @@ std::vector<std::string> getRequiredWsiExtensions (const Extensions&	supportedEx
 	if (isExtensionSupported(supportedExtensions, vk::RequiredExtension("VK_EXT_swapchain_colorspace")))
 		extensions.push_back("VK_EXT_swapchain_colorspace");
 
+	// VK_KHR_surface_protected_capabilities adds a way to check if swapchain can be
+	// created for protected VkSurface, so if this extension is enabled then we can
+	// check for that capability.
+	// To check this capability, vkGetPhysicalDeviceSurfaceCapabilities2KHR needs
+	// to be called so add VK_KHR_get_surface_capabilities2 for this.
+	if (isExtensionSupported(supportedExtensions, vk::RequiredExtension("VK_KHR_surface_protected_capabilities")))
+	{
+		extensions.push_back("VK_KHR_get_surface_capabilities2");
+		extensions.push_back("VK_KHR_surface_protected_capabilities");
+	}
+
 	checkAllSupported(supportedExtensions, extensions);
 
 	return extensions;
@@ -115,7 +126,8 @@ de::MovePtr<vk::wsi::Display> createDisplay (const vk::Platform&	platform,
 	}
 	catch (const tcu::NotSupportedError& e)
 	{
-		if (isExtensionSupported(supportedExtensions, vk::RequiredExtension(getExtensionName(wsiType))))
+		if (isExtensionSupported(supportedExtensions, vk::RequiredExtension(getExtensionName(wsiType))) &&
+		    platform.hasDisplay(wsiType))
 		{
 			// If VK_KHR_{platform}_surface was supported, vk::Platform implementation
 			// must support creating native display & window for that WSI type.
@@ -329,11 +341,63 @@ std::vector<vk::VkSwapchainCreateInfoKHR> generateSwapchainParameterCases (vk::w
 
 		case TEST_DIMENSION_IMAGE_FORMAT:
 		{
+			const vk::DeviceInterface&				vkd					= context.getDeviceInterface();
+			vk::VkDevice							device				= context.getDevice();
+			vk::VkPhysicalDeviceMemoryProperties	memoryProperties	= vk::getPhysicalDeviceMemoryProperties(context.getInstanceDriver(), context.getPhysicalDevice());
+			vk::VkDeviceSize						protectedHeapSize	= 0;
+			vk::VkDeviceSize						maxMemoryUsage		= 0;
+
+			for (deUint32 memType = 0; memType < memoryProperties.memoryTypeCount; memType++)
+			{
+				deUint32 heapIndex	= memoryProperties.memoryTypes[memType].heapIndex;
+				if (memoryProperties.memoryTypes[memType].propertyFlags & vk::VK_MEMORY_PROPERTY_PROTECTED_BIT)
+				{
+					protectedHeapSize = de::max(protectedHeapSize, memoryProperties.memoryHeaps[heapIndex].size);
+					maxMemoryUsage	  = protectedHeapSize / 4 ; /* Use at maximum 25% of heap */
+				}
+			}
+
 			for (std::vector<vk::VkSurfaceFormatKHR>::const_iterator curFmt = formats.begin(); curFmt != formats.end(); ++curFmt)
 			{
-				cases.push_back(baseParameters);
-				cases.back().imageFormat		= curFmt->format;
-				cases.back().imageColorSpace	= curFmt->colorSpace;
+			    vk::VkMemoryRequirements memoryRequirements;
+			    {
+					const vk::VkImageCreateInfo imageInfo =
+					{
+						vk::VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+						DE_NULL,
+						vk::VK_IMAGE_CREATE_PROTECTED_BIT,
+						vk::VK_IMAGE_TYPE_2D,
+						curFmt->format,
+						{
+							platformProperties.swapchainExtent == vk::wsi::PlatformProperties::SWAPCHAIN_EXTENT_SETS_WINDOW_SIZE
+								? capabilities.minImageExtent.width : capabilities.currentExtent.width,
+							platformProperties.swapchainExtent == vk::wsi::PlatformProperties::SWAPCHAIN_EXTENT_SETS_WINDOW_SIZE
+							? capabilities.minImageExtent.height : capabilities.currentExtent.height,
+							1,
+						},
+						1,	// mipLevels
+						baseParameters.imageArrayLayers,
+						vk::VK_SAMPLE_COUNT_1_BIT,
+						vk::VK_IMAGE_TILING_OPTIMAL,
+						baseParameters.imageUsage,
+						baseParameters.imageSharingMode,
+						baseParameters.queueFamilyIndexCount,
+						baseParameters.pQueueFamilyIndices,
+						vk::VK_IMAGE_LAYOUT_UNDEFINED
+					};
+
+						vk::Move<vk::VkImage> image = vk::createImage(vkd, device, &imageInfo);
+
+						memoryRequirements = vk::getImageMemoryRequirements(vkd, device, *image);
+					}
+
+					// Check for the image size requirement based on double/triple buffering
+					if (memoryRequirements.size  * capabilities.minImageCount < maxMemoryUsage)
+					{
+						cases.push_back(baseParameters);
+						cases.back().imageFormat		= curFmt->format;
+						cases.back().imageColorSpace	= curFmt->colorSpace;
+					}
 			}
 
 			break;
@@ -1089,6 +1153,32 @@ tcu::TestStatus basicRenderTest (Context& baseCtx, vk::wsi::Type wsiType)
 																								vk::VK_COMMAND_BUFFER_LEVEL_PRIMARY,
 																								maxQueuedFrames));
 
+	if (isExtensionSupported(supportedExtensions, vk::RequiredExtension("VK_KHR_surface_protected_capabilities")))
+	{
+		// Check if swapchain can be created for protected surface
+		const vk::InstanceInterface&			vki			= context.getInstanceDriver();
+		vk::VkSurfaceCapabilities2KHR			extCapabilities;
+		vk::VkSurfaceProtectedCapabilitiesKHR		extProtectedCapabilities;
+		const vk::VkPhysicalDeviceSurfaceInfo2KHR	surfaceInfo =
+		{
+			vk::VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SURFACE_INFO_2_KHR,
+			DE_NULL,
+			surface
+		};
+
+		extProtectedCapabilities.sType			= vk::VK_STRUCTURE_TYPE_SURFACE_PROTECTED_CAPABILITIES_KHR;
+		extProtectedCapabilities.pNext			= DE_NULL;
+		extProtectedCapabilities.supportsProtected	= DE_FALSE;
+
+		extCapabilities.sType				= vk::VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES_2_KHR;
+		extCapabilities.pNext				= &extProtectedCapabilities;
+
+		VK_CHECK(vki.getPhysicalDeviceSurfaceCapabilities2KHR(context.getPhysicalDevice(), &surfaceInfo, &extCapabilities));
+
+		if (extProtectedCapabilities.supportsProtected == DE_FALSE)
+			TCU_THROW(NotSupportedError, "Swapchain creation for Protected VkSurface is not Supported.");
+	}
+
 	try
 	{
 		const deUint32	numFramesToRender	= 60*10;
@@ -1159,7 +1249,7 @@ tcu::TestStatus basicRenderTest (Context& baseCtx, vk::wsi::Type wsiType)
 
 				renderer.recordFrame(commandBuffer, imageNdx, frameNdx);
 				VK_CHECK(vkd.queueSubmit(context.getQueue(), 1u, &submitInfo, imageReadyFence));
-				VK_CHECK(vkd.queuePresentKHR(context.getQueue(), &presentInfo));
+				VK_CHECK_WSI(vkd.queuePresentKHR(context.getQueue(), &presentInfo));
 			}
 		}
 

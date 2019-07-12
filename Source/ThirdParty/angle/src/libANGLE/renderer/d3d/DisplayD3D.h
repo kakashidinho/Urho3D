@@ -52,6 +52,11 @@ class DisplayD3D : public DisplayImpl, public d3d::Context
     StreamProducerImpl *createStreamProducerD3DTexture(egl::Stream::ConsumerType consumerType,
                                                        const egl::AttributeMap &attribs) override;
 
+    ExternalImageSiblingImpl *createExternalImageSibling(const gl::Context *context,
+                                                         EGLenum target,
+                                                         EGLClientBuffer buffer,
+                                                         const egl::AttributeMap &attribs) override;
+
     egl::Error makeCurrent(egl::Surface *drawSurface,
                            egl::Surface *readSurface,
                            gl::Context *context) override;
@@ -66,6 +71,10 @@ class DisplayD3D : public DisplayImpl, public d3d::Context
                                     EGLenum buftype,
                                     EGLClientBuffer clientBuffer,
                                     const egl::AttributeMap &attribs) const override;
+    egl::Error validateImageClientBuffer(const gl::Context *context,
+                                         EGLenum target,
+                                         EGLClientBuffer clientBuffer,
+                                         const egl::AttributeMap &attribs) const override;
 
     DeviceImpl *createDevice() override;
 
@@ -82,6 +91,8 @@ class DisplayD3D : public DisplayImpl, public d3d::Context
                       unsigned int line) override;
 
     const std::string &getStoredErrorString() const { return mStoredErrorString; }
+
+    void populateFeatureList(angle::FeatureList *features) override;
 
   private:
     void generateExtensions(egl::DisplayExtensions *outExtensions) const override;

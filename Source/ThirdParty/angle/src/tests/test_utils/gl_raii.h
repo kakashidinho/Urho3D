@@ -30,11 +30,17 @@ class GLWrapper : angle::NonCopyable
 
     // The move-constructor and move-assignment operators are necessary so that the data within a
     // GLWrapper object can be relocated.
-    GLWrapper(GLWrapper &&rht) : mHandle(rht.mHandle) { rht.mHandle = 0u; }
+    GLWrapper(GLWrapper &&rht)
+        : mGenFunc(rht.mGenFunc), mDeleteFunc(rht.mDeleteFunc), mHandle(rht.mHandle)
+    {
+        rht.mHandle = 0u;
+    }
     GLWrapper &operator=(GLWrapper &&rht)
     {
         if (this != &rht)
         {
+            mGenFunc    = rht.mGenFunc;
+            mDeleteFunc = rht.mDeleteFunc;
             std::swap(mHandle, rht.mHandle);
         }
         return *this;
@@ -86,6 +92,11 @@ class GLFramebuffer : public GLWrapper
   public:
     GLFramebuffer() : GLWrapper(&glGenFramebuffers, &glDeleteFramebuffers) {}
 };
+class GLMemoryObject : public GLWrapper
+{
+  public:
+    GLMemoryObject() : GLWrapper(&glCreateMemoryObjectsEXT, &glDeleteMemoryObjectsEXT) {}
+};
 class GLRenderbuffer : public GLWrapper
 {
   public:
@@ -95,6 +106,11 @@ class GLSampler : public GLWrapper
 {
   public:
     GLSampler() : GLWrapper(&glGenSamplers, &glDeleteSamplers) {}
+};
+class GLSemaphore : public GLWrapper
+{
+  public:
+    GLSemaphore() : GLWrapper(&glGenSemaphoresEXT, &glDeleteSemaphoresEXT) {}
 };
 class GLTransformFeedback : public GLWrapper
 {

@@ -78,21 +78,21 @@ EGLsizeiANDROID GetBlob(const void *key,
 class EGLBlobCacheTest : public ANGLETest
 {
   protected:
-    EGLBlobCacheTest() : mHasBlobCache(false) {}
-
-    void SetUp() override
+    EGLBlobCacheTest() : mHasBlobCache(false)
     {
-        ANGLETest::SetUp();
-
-        EGLDisplay display = getEGLWindow()->getDisplay();
-        mHasBlobCache      = eglDisplayExtensionEnabled(display, kEGLExtName);
+        // Force disply caching off. Blob cache functions require it.
+        forceNewDisplay();
     }
 
-    void TearDown() override { ANGLETest::TearDown(); }
+    void testSetUp() override
+    {
+        EGLDisplay display = getEGLWindow()->getDisplay();
+        mHasBlobCache      = IsEGLDisplayExtensionEnabled(display, kEGLExtName);
+    }
 
     bool programBinaryAvailable()
     {
-        return (getClientMajorVersion() >= 3 || extensionEnabled("GL_OES_get_program_binary"));
+        return (getClientMajorVersion() >= 3 || IsGLExtensionEnabled("GL_OES_get_program_binary"));
     }
 
     bool mHasBlobCache;
@@ -103,7 +103,7 @@ TEST_P(EGLBlobCacheTest, Functional)
 {
     EGLDisplay display = getEGLWindow()->getDisplay();
 
-    EXPECT_EQ(true, mHasBlobCache);
+    EXPECT_TRUE(mHasBlobCache);
     eglSetBlobCacheFuncsANDROID(display, SetBlob, GetBlob);
     ASSERT_EGL_SUCCESS();
 
@@ -172,7 +172,7 @@ void main()
 // Tests error conditions of the APIs.
 TEST_P(EGLBlobCacheTest, NegativeAPI)
 {
-    EXPECT_EQ(true, mHasBlobCache);
+    EXPECT_TRUE(mHasBlobCache);
 
     // Test bad display
     eglSetBlobCacheFuncsANDROID(EGL_NO_DISPLAY, nullptr, nullptr);

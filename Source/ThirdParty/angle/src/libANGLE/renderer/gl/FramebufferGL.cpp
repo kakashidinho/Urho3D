@@ -23,9 +23,9 @@
 #include "libANGLE/renderer/gl/RenderbufferGL.h"
 #include "libANGLE/renderer/gl/StateManagerGL.h"
 #include "libANGLE/renderer/gl/TextureGL.h"
-#include "libANGLE/renderer/gl/WorkaroundsGL.h"
 #include "libANGLE/renderer/gl/formatutilsgl.h"
 #include "libANGLE/renderer/gl/renderergl_utils.h"
+#include "platform/FeaturesGL.h"
 #include "platform/Platform.h"
 
 using namespace gl;
@@ -75,7 +75,7 @@ void BindFramebufferAttachment(const FunctionsGL *functions,
                      texture->getType() == TextureType::_3D ||
                      texture->getType() == TextureType::_2DMultisampleArray)
             {
-                if (attachment->getMultiviewLayout() == GL_FRAMEBUFFER_MULTIVIEW_LAYERED_ANGLE)
+                if (attachment->isMultiview())
                 {
                     ASSERT(functions->framebufferTexture);
                     functions->framebufferTexture(GL_FRAMEBUFFER, attachmentPoint,
@@ -136,7 +136,7 @@ bool RequiresMultiviewClear(const FramebufferState &state, bool scissorTestEnabl
     {
         if (colorAttachment.isAttached())
         {
-            if (colorAttachment.getMultiviewLayout() == GL_NONE)
+            if (!colorAttachment.isMultiview())
             {
                 return false;
             }
@@ -149,7 +149,7 @@ bool RequiresMultiviewClear(const FramebufferState &state, bool scissorTestEnabl
     const FramebufferAttachment *depthAttachment = state.getDepthAttachment();
     if (depthAttachment)
     {
-        if (depthAttachment->getMultiviewLayout() == GL_NONE)
+        if (!depthAttachment->isMultiview())
         {
             return false;
         }
@@ -160,7 +160,7 @@ bool RequiresMultiviewClear(const FramebufferState &state, bool scissorTestEnabl
     const FramebufferAttachment *stencilAttachment = state.getStencilAttachment();
     if (stencilAttachment)
     {
-        if (stencilAttachment->getMultiviewLayout() == GL_NONE)
+        if (!stencilAttachment->isMultiview())
         {
             return false;
         }
@@ -173,16 +173,11 @@ bool RequiresMultiviewClear(const FramebufferState &state, bool scissorTestEnabl
     {
         return false;
     }
-    switch (attachment->getMultiviewLayout())
+    if (attachment->isMultiview())
     {
-        case GL_FRAMEBUFFER_MULTIVIEW_LAYERED_ANGLE:
-            // If all layers of each texture array are active, then there is no need to issue a
-            // special multiview clear.
-            return !allTextureArraysAreFullyAttached;
-        case GL_FRAMEBUFFER_MULTIVIEW_SIDE_BY_SIDE_ANGLE:
-            return (scissorTestEnabled == true);
-        default:
-            UNREACHABLE();
+        // If all layers of each texture array are active, then there is no need to issue a
+        // special multiview clear.
+        return !allTextureArraysAreFullyAttached;
     }
     return false;
 }
@@ -430,10 +425,10 @@ angle::Result FramebufferGL::readPixels(const gl::Context *context,
                                         GLenum type,
                                         void *pixels)
 {
-    ContextGL *contextGL             = GetImplAs<ContextGL>(context);
-    const FunctionsGL *functions     = GetFunctionsGL(context);
-    StateManagerGL *stateManager     = GetStateManagerGL(context);
-    const WorkaroundsGL &workarounds = GetWorkaroundsGL(context);
+    ContextGL *contextGL              = GetImplAs<ContextGL>(context);
+    const FunctionsGL *functions      = GetFunctionsGL(context);
+    StateManagerGL *stateManager      = GetStateManagerGL(context);
+    const angle::FeaturesGL &features = GetFeaturesGL(context);
 
     // Clip read area to framebuffer.
     const gl::Extents fbSize = getState().getReadAttachment()->getSize();
@@ -450,13 +445,13 @@ angle::Result FramebufferGL::readPixels(const gl::Context *context,
         context->getState().getTargetBuffer(gl::BufferBinding::PixelPack);
 
     nativegl::ReadPixelsFormat readPixelsFormat =
-        nativegl::GetReadPixelsFormat(functions, workarounds, format, type);
+        nativegl::GetReadPixelsFormat(functions, features, format, type);
     GLenum readFormat = readPixelsFormat.format;
     GLenum readType   = readPixelsFormat.type;
 
     stateManager->bindFramebuffer(GL_READ_FRAMEBUFFER, mFramebufferID);
 
-    bool useOverlappingRowsWorkaround = workarounds.packOverlappingRowsSeparatelyPackBuffer &&
+    bool useOverlappingRowsWorkaround = features.packOverlappingRowsSeparatelyPackBuffer.enabled &&
                                         packBuffer && packState.rowLength != 0 &&
                                         packState.rowLength < clippedArea.width;
 
@@ -492,7 +487,7 @@ angle::Result FramebufferGL::readPixels(const gl::Context *context,
     }
 
     bool useLastRowPaddingWorkaround = false;
-    if (workarounds.packLastRowSeparatelyForPaddingInclusion)
+    if (features.packLastRowSeparatelyForPaddingInclusion.enabled)
     {
         ANGLE_TRY(ShouldApplyLastRowPaddingWorkaround(
             contextGL, gl::Extents(clippedArea.width, clippedArea.height, 1), packState, packBuffer,
@@ -515,7 +510,7 @@ angle::Result FramebufferGL::blit(const gl::Context *context,
     const Framebuffer *sourceFramebuffer = context->getState().getReadFramebuffer();
     const Framebuffer *destFramebuffer   = context->getState().getDrawFramebuffer();
 
-    const FramebufferAttachment *colorReadAttachment = sourceFramebuffer->getReadColorbuffer();
+    const FramebufferAttachment *colorReadAttachment = sourceFramebuffer->getReadColorAttachment();
 
     GLsizei readAttachmentSamples = 0;
     if (colorReadAttachment != nullptr)
@@ -607,6 +602,11 @@ angle::Result FramebufferGL::getSamplePosition(const gl::Context *context,
     return angle::Result::Continue;
 }
 
+bool FramebufferGL::shouldSyncStateBeforeCheckStatus() const
+{
+    return true;
+}
+
 bool FramebufferGL::checkStatus(const gl::Context *context) const
 {
     const FunctionsGL *functions = GetFunctionsGL(context);
@@ -696,16 +696,19 @@ angle::Result FramebufferGL::syncState(const gl::Context *context,
                 break;
             default:
             {
-                ASSERT(Framebuffer::DIRTY_BIT_COLOR_ATTACHMENT_0 == 0 &&
-                       dirtyBit < Framebuffer::DIRTY_BIT_COLOR_ATTACHMENT_MAX);
-                size_t index =
-                    static_cast<size_t>(dirtyBit - Framebuffer::DIRTY_BIT_COLOR_ATTACHMENT_0);
-                const FramebufferAttachment *newAttachment = mState.getColorAttachment(index);
-                BindFramebufferAttachment(
-                    functions, static_cast<GLenum>(GL_COLOR_ATTACHMENT0 + index), newAttachment);
-                if (newAttachment)
+                static_assert(Framebuffer::DIRTY_BIT_COLOR_ATTACHMENT_0 == 0, "FB dirty bits");
+                if (dirtyBit < Framebuffer::DIRTY_BIT_COLOR_ATTACHMENT_MAX)
                 {
-                    attachment = newAttachment;
+                    size_t index =
+                        static_cast<size_t>(dirtyBit - Framebuffer::DIRTY_BIT_COLOR_ATTACHMENT_0);
+                    const FramebufferAttachment *newAttachment = mState.getColorAttachment(index);
+                    BindFramebufferAttachment(functions,
+                                              static_cast<GLenum>(GL_COLOR_ATTACHMENT0 + index),
+                                              newAttachment);
+                    if (newAttachment)
+                    {
+                        attachment = newAttachment;
+                    }
                 }
                 break;
             }
@@ -714,9 +717,6 @@ angle::Result FramebufferGL::syncState(const gl::Context *context,
 
     if (attachment && mState.id() == context->getState().getDrawFramebuffer()->id())
     {
-        const bool isSideBySide =
-            (attachment->getMultiviewLayout() == GL_FRAMEBUFFER_MULTIVIEW_SIDE_BY_SIDE_ANGLE);
-        stateManager->setSideBySide(isSideBySide);
         stateManager->updateMultiviewBaseViewLayerIndexUniform(context->getState().getProgram(),
                                                                getState());
     }
@@ -734,40 +734,16 @@ bool FramebufferGL::isDefault() const
     return mIsDefault;
 }
 
-void FramebufferGL::maskOutInactiveOutputDrawBuffersImpl(const gl::Context *context,
-                                                         DrawBufferMask targetAppliedDrawBuffers)
-{
-
-    ASSERT(mAppliedEnabledDrawBuffers != targetAppliedDrawBuffers);
-    mAppliedEnabledDrawBuffers = targetAppliedDrawBuffers;
-
-    const auto &stateDrawBuffers = mState.getDrawBufferStates();
-    GLsizei drawBufferCount      = static_cast<GLsizei>(stateDrawBuffers.size());
-    ASSERT(drawBufferCount <= IMPLEMENTATION_MAX_DRAW_BUFFERS);
-
-    GLenum drawBuffers[IMPLEMENTATION_MAX_DRAW_BUFFERS];
-    for (GLenum i = 0; static_cast<int>(i) < drawBufferCount; ++i)
-    {
-        drawBuffers[i] = targetAppliedDrawBuffers[i] ? stateDrawBuffers[i] : GL_NONE;
-    }
-
-    const FunctionsGL *functions = GetFunctionsGL(context);
-    StateManagerGL *stateManager = GetStateManagerGL(context);
-
-    ASSERT(stateManager->getFramebufferID(angle::FramebufferBindingDraw) == mFramebufferID);
-    functions->drawBuffers(drawBufferCount, drawBuffers);
-}
-
 void FramebufferGL::syncClearState(const gl::Context *context, GLbitfield mask)
 {
     const FunctionsGL *functions = GetFunctionsGL(context);
 
     if (functions->standard == STANDARD_GL_DESKTOP)
     {
-        StateManagerGL *stateManager     = GetStateManagerGL(context);
-        const WorkaroundsGL &workarounds = GetWorkaroundsGL(context);
+        StateManagerGL *stateManager      = GetStateManagerGL(context);
+        const angle::FeaturesGL &features = GetFeaturesGL(context);
 
-        if (workarounds.doesSRGBClearsOnLinearFramebufferAttachments &&
+        if (features.doesSRGBClearsOnLinearFramebufferAttachments.enabled &&
             (mask & GL_COLOR_BUFFER_BIT) != 0 && !mIsDefault)
         {
             bool hasSRGBAttachment = false;
@@ -797,10 +773,10 @@ void FramebufferGL::syncClearBufferState(const gl::Context *context,
 
     if (functions->standard == STANDARD_GL_DESKTOP)
     {
-        StateManagerGL *stateManager     = GetStateManagerGL(context);
-        const WorkaroundsGL &workarounds = GetWorkaroundsGL(context);
+        StateManagerGL *stateManager      = GetStateManagerGL(context);
+        const angle::FeaturesGL &features = GetFeaturesGL(context);
 
-        if (workarounds.doesSRGBClearsOnLinearFramebufferAttachments && buffer == GL_COLOR &&
+        if (features.doesSRGBClearsOnLinearFramebufferAttachments.enabled && buffer == GL_COLOR &&
             !mIsDefault)
         {
             // If doing a clear on a color buffer, set SRGB blend enabled only if the color buffer

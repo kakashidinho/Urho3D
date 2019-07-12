@@ -16,6 +16,17 @@
 namespace rx
 {
 
+class ExternalImageSiblingVk : public ExternalImageSiblingImpl
+{
+  public:
+    ExternalImageSiblingVk() {}
+    ~ExternalImageSiblingVk() override {}
+
+    virtual vk::ImageHelper *getImage() const = 0;
+
+    virtual void release(DisplayVk *display, std::vector<vk::GarbageObjectBase> *garbageQueue) = 0;
+};
+
 class ImageVk : public ImageImpl
 {
   public:
@@ -39,6 +50,8 @@ class ImageVk : public ImageImpl
 
     bool mOwnsImage;
     vk::ImageHelper *mImage;
+
+    std::vector<vk::Shared<vk::Fence>> mImageLastUseFences;
 
     const gl::Context *mContext;
 };

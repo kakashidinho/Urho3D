@@ -87,7 +87,7 @@ class SourcePackage (Source):
 	def isArchiveUpToDate (self):
 		archiveFile = os.path.join(EXTERNAL_DIR, pkg.baseDir, pkg.archiveDir, pkg.filename)
 		if os.path.exists(archiveFile):
-			return computeChecksum(readFile(archiveFile)) == self.checksum
+			return computeChecksum(readBinaryFile(archiveFile)) == self.checksum
 		else:
 			return False
 
@@ -104,7 +104,7 @@ class SourcePackage (Source):
 
 	def storeExtractedChecksum (self, checksum):
 		checksum_bytes = checksum.encode("utf-8")
-		writeFile(self.getExtractedChecksumFilePath(), checksum_bytes)
+		writeBinaryFile(self.getExtractedChecksumFilePath(), checksum_bytes)
 
 	def connectToUrl (self, url):
 		result = None
@@ -137,7 +137,7 @@ class SourcePackage (Source):
 		if not os.path.exists(os.path.dirname(dstPath)):
 			os.mkdir(os.path.dirname(dstPath))
 
-		writeFile(dstPath, data)
+		writeBinaryFile(dstPath, data)
 
 	def extract (self):
 		print("Extracting %s to %s/%s" % (self.filename, self.baseDir, self.extractDir))
@@ -190,7 +190,8 @@ class SourceFile (Source):
 	def isFileUpToDate (self):
 		file = os.path.join(EXTERNAL_DIR, pkg.baseDir, pkg.extractDir, pkg.filename)
 		if os.path.exists(file):
-			return computeChecksum(readFile(file)) == self.checksum
+			data = readFile(file)
+			return computeChecksum(data.encode('utf-8')) == self.checksum
 		else:
 			return False
 
@@ -225,7 +226,7 @@ class SourceFile (Source):
 		if not os.path.exists(os.path.dirname(dstPath)):
 			os.mkdir(os.path.dirname(dstPath))
 
-		writeFile(dstPath, data)
+		writeBinaryFile(dstPath, data)
 
 class GitRepo (Source):
 	def __init__(self, httpsUrl, sshUrl, revision, baseDir, extractDir = "src", removeTags = []):
@@ -315,24 +316,24 @@ PACKAGES = [
 	GitRepo(
 		"https://github.com/KhronosGroup/SPIRV-Tools.git",
 		None,
-		"e0292c269d6f5c8481afb9f2d043c74ee11ca24f",
+		"2c0111e6eba779cf30e8c7f5a733ea0762895ba0",
 		"spirv-tools"),
 	GitRepo(
 		"https://github.com/KhronosGroup/glslang.git",
 		None,
-		"9ed38739b974f9d6585e8c5f11184409b11d3817",
+		"a549bb81752365526f6d7334f00961ea08689211",
 		"glslang",
 		removeTags = ["master-tot"]),
 	GitRepo(
 		"https://github.com/KhronosGroup/SPIRV-Headers.git",
 		None,
-		"17da9f8231f78cf519b4958c2229463a63ead9e2",
+		"8b911bd2ba37677037b38c9bd286c7c05701bcda",
 		"spirv-headers"),
 	GitRepo(
-		"https://github.com/Igalia/vkrunner.git",
+		"https://github.com/google/amber.git",
 		None,
-		"2787f7ceaa96de8ad0c352629a4ed297da068872",
-		"vkrunner"),
+		"d26ee22dd7faab1845a531d410f7ec1db407402a",
+		"amber"),
 ]
 
 def parseArgs ():

@@ -32,13 +32,34 @@ void ImageVk::onDestroy(const egl::Display *display)
     DisplayVk *displayVk = vk::GetImpl(display);
     RendererVk *renderer = displayVk->getRenderer();
 
+    std::vector<vk::GarbageObjectBase> garbage;
+
     if (mImage != nullptr && mOwnsImage)
     {
-        mImage->releaseImage(renderer);
-        mImage->releaseStagingBuffer(renderer);
+        mImage->releaseImage(displayVk, &garbage);
+        mImage->releaseStagingBuffer(displayVk, &garbage);
         delete mImage;
     }
+    else if (egl::IsExternalImageTarget(mState.target))
+    {
+        ASSERT(mState.source != nullptr);
+        ExternalImageSiblingVk *externalImageSibling =
+            GetImplAs<ExternalImageSiblingVk>(GetAs<egl::ExternalImageSibling>(mState.source));
+        externalImageSibling->release(displayVk, &garbage);
+    }
     mImage = nullptr;
+
+    if (!garbage.empty())
+    {
+        renderer->addGarbage(std::move(mImageLastUseFences), std::move(garbage));
+    }
+    else
+    {
+        for (vk::Shared<vk::Fence> &fence : mImageLastUseFences)
+        {
+            fence.reset(displayVk->getDevice());
+        }
+    }
 }
 
 egl::Error ImageVk::initialize(const egl::Display *display)
@@ -62,28 +83,43 @@ egl::Error ImageVk::initialize(const egl::Display *display)
         mImageLevel       = mState.imageIndex.getLevelIndex();
         mImageLayer       = mState.imageIndex.hasLayer() ? mState.imageIndex.getLayerIndex() : 0;
     }
-    else if (egl::IsRenderbufferTarget(mState.target))
+    else
     {
-        RenderbufferVk *renderbufferVk =
-            GetImplAs<RenderbufferVk>(GetAs<gl::Renderbuffer>(mState.source));
-        mImage = renderbufferVk->getImage();
+        RendererVk *renderer = nullptr;
+        if (egl::IsRenderbufferTarget(mState.target))
+        {
+            RenderbufferVk *renderbufferVk =
+                GetImplAs<RenderbufferVk>(GetAs<gl::Renderbuffer>(mState.source));
+            mImage = renderbufferVk->getImage();
+
+            ASSERT(mContext != nullptr);
+            renderer = vk::GetImpl(mContext)->getRenderer();
+            ;
+        }
+        else if (egl::IsExternalImageTarget(mState.target))
+        {
+            const ExternalImageSiblingVk *externalImageSibling =
+                GetImplAs<ExternalImageSiblingVk>(GetAs<egl::ExternalImageSibling>(mState.source));
+            mImage = externalImageSibling->getImage();
+
+            ASSERT(mContext == nullptr);
+            renderer = vk::GetImpl(display)->getRenderer();
+        }
+        else
+        {
+            UNREACHABLE();
+            return egl::EglBadAccess();
+        }
 
         // Make sure a staging buffer is ready to use to upload data
-        ASSERT(mContext != nullptr);
-        ContextVk *contextVk = vk::GetImpl(mContext);
-        RendererVk *renderer = contextVk->getRenderer();
-        mImage->initStagingBuffer(renderer);
+        mImage->initStagingBuffer(renderer, mImage->getFormat(), vk::kStagingBufferFlags,
+                                  vk::kStagingBufferSize);
 
         mOwnsImage = false;
 
         mImageTextureType = gl::TextureType::_2D;
         mImageLevel       = 0;
         mImageLayer       = 0;
-    }
-    else
-    {
-        UNREACHABLE();
-        return egl::EglBadAccess();
     }
 
     return egl::NoError();
@@ -113,6 +149,19 @@ angle::Result ImageVk::orphan(const gl::Context *context, egl::ImageSibling *sib
             ANGLE_VK_UNREACHABLE(vk::GetImpl(context));
             return angle::Result::Stop;
         }
+    }
+
+    // Grab a fence from the releasing context to know when the image is no longer used
+    ASSERT(mContext != nullptr);
+    ContextVk *contextVk = vk::GetImpl(mContext);
+
+    // Flush the context to make sure the fence has been submitted.
+    ANGLE_TRY(contextVk->flushImpl(nullptr));
+
+    vk::Shared<vk::Fence> fence = contextVk->getLastSubmittedFence();
+    if (fence.isReferenced())
+    {
+        mImageLastUseFences.push_back(std::move(fence));
     }
 
     return angle::Result::Continue;

@@ -88,6 +88,7 @@ class MockGLFactory : public GLImplFactory
     MOCK_METHOD1(createProgram, ProgramImpl *(const gl::ProgramState &));
     MOCK_METHOD1(createProgramPipeline, ProgramPipelineImpl *(const gl::ProgramPipelineState &));
     MOCK_METHOD1(createFramebuffer, FramebufferImpl *(const gl::FramebufferState &));
+    MOCK_METHOD0(createMemoryObject, MemoryObjectImpl *());
     MOCK_METHOD1(createTexture, TextureImpl *(const gl::TextureState &));
     MOCK_METHOD1(createRenderbuffer, RenderbufferImpl *(const gl::RenderbufferState &));
     MOCK_METHOD1(createBuffer, BufferImpl *(const gl::BufferState &));
@@ -99,6 +100,7 @@ class MockGLFactory : public GLImplFactory
                  TransformFeedbackImpl *(const gl::TransformFeedbackState &));
     MOCK_METHOD1(createSampler, SamplerImpl *(const gl::SamplerState &));
     MOCK_METHOD1(createPaths, std::vector<PathImpl *>(GLsizei));
+    MOCK_METHOD0(createSemaphore, SemaphoreImpl *());
 };
 
 class MockEGLFactory : public EGLImplFactory

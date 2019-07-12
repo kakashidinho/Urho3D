@@ -9,8 +9,10 @@
 
 #include "ANGLEPerfTest.h"
 
+#include "ANGLEPerfTestArgs.h"
 #include "common/platform.h"
 #include "third_party/perf/perf_test.h"
+#include "third_party/trace_event/trace_event.h"
 #include "util/shader_utils.h"
 #include "util/system_utils.h"
 
@@ -26,6 +28,8 @@
 #    include "util/windows/WGLWindow.h"
 #endif  // defined(ANGLE_USE_UTIL_LOADER) &&defined(ANGLE_PLATFORM_WINDOWS)
 
+using namespace angle;
+
 namespace
 {
 constexpr size_t kInitialTraceEventBufferSize = 50000;
@@ -34,11 +38,6 @@ constexpr double kNanoSecondsPerSecond        = 1e9;
 constexpr double kCalibrationRunTimeSeconds   = 1.0;
 constexpr double kMaximumRunTimeSeconds       = 10.0;
 constexpr unsigned int kNumTrials             = 3;
-
-bool gCalibration = false;
-Optional<unsigned int> gStepsToRunOverride;
-bool gEnableTrace      = false;
-const char *gTraceFile = "ANGLETrace.json";
 
 struct TraceCategory
 {
@@ -53,23 +52,23 @@ constexpr TraceCategory gTraceCategories[2] = {
 
 void EmptyPlatformMethod(angle::PlatformMethods *, const char *) {}
 
-void OverrideWorkaroundsD3D(angle::PlatformMethods *platform, angle::WorkaroundsD3D *workaroundsD3D)
+void OverrideWorkaroundsD3D(angle::PlatformMethods *platform, angle::FeaturesD3D *featuresD3D)
 {
     auto *angleRenderTest = static_cast<ANGLERenderTest *>(platform->context);
-    angleRenderTest->overrideWorkaroundsD3D(workaroundsD3D);
+    angleRenderTest->overrideWorkaroundsD3D(featuresD3D);
 }
 
-angle::TraceEventHandle AddTraceEvent(angle::PlatformMethods *platform,
-                                      char phase,
-                                      const unsigned char *categoryEnabledFlag,
-                                      const char *name,
-                                      unsigned long long id,
-                                      double timestamp,
-                                      int numArgs,
-                                      const char **argNames,
-                                      const unsigned char *argTypes,
-                                      const unsigned long long *argValues,
-                                      unsigned char flags)
+angle::TraceEventHandle AddPerfTraceEvent(angle::PlatformMethods *platform,
+                                          char phase,
+                                          const unsigned char *categoryEnabledFlag,
+                                          const char *name,
+                                          unsigned long long id,
+                                          double timestamp,
+                                          int numArgs,
+                                          const char **argNames,
+                                          const unsigned char *argTypes,
+                                          const unsigned long long *argValues,
+                                          unsigned char flags)
 {
     if (!gEnableTrace)
         return 0;
@@ -86,7 +85,7 @@ angle::TraceEventHandle AddTraceEvent(angle::PlatformMethods *platform,
     return buffer.size();
 }
 
-const unsigned char *GetTraceCategoryEnabledFlag(angle::PlatformMethods *platform,
+const unsigned char *GetPerfTraceCategoryEnabled(angle::PlatformMethods *platform,
                                                  const char *categoryName)
 {
     if (gEnableTrace)
@@ -133,8 +132,8 @@ void DumpTraceEventsToJSONFile(const std::vector<TraceEvent> &traceEvents,
         std::stringstream phaseName;
         phaseName << traceEvent.phase;
 
-        unsigned long long microseconds =
-            static_cast<unsigned long long>(traceEvent.timestamp * 1000.0 * 1000.0);
+        const auto microseconds =
+            static_cast<Json::LargestInt>(traceEvent.timestamp * 1000.0 * 1000.0);
 
         value["name"] = traceEvent.name;
         value["cat"]  = traceEvent.categoryName;
@@ -156,11 +155,6 @@ void DumpTraceEventsToJSONFile(const std::vector<TraceEvent> &traceEvents,
     outFile << styledWrite.write(root);
 
     outFile.close();
-}
-
-bool OneFrame()
-{
-    return gStepsToRunOverride.valid() && gStepsToRunOverride.value() == 1;
 }
 }  // anonymous namespace
 
@@ -369,8 +363,9 @@ ANGLERenderTest::ANGLERenderTest(const std::string &name, const RenderTestParams
     switch (testParams.driver)
     {
         case angle::GLESDriverType::AngleEGL:
-            mGLWindow = createEGLWindow(testParams);
-            mEntryPointsLib.reset(angle::OpenSharedLibrary(ANGLE_EGL_LIBRARY_NAME));
+            mGLWindow = EGLWindow::New(testParams.majorVersion, testParams.minorVersion);
+            mEntryPointsLib.reset(angle::OpenSharedLibrary(ANGLE_EGL_LIBRARY_NAME,
+                                                           angle::SearchType::ApplicationDir));
             break;
         case angle::GLESDriverType::SystemEGL:
             std::cerr << "Not implemented." << std::endl;
@@ -379,7 +374,8 @@ ANGLERenderTest::ANGLERenderTest(const std::string &name, const RenderTestParams
         case angle::GLESDriverType::SystemWGL:
 #if defined(ANGLE_USE_UTIL_LOADER) && defined(ANGLE_PLATFORM_WINDOWS)
             mGLWindow = WGLWindow::New(testParams.majorVersion, testParams.minorVersion);
-            mEntryPointsLib.reset(angle::OpenSharedLibrary("opengl32"));
+            mEntryPointsLib.reset(
+                angle::OpenSharedLibrary("opengl32", angle::SearchType::ApplicationDir));
 #else
             std::cout << "WGL driver not available. Skipping test." << std::endl;
             mSkipTest = true;
@@ -423,18 +419,15 @@ void ANGLERenderTest::SetUp()
         return;
     }
 
-    mGLWindow->setSwapInterval(0);
-
     mPlatformMethods.overrideWorkaroundsD3D      = OverrideWorkaroundsD3D;
     mPlatformMethods.logError                    = EmptyPlatformMethod;
     mPlatformMethods.logWarning                  = EmptyPlatformMethod;
     mPlatformMethods.logInfo                     = EmptyPlatformMethod;
-    mPlatformMethods.addTraceEvent               = AddTraceEvent;
-    mPlatformMethods.getTraceCategoryEnabledFlag = GetTraceCategoryEnabledFlag;
+    mPlatformMethods.addTraceEvent               = AddPerfTraceEvent;
+    mPlatformMethods.getTraceCategoryEnabledFlag = GetPerfTraceCategoryEnabled;
     mPlatformMethods.updateTraceEventDuration    = UpdateTraceEventDuration;
     mPlatformMethods.monotonicallyIncreasingTime = MonotonicallyIncreasingTime;
     mPlatformMethods.context                     = this;
-    mGLWindow->setPlatformMethods(&mPlatformMethods);
 
     if (!mOSWindow->initialize(mName, mTestParams.windowWidth, mTestParams.windowHeight))
     {
@@ -443,10 +436,22 @@ void ANGLERenderTest::SetUp()
         // FAIL returns.
     }
 
-    if (!mGLWindow->initializeGL(mOSWindow, mEntryPointsLib.get()))
+    // Override platform method parameter.
+    EGLPlatformParameters withMethods = mTestParams.eglParameters;
+    withMethods.platformMethods       = &mPlatformMethods;
+
+    if (!mGLWindow->initializeGL(mOSWindow, mEntryPointsLib.get(), withMethods, mConfigParams))
     {
         mSkipTest = true;
         FAIL() << "Failed initializing GL Window";
+        // FAIL returns.
+    }
+
+    // Disable vsync.
+    if (!mGLWindow->setSwapInterval(0))
+    {
+        mSkipTest = true;
+        FAIL() << "Failed setting swap interval";
         // FAIL returns.
     }
 
@@ -498,8 +503,28 @@ void ANGLERenderTest::TearDown()
     ANGLEPerfTest::TearDown();
 }
 
+void ANGLERenderTest::beginInternalTraceEvent(const char *name)
+{
+    if (gEnableTrace)
+    {
+        mTraceEventBuffer.emplace_back(TRACE_EVENT_PHASE_BEGIN, gTraceCategories[0].name, name,
+                                       MonotonicallyIncreasingTime(&mPlatformMethods));
+    }
+}
+
+void ANGLERenderTest::endInternalTraceEvent(const char *name)
+{
+    if (gEnableTrace)
+    {
+        mTraceEventBuffer.emplace_back(TRACE_EVENT_PHASE_END, gTraceCategories[0].name, name,
+                                       MonotonicallyIncreasingTime(&mPlatformMethods));
+    }
+}
+
 void ANGLERenderTest::step()
 {
+    beginInternalTraceEvent("step");
+
     // Clear events that the application did not process from this frame
     Event event;
     bool closed = false;
@@ -526,6 +551,8 @@ void ANGLERenderTest::step()
         mGLWindow->swap();
         mOSWindow->messageLoop();
     }
+
+    endInternalTraceEvent("step");
 }
 
 void ANGLERenderTest::startGpuTimer()
@@ -595,65 +622,15 @@ bool ANGLERenderTest::areExtensionPrerequisitesFulfilled() const
 
 void ANGLERenderTest::setWebGLCompatibilityEnabled(bool webglCompatibility)
 {
-    mGLWindow->setWebGLCompatibilityEnabled(webglCompatibility);
+    mConfigParams.webGLCompatibility = webglCompatibility;
 }
 
 void ANGLERenderTest::setRobustResourceInit(bool enabled)
 {
-    mGLWindow->setRobustResourceInit(enabled);
+    mConfigParams.robustResourceInit = enabled;
 }
 
 std::vector<TraceEvent> &ANGLERenderTest::getTraceEventBuffer()
 {
     return mTraceEventBuffer;
-}
-
-// static
-EGLWindow *ANGLERenderTest::createEGLWindow(const RenderTestParams &testParams)
-{
-    return EGLWindow::New(testParams.majorVersion, testParams.minorVersion,
-                          testParams.eglParameters);
-}
-
-void ANGLEProcessPerfTestArgs(int *argc, char **argv)
-{
-    int argcOutCount = 0;
-
-    for (int argIndex = 0; argIndex < *argc; argIndex++)
-    {
-        if (strcmp("--one-frame-only", argv[argIndex]) == 0)
-        {
-            gStepsToRunOverride = 1;
-        }
-        else if (strcmp("--enable-trace", argv[argIndex]) == 0)
-        {
-            gEnableTrace = true;
-        }
-        else if (strcmp("--trace-file", argv[argIndex]) == 0 && argIndex < *argc - 1)
-        {
-            gTraceFile = argv[argIndex];
-            // Skip an additional argument.
-            argIndex++;
-        }
-        else if (strcmp("--calibration", argv[argIndex]) == 0)
-        {
-            gCalibration = true;
-        }
-        else if (strcmp("--steps", argv[argIndex]) == 0 && argIndex < *argc - 1)
-        {
-            unsigned int stepsToRun = 0;
-            std::stringstream strstr;
-            strstr << argv[argIndex + 1];
-            strstr >> stepsToRun;
-            gStepsToRunOverride = stepsToRun;
-            // Skip an additional argument.
-            argIndex++;
-        }
-        else
-        {
-            argv[argcOutCount++] = argv[argIndex];
-        }
-    }
-
-    *argc = argcOutCount;
 }

@@ -26,6 +26,7 @@
 #include "tcuRGBA.hpp"
 #include "tcuStringTemplate.hpp"
 
+#include "vkDefs.hpp"
 #include "vkMemUtil.hpp"
 #include "vkPrograms.hpp"
 #include "vkQueryUtil.hpp"
@@ -662,6 +663,21 @@ string getFullOperationWithDifferentInputWidthStr (string resultName, string spi
 		str += resultName + " = " + spirvOperation + " %" + spirvTestType + " %input0_val " + offsetStr + " " + countStr +"\n";
 
 	return str;
+}
+
+static inline void requiredFeaturesFromStrings(const std::vector<std::string> &features, VulkanFeatures &requestedFeatures)
+{
+	for (deUint32 featureNdx = 0; featureNdx < features.size(); ++featureNdx)
+	{
+		const std::string& feature = features[featureNdx];
+
+		if (feature == "shaderInt16")
+			requestedFeatures.coreFeatures.shaderInt16 = VK_TRUE;
+		else if (feature == "shaderInt64")
+			requestedFeatures.coreFeatures.shaderInt64 = VK_TRUE;
+		else
+			DE_ASSERT(0);  // Not implemented. Don't add to here. Just use VulkanFeatures
+	}
 }
 
 template <class T>
@@ -1481,7 +1497,33 @@ void SpvAsmTypeTests<T>::createStageTests (const char*			testName,
 	fragments["extension"]	= spirvExtensions;
 	fragments["capability"]	= spirvCapabilities;
 
-	createTestsForAllStages(testName, defaultColors, defaultColors, fragments, resources, noExtensions, features, this, requiredFeatures);
+	requiredFeaturesFromStrings(features, requiredFeatures);
+
+	createTestsForAllStages(testName, defaultColors, defaultColors, fragments, resources, noExtensions, this, requiredFeatures);
+}
+
+template <class T>
+std::string valueToStr(const T v)
+{
+	std::stringstream s;
+	s << v;
+	return s.str();
+}
+
+template <>
+std::string valueToStr<deUint8> (const deUint8 v)
+{
+	std::stringstream s;
+	s << (deUint16)v;
+	return s.str();
+}
+
+template <>
+std::string valueToStr<deInt8> ( const deInt8 v)
+{
+	std::stringstream s;
+	s << (deInt16)v;
+	return s.str();
 }
 
 template <class T>
@@ -1521,15 +1563,15 @@ bool SpvAsmTypeTests<T>::verifyResult (const vector<Resource>&		inputs,
 			inputStream << "(";
 			for (deUint32 ndxIndex = 0 ; ndxIndex < inputs.size(); ++ndxIndex)
 			{
-				inputStream << input[ndxIndex][ndxCount];
+				inputStream << valueToStr(input[ndxIndex][ndxCount]);
 				if (ndxIndex < inputs.size() - 1)
 					inputStream << ",";
 			}
 			inputStream << ")";
 			log << tcu::TestLog::Message
 				<< "Error: found unexpected result for inputs " << inputStream.str()
-				<< ": expected " << expected[ndxCount] << ", obtained "
-				<< obtained[ndxCount] << tcu::TestLog::EndMessage;
+				<< ": expected " << valueToStr(expected[ndxCount]) << ", obtained "
+				<< valueToStr(obtained[ndxCount]) << tcu::TestLog::EndMessage;
 			return false;
 		}
 	}
@@ -2087,7 +2129,9 @@ void SpvAsmTypeTests<T>::createSwitchTests (void)
 	fragments["extension"]	= spirvExtensions;
 	fragments["capability"]	= spirvCapabilities;
 
-	createTestsForAllStages("switch", defaultColors, defaultColors, fragments, resources, noExtensions, features, this, requiredFeatures);
+	requiredFeaturesFromStrings(features, requiredFeatures);
+
+	createTestsForAllStages("switch", defaultColors, defaultColors, fragments, resources, noExtensions, this, requiredFeatures);
 }
 
 template <class T>
@@ -2779,8 +2823,8 @@ public:
 		}
 		else
 		{
-			const T mask = static_cast<T>(~(T)0 << (sizeof(T) * 8 - (y)));
-			return static_cast<T>((x >> y) & (~mask));
+			const T	mask = de::leftZeroMask(y);
+			return static_cast<T>((x >> y) & mask);
 		}
 	}
 
@@ -2790,8 +2834,8 @@ public:
 
 		if ((x & bitmask) && y > 0)
 		{
-			const T	mask	= static_cast<T>(~(T)0 << (sizeof(T) * 8 - (y)));
-			const T	result	= static_cast<T>((x >> y) | (mask));
+			const T	mask	= de::leftSetMask(y);
+			const T	result	= static_cast<T>((x >> y) | mask);
 			return result;
 		}
 		else
@@ -2895,39 +2939,37 @@ public:
 
 	static inline T test_bitFieldInsert (T base, T insert, T offset, T count)
 	{
-		const T insertMask = static_cast<T>(~(~(static_cast<T>(0)) << count));
+		const T	insertMask	= de::rightSetMask(count);
 
 		return static_cast<T>((base & ~(insertMask << offset)) | ((insert & insertMask) << offset));
 	}
 
 	static inline T test_bitFieldSExtract (T x, T y, T z)
 	{
-		const T allZeros	= (static_cast<T>(0));
-		const T allOnes		= ~allZeros;
+		const T allZeros	= static_cast<T>(0);
 
 		// Count can be 0, in which case the result will be 0
 		if (z == allZeros)
 			return allZeros;
 
-		const T extractMask	= static_cast<T>((allOnes << z));
+		const T extractMask	= de::rightSetMask(z);
 		const T signBit		= static_cast<T>(x & (1 << (y + z - 1)));
-		const T signMask	= static_cast<T>(signBit ? allOnes : allZeros);
+		const T signMask	= static_cast<T>(signBit ? ~extractMask : allZeros);
 
-		return static_cast<T>((signMask & extractMask) | ((x >> y) & ~extractMask));
+		return static_cast<T>((signMask & ~extractMask) | ((x >> y) & extractMask));
 	}
 
 	static inline T test_bitFieldUExtract (T x, T y, T z)
 	{
 		const T allZeros	= (static_cast<T>(0));
-		const T allOnes		= ~allZeros;
 
 		// Count can be 0, in which case the result will be 0
 		if (z == allZeros)
 			return allZeros;
 
-		const T extractMask	= static_cast<T>((allOnes << z));
+		const T extractMask	= de::rightSetMask(z);
 
-		return static_cast<T>((x >> y) & ~extractMask);
+		return static_cast<T>((x >> y) & extractMask);
 	}
 
 	static inline T test_bitReverse (T x)

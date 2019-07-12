@@ -186,10 +186,8 @@ class VertexAttributeTest : public ANGLETest
         }
     }
 
-    void SetUp() override
+    void testSetUp() override
     {
-        ANGLETest::SetUp();
-
         glClearColor(0, 0, 0, 0);
         glClearDepthf(0.0);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -199,19 +197,17 @@ class VertexAttributeTest : public ANGLETest
         glGenBuffers(1, &mBuffer);
     }
 
-    void TearDown() override
+    void testTearDown() override
     {
         glDeleteProgram(mProgram);
         glDeleteBuffers(1, &mBuffer);
         glDeleteBuffers(1, &mQuadBuffer);
-
-        ANGLETest::TearDown();
     }
 
     // Override a feature to force emulation of attribute formats.
     void overrideFeaturesVk(FeaturesVk *featuresVk) override
     {
-        featuresVk->forceFallbackFormat = true;
+        featuresVk->overrideFeatures({"force_fallback_format"}, true);
     }
 
     GLuint compileMultiAttribProgram(GLint attribCount)
@@ -325,9 +321,6 @@ TEST_P(VertexAttributeTest, UnsignedByteUnnormalized)
 
 TEST_P(VertexAttributeTest, UnsignedByteNormalized)
 {
-    // TODO: Support this test on Vulkan.  http://anglebug.com/2797
-    ANGLE_SKIP_TEST_IF(IsAndroid() && IsVulkan());
-
     std::array<GLubyte, kVertexCount> inputData = {
         {0, 1, 2, 3, 4, 5, 6, 7, 125, 126, 127, 128, 129, 250, 251, 252, 253, 254, 255}};
     std::array<GLfloat, kVertexCount> expectedData;
@@ -357,9 +350,6 @@ TEST_P(VertexAttributeTest, ByteUnnormalized)
 
 TEST_P(VertexAttributeTest, ByteNormalized)
 {
-    // TODO: Support this test on Vulkan.  http://anglebug.com/2797
-    ANGLE_SKIP_TEST_IF(IsAndroid() && IsVulkan());
-
     std::array<GLbyte, kVertexCount> inputData = {
         {0, 1, 2, 3, 4, -1, -2, -3, -4, 125, 126, 127, -128, -127, -126}};
     std::array<GLfloat, kVertexCount> expectedData;
@@ -568,6 +558,10 @@ class VertexAttributeTestES3 : public VertexAttributeTest
 
 TEST_P(VertexAttributeTestES3, IntUnnormalized)
 {
+    // Conversion of int data isn't supported yet.
+    // anglebug.com/3193
+    ANGLE_SKIP_TEST_IF(IsVulkan());
+
     GLint lo                                  = std::numeric_limits<GLint>::min();
     GLint hi                                  = std::numeric_limits<GLint>::max();
     std::array<GLint, kVertexCount> inputData = {
@@ -584,6 +578,10 @@ TEST_P(VertexAttributeTestES3, IntUnnormalized)
 
 TEST_P(VertexAttributeTestES3, IntNormalized)
 {
+    // Conversion of int data isn't supported yet.
+    // anglebug.com/3193
+    ANGLE_SKIP_TEST_IF(IsVulkan());
+
     GLint lo                                  = std::numeric_limits<GLint>::min();
     GLint hi                                  = std::numeric_limits<GLint>::max();
     std::array<GLint, kVertexCount> inputData = {
@@ -600,6 +598,10 @@ TEST_P(VertexAttributeTestES3, IntNormalized)
 
 TEST_P(VertexAttributeTestES3, UnsignedIntUnnormalized)
 {
+    // Conversion of int data isn't supported yet.
+    // anglebug.com/3193
+    ANGLE_SKIP_TEST_IF(IsVulkan());
+
     GLuint mid                                 = std::numeric_limits<GLuint>::max() >> 1;
     GLuint hi                                  = std::numeric_limits<GLuint>::max();
     std::array<GLuint, kVertexCount> inputData = {
@@ -616,6 +618,10 @@ TEST_P(VertexAttributeTestES3, UnsignedIntUnnormalized)
 
 TEST_P(VertexAttributeTestES3, UnsignedIntNormalized)
 {
+    // Conversion of int data isn't supported yet.
+    // anglebug.com/3193
+    ANGLE_SKIP_TEST_IF(IsVulkan());
+
     GLuint mid                                 = std::numeric_limits<GLuint>::max() >> 1;
     GLuint hi                                  = std::numeric_limits<GLuint>::max();
     std::array<GLuint, kVertexCount> inputData = {
@@ -673,7 +679,7 @@ TEST_P(VertexAttributeTestES3, VertexArrayObjectRendering)
 
     const auto &quadVertices = GetQuadVertices();
 
-    glBindVertexArrayOES(vaos[0]);
+    glBindVertexArray(vaos[0]);
     glBindBuffer(GL_ARRAY_BUFFER, positionBuffer);
     glBufferData(GL_ARRAY_BUFFER, quadVertices.size() * sizeof(Vector3), quadVertices.data(),
                  GL_STATIC_DRAW);
@@ -681,7 +687,7 @@ TEST_P(VertexAttributeTestES3, VertexArrayObjectRendering)
     glVertexAttribPointer(positionLoc, 3, GL_FLOAT, GL_FALSE, 0, 0);
     SetupColorsForUnitQuad(colorLoc, kFloatRed, GL_STREAM_DRAW, &colorBuffers[0]);
 
-    glBindVertexArrayOES(vaos[1]);
+    glBindVertexArray(vaos[1]);
     glBindBuffer(GL_ARRAY_BUFFER, positionBuffer);
     glEnableVertexAttribArray(positionLoc);
     glVertexAttribPointer(positionLoc, 3, GL_FLOAT, GL_FALSE, 0, 0);
@@ -692,11 +698,11 @@ TEST_P(VertexAttributeTestES3, VertexArrayObjectRendering)
 
     for (int ii = 0; ii < 2; ++ii)
     {
-        glBindVertexArrayOES(vaos[0]);
+        glBindVertexArray(vaos[0]);
         glDrawArrays(GL_TRIANGLES, 0, 6);
         EXPECT_PIXEL_COLOR_EQ(0, 0, GLColor::red);
 
-        glBindVertexArrayOES(vaos[1]);
+        glBindVertexArray(vaos[1]);
         glDrawArrays(GL_TRIANGLES, 0, 6);
         EXPECT_PIXEL_COLOR_EQ(0, 0, GLColor::green);
     }
@@ -778,7 +784,7 @@ class VertexAttributeOORTest : public VertexAttributeTest
 TEST_P(VertexAttributeOORTest, ANGLEDrawArraysBufferTooSmall)
 {
     // Test skipped due to supporting GL_KHR_robust_buffer_access_behavior
-    ANGLE_SKIP_TEST_IF(extensionEnabled("GL_KHR_robust_buffer_access_behavior"));
+    ANGLE_SKIP_TEST_IF(IsGLExtensionEnabled("GL_KHR_robust_buffer_access_behavior"));
 
     std::array<GLfloat, kVertexCount> inputData;
     std::array<GLfloat, kVertexCount> expectedData;
@@ -797,7 +803,7 @@ TEST_P(VertexAttributeOORTest, ANGLEDrawArraysBufferTooSmall)
 TEST_P(VertexAttributeOORTest, ANGLEDrawElementsBufferTooSmall)
 {
     // Test skipped due to supporting GL_KHR_robust_buffer_access_behavior
-    ANGLE_SKIP_TEST_IF(extensionEnabled("GL_KHR_robust_buffer_access_behavior"));
+    ANGLE_SKIP_TEST_IF(IsGLExtensionEnabled("GL_KHR_robust_buffer_access_behavior"));
 
     std::array<GLfloat, kVertexCount> inputData;
     std::array<GLfloat, kVertexCount> expectedData;
@@ -816,7 +822,7 @@ TEST_P(VertexAttributeOORTest, ANGLEDrawElementsBufferTooSmall)
 TEST_P(VertexAttributeOORTest, ANGLEDrawArraysOutOfBoundsCases)
 {
     // Test skipped due to supporting GL_KHR_robust_buffer_access_behavior
-    ANGLE_SKIP_TEST_IF(extensionEnabled("GL_KHR_robust_buffer_access_behavior"));
+    ANGLE_SKIP_TEST_IF(IsGLExtensionEnabled("GL_KHR_robust_buffer_access_behavior"));
 
     initBasicProgram();
 
@@ -1047,9 +1053,9 @@ class VertexAttributeTestES31 : public VertexAttributeTestES3
         glEnableVertexAttribArray(mExpectedAttrib);
     }
 
-    void TearDown() override
+    void testTearDown() override
     {
-        VertexAttributeTestES3::TearDown();
+        VertexAttributeTestES3::testTearDown();
 
         glDeleteBuffers(1, &mExpectedBuffer);
         glDeleteVertexArrays(1, &mVAO);
@@ -1317,6 +1323,66 @@ void main() {
     }
 }
 
+TEST_P(VertexAttributeTestES31, UseComputeShaderToUpdateVertexBuffer)
+{
+    initTest();
+    constexpr char kComputeShader[] =
+        R"(#version 310 es
+layout(local_size_x=24) in;
+layout(std430, binding = 0) buffer buf {
+    uint outData[24];
+};
+void main()
+{
+    outData[gl_LocalInvocationIndex] = gl_LocalInvocationIndex;
+})";
+
+    ANGLE_GL_COMPUTE_PROGRAM(computeProgram, kComputeShader);
+    glUseProgram(mProgram);
+
+    GLuint mid                                 = std::numeric_limits<GLuint>::max() >> 1;
+    GLuint hi                                  = std::numeric_limits<GLuint>::max();
+    std::array<GLuint, kVertexCount> inputData = {
+        {0, 1, 2, 3, 254, 255, 256, mid - 1, mid, mid + 1, hi - 2, hi - 1, hi}};
+    std::array<GLfloat, kVertexCount> expectedData;
+    for (size_t i = 0; i < kVertexCount; i++)
+    {
+        expectedData[i] = Normalize(inputData[i]);
+    }
+
+    // Normalized unsigned int attribute will be classified as translated static attribute.
+    TestData data(GL_UNSIGNED_INT, GL_TRUE, Source::BUFFER, inputData.data(), expectedData.data());
+    GLint typeSize   = 4;
+    GLsizei dataSize = kVertexCount * TypeStride(data.type);
+    GLBuffer testBuffer;
+    glBindBuffer(GL_ARRAY_BUFFER, testBuffer);
+    glBufferData(GL_ARRAY_BUFFER, dataSize, data.inputData, GL_STATIC_DRAW);
+    glVertexAttribPointer(mTestAttrib, typeSize, data.type, data.normalized, 0,
+                          reinterpret_cast<void *>(data.bufferOffset));
+    glEnableVertexAttribArray(mTestAttrib);
+
+    glBindBuffer(GL_ARRAY_BUFFER, mExpectedBuffer);
+    glBufferData(GL_ARRAY_BUFFER, dataSize, data.expectedData, GL_STATIC_DRAW);
+    glVertexAttribPointer(mExpectedAttrib, typeSize, GL_FLOAT, GL_FALSE, 0, nullptr);
+
+    // Draw twice to make sure that all static attributes dirty bits are synced.
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    checkPixels();
+
+    // Modify the testBuffer using a raw buffer
+    glUseProgram(computeProgram);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, testBuffer);
+    glDispatchCompute(1, 1, 1);
+    glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+    // Draw again to verify that testBuffer has been changed.
+    glUseProgram(mProgram);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    EXPECT_GL_NO_ERROR();
+    checkPixelsUnEqual();
+}
+
 // Verify that using VertexAttribBinding after VertexAttribPointer won't mess up the draw.
 TEST_P(VertexAttributeTestES31, ChangeAttribBindingAfterVertexAttribPointer)
 {
@@ -1476,7 +1542,7 @@ class VertexAttributeCachingTest : public VertexAttributeTest
   protected:
     VertexAttributeCachingTest() {}
 
-    void SetUp() override;
+    void testSetUp() override;
 
     template <typename DestT>
     static std::vector<GLfloat> GetExpectedData(const std::vector<GLubyte> &srcData,
@@ -1571,9 +1637,9 @@ std::vector<GLfloat> VertexAttributeCachingTest::GetExpectedData(
     return expectedData;
 }
 
-void VertexAttributeCachingTest::SetUp()
+void VertexAttributeCachingTest::testSetUp()
 {
-    VertexAttributeTest::SetUp();
+    VertexAttributeTest::testSetUp();
 
     glBindBuffer(GL_ARRAY_BUFFER, mBuffer);
 
@@ -1646,6 +1712,9 @@ void VertexAttributeCachingTest::SetUp()
 TEST_P(VertexAttributeCachingTest, BufferMulticaching)
 {
     ANGLE_SKIP_TEST_IF(IsAMD() && IsDesktopOpenGL());
+    // Conversion of int data isn't supported yet.
+    // anglebug.com/3193
+    ANGLE_SKIP_TEST_IF(IsVulkan());
 
     initBasicProgram();
 
@@ -1680,6 +1749,9 @@ TEST_P(VertexAttributeCachingTest, BufferMulticaching)
 TEST_P(VertexAttributeCachingTest, BufferMulticachingWithOneUnchangedAttrib)
 {
     ANGLE_SKIP_TEST_IF(IsAMD() && IsDesktopOpenGL());
+    // Conversion of int data isn't supported yet.
+    // anglebug.com/3193
+    ANGLE_SKIP_TEST_IF(IsVulkan());
 
     initDoubleAttribProgram();
 
@@ -1982,21 +2054,26 @@ void main()
 ANGLE_INSTANTIATE_TEST(VertexAttributeTest,
                        ES2_D3D9(),
                        ES2_D3D11(),
-                       ES2_D3D11_FL9_3(),
                        ES2_OPENGL(),
                        ES3_OPENGL(),
                        ES2_OPENGLES(),
                        ES3_OPENGLES(),
-                       ES2_VULKAN());
+                       ES2_VULKAN(),
+                       ES3_VULKAN());
 
 ANGLE_INSTANTIATE_TEST(VertexAttributeOORTest,
                        ES2_D3D9(),
                        ES2_D3D11(),
                        ES2_OPENGL(),
                        ES2_OPENGLES(),
-                       ES2_VULKAN());
+                       ES2_VULKAN(),
+                       ES3_VULKAN());
 
-ANGLE_INSTANTIATE_TEST(VertexAttributeTestES3, ES3_D3D11(), ES3_OPENGL(), ES3_OPENGLES());
+ANGLE_INSTANTIATE_TEST(VertexAttributeTestES3,
+                       ES3_D3D11(),
+                       ES3_OPENGL(),
+                       ES3_OPENGLES(),
+                       ES3_VULKAN());
 
 ANGLE_INSTANTIATE_TEST(VertexAttributeTestES31, ES31_D3D11(), ES31_OPENGL(), ES31_OPENGLES());
 
@@ -2004,6 +2081,7 @@ ANGLE_INSTANTIATE_TEST(VertexAttributeCachingTest,
                        ES2_D3D9(),
                        ES2_D3D11(),
                        ES3_D3D11(),
-                       ES3_OPENGL());
+                       ES3_OPENGL(),
+                       ES3_VULKAN());
 
 }  // anonymous namespace

@@ -83,7 +83,10 @@ namespace memory
 namespace
 {
 
-#define ONE_MEGABYTE 1024*1024
+#define ONE_MEGABYTE						1024*1024
+#define DEFAULT_VERTEX_BUFFER_STRIDE		2
+#define ALTERNATIVE_VERTEX_BUFFER_STRIDE	4
+
 enum
 {
 	MAX_UNIFORM_BUFFER_SIZE = 1024,
@@ -181,6 +184,34 @@ enum Access
 	ACCESS_LAST
 };
 
+Access accessFlagToAccess (vk::VkAccessFlagBits flag)
+{
+	switch (flag)
+	{
+	case vk::VK_ACCESS_INDIRECT_COMMAND_READ_BIT:			return ACCESS_INDIRECT_COMMAND_READ_BIT;
+	case vk::VK_ACCESS_INDEX_READ_BIT:						return ACCESS_INDEX_READ_BIT;
+	case vk::VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT:			return ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
+	case vk::VK_ACCESS_UNIFORM_READ_BIT:					return ACCESS_UNIFORM_READ_BIT;
+	case vk::VK_ACCESS_INPUT_ATTACHMENT_READ_BIT:			return ACCESS_INPUT_ATTACHMENT_READ_BIT;
+	case vk::VK_ACCESS_SHADER_READ_BIT:						return ACCESS_SHADER_READ_BIT;
+	case vk::VK_ACCESS_SHADER_WRITE_BIT:					return ACCESS_SHADER_WRITE_BIT;
+	case vk::VK_ACCESS_COLOR_ATTACHMENT_READ_BIT:			return ACCESS_COLOR_ATTACHMENT_READ_BIT;
+	case vk::VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT:			return ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	case vk::VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT:	return ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+	case vk::VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT:	return ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+	case vk::VK_ACCESS_TRANSFER_READ_BIT:					return ACCESS_TRANSFER_READ_BIT;
+	case vk::VK_ACCESS_TRANSFER_WRITE_BIT:					return ACCESS_TRANSFER_WRITE_BIT;
+	case vk::VK_ACCESS_HOST_READ_BIT:						return ACCESS_HOST_READ_BIT;
+	case vk::VK_ACCESS_HOST_WRITE_BIT:						return ACCESS_HOST_WRITE_BIT;
+	case vk::VK_ACCESS_MEMORY_READ_BIT:						return ACCESS_MEMORY_READ_BIT;
+	case vk::VK_ACCESS_MEMORY_WRITE_BIT:					return ACCESS_MEMORY_WRITE_BIT;
+
+	default:
+		DE_FATAL("Unknown access flags");
+		return ACCESS_LAST;
+	}
+}
+
 // Sequential stage enums
 enum PipelineStage
 {
@@ -203,9 +234,9 @@ enum PipelineStage
 	PIPELINESTAGE_LAST
 };
 
-PipelineStage pipelineStageFlagToPipelineStage (vk::VkPipelineStageFlagBits flags)
+PipelineStage pipelineStageFlagToPipelineStage (vk::VkPipelineStageFlagBits flag)
 {
-	switch (flags)
+	switch (flag)
 	{
 		case vk::VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT:						return PIPELINESTAGE_TOP_OF_PIPE_BIT;
 		case vk::VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT:					return PIPELINESTAGE_BOTTOM_OF_PIPE_BIT;
@@ -444,6 +475,7 @@ vk::VkAccessFlags usageToAccessFlags (Usage usage)
 struct TestConfig
 {
 	Usage				usage;
+	deUint32			vertexBufferStride;
 	vk::VkDeviceSize	size;
 	vk::VkSharingMode	sharing;
 };
@@ -4764,10 +4796,13 @@ void RenderIndexBuffer::verify (VerifyRenderPassContext& context, size_t)
 class RenderVertexBuffer : public RenderPassCommand
 {
 public:
-				RenderVertexBuffer	(void) {}
+				RenderVertexBuffer	(deUint32 stride)
+					: m_stride(stride)
+					, m_name("RenderVertexBuffer" + de::toString(stride))
+					{}
 				~RenderVertexBuffer	(void) {}
 
-	const char*	getName				(void) const { return "RenderVertexBuffer"; }
+	const char*	getName				(void) const { return m_name.c_str(); }
 	void		logPrepare			(TestLog&, size_t) const;
 	void		logSubmit			(TestLog&, size_t) const;
 	void		prepare				(PrepareRenderPassContext&);
@@ -4775,6 +4810,8 @@ public:
 	void		verify				(VerifyRenderPassContext&, size_t);
 
 private:
+	const deUint32		m_stride;
+	const std::string	m_name;
 	PipelineResources	m_resources;
 	vk::VkDeviceSize	m_bufferSize;
 };
@@ -4805,7 +4842,7 @@ void RenderVertexBuffer::prepare (PrepareRenderPassContext& context)
 		const vk::VkVertexInputBindingDescription vertexBindingDescription =
 			{
 				0,
-				2,
+				m_stride,
 				vk::VK_VERTEX_INPUT_RATE_VERTEX
 			};
 
@@ -4837,15 +4874,15 @@ void RenderVertexBuffer::submit (SubmitContext& context)
 
 	vkd.cmdBindPipeline(commandBuffer, vk::VK_PIPELINE_BIND_POINT_GRAPHICS, *m_resources.pipeline);
 	vkd.cmdBindVertexBuffers(commandBuffer, 0, 1, &buffer, &offset);
-	vkd.cmdDraw(commandBuffer, (deUint32)(context.getBufferSize() / 2), 1, 0, 0);
+	vkd.cmdDraw(commandBuffer, (deUint32)(context.getBufferSize() / m_stride), 1, 0, 0);
 }
 
 void RenderVertexBuffer::verify (VerifyRenderPassContext& context, size_t)
 {
-	for (size_t pos = 0; pos < (size_t)m_bufferSize / 2; pos++)
+	for (size_t pos = 0; pos < (size_t)m_bufferSize / m_stride; pos++)
 	{
-		const deUint8 x  = context.getReference().get(pos * 2);
-		const deUint8 y  = context.getReference().get((pos * 2) + 1);
+		const deUint8 x  = context.getReference().get(pos * m_stride);
+		const deUint8 y  = context.getReference().get((pos * m_stride) + 1);
 
 		context.getReferenceTarget().getAccess().setPixel(Vec4(1.0f, 1.0f, 1.0f, 1.0f), x, y);
 	}
@@ -7346,9 +7383,9 @@ private:
 	const vk::VkPipelineStageFlags	m_allowedStages;
 	const vk::VkAccessFlags			m_allowedAccesses;
 
-	// [dstStage][srcStage] = srcAccesses
-	// In stage dstStage write srcAccesses from srcStage are not yet available
-	vk::VkAccessFlags				m_unavailableWriteOperations[PIPELINESTAGE_LAST][PIPELINESTAGE_LAST];
+	// [dstStage][srcStage][dstAccess] = srcAccesses
+	// In stage dstStage write srcAccesses from srcStage are not yet available for dstAccess
+	vk::VkAccessFlags				m_unavailableWriteOperations[PIPELINESTAGE_LAST][PIPELINESTAGE_LAST][ACCESS_LAST];
 	// Latest pipeline transition is not available in stage
 	bool							m_unavailableLayoutTransition[PIPELINESTAGE_LAST];
 	// [dstStage] = dstAccesses
@@ -7389,7 +7426,15 @@ CacheState::CacheState (vk::VkPipelineStageFlags allowedStages, vk::VkAccessFlag
 
 			// There are no write operations that are not yet available
 			// initially.
-			m_unavailableWriteOperations[dstStage][srcStage] = 0;
+			for (vk::VkAccessFlags dstAccess_ = 1; dstAccess_ <= m_allowedAccesses; dstAccess_ <<= 1)
+			{
+				const Access dstAccess = accessFlagToAccess((vk::VkAccessFlagBits)dstAccess_);
+
+				if ((dstAccess_ & m_allowedAccesses) == 0)
+					continue;
+
+				m_unavailableWriteOperations[dstStage][srcStage][dstAccess] = 0;
+			}
 		}
 	}
 }
@@ -7440,8 +7485,16 @@ void CacheState::perform (vk::VkPipelineStageFlagBits	stage,
 			// Mark all accesses from all stages invisible
 			m_invisibleOperations[dstStage] |= m_allowedAccesses;
 
-			// Mark write access from srcStage unavailable to all stages
-			m_unavailableWriteOperations[dstStage][srcStage] |= access;
+			// Mark write access from srcStage unavailable to all stages for all accesses
+			for (vk::VkAccessFlags dstAccess_ = 1; dstAccess_ <= m_allowedAccesses; dstAccess_ <<= 1)
+			{
+				const Access dstAccess = accessFlagToAccess((vk::VkAccessFlagBits)dstAccess_);
+
+				if ((dstAccess_ & m_allowedAccesses) == 0)
+					continue;
+
+				m_unavailableWriteOperations[dstStage][srcStage][dstAccess] |= access;
+			}
 		}
 	}
 }
@@ -7501,7 +7554,7 @@ void CacheState::getFullBarrier (vk::VkPipelineStageFlags&	srcStages,
 			dstAccesses |= m_invisibleOperations[dstStage];
 		}
 
-		// Make sure all write operations fro mall stages are available
+		// Make sure all write operations from all stages are available
 		for (vk::VkPipelineStageFlags srcStage_ = 1; srcStage_ <= m_allowedStages; srcStage_ <<= 1)
 		{
 			const PipelineStage srcStage = pipelineStageFlagToPipelineStage((vk::VkPipelineStageFlagBits)srcStage_);
@@ -7509,11 +7562,19 @@ void CacheState::getFullBarrier (vk::VkPipelineStageFlags&	srcStages,
 			if ((srcStage_ & m_allowedStages) == 0)
 				continue;
 
-			if (m_unavailableWriteOperations[dstStage][srcStage])
+			for (vk::VkAccessFlags dstAccess_ = 1; dstAccess_ <= m_allowedAccesses; dstAccess_ <<= 1)
 			{
-				dstStages |= dstStage_;
-				srcStages |= dstStage_;
-				srcAccesses |= m_unavailableWriteOperations[dstStage][srcStage];
+				const Access dstAccess = accessFlagToAccess((vk::VkAccessFlagBits)dstAccess_);
+
+				if ((dstAccess_ & m_allowedAccesses) == 0)
+					continue;
+
+				if (m_unavailableWriteOperations[dstStage][srcStage][dstAccess])
+				{
+					dstStages |= dstStage_;
+					srcStages |= dstStage_;
+					srcAccesses |= m_unavailableWriteOperations[dstStage][srcStage][dstAccess];
+				}
 			}
 
 			if (m_unavailableLayoutTransition[dstStage] && !m_unavailableLayoutTransition[srcStage])
@@ -7533,9 +7594,9 @@ void CacheState::getFullBarrier (vk::VkPipelineStageFlags&	srcStages,
 }
 
 void CacheState::checkImageLayoutBarrier (vk::VkPipelineStageFlags	srcStages,
-										 vk::VkAccessFlags			srcAccesses,
-										 vk::VkPipelineStageFlags	dstStages,
-										 vk::VkAccessFlags			dstAccesses)
+										  vk::VkAccessFlags			srcAccesses,
+										  vk::VkPipelineStageFlags	dstStages,
+										  vk::VkAccessFlags			dstAccesses)
 {
 	DE_ASSERT((srcStages & (~m_allowedStages)) == 0);
 	DE_ASSERT((srcAccesses & (~m_allowedAccesses)) == 0);
@@ -7585,10 +7646,18 @@ void CacheState::checkImageLayoutBarrier (vk::VkPipelineStageFlags	srcStages,
 				if ((srcStage_ & m_allowedStages) == 0)
 					continue;
 
-				if (m_unavailableWriteOperations[dstStage][srcStage] != (getWriteAccessFlags() & m_allowedAccesses))
+				for (vk::VkAccessFlags dstAccess_ = 1; dstAccess_ <= m_allowedAccesses; dstAccess_ <<= 1)
 				{
-					anyWriteAvailable = true;
-					break;
+					const Access dstAccess = accessFlagToAccess((vk::VkAccessFlagBits)dstAccess_);
+
+					if ((dstAccess_ & m_allowedAccesses) == 0)
+						continue;
+
+					if (m_unavailableWriteOperations[dstStage][srcStage][dstAccess] != (getWriteAccessFlags() & m_allowedAccesses))
+					{
+						anyWriteAvailable = true;
+						break;
+					}
 				}
 			}
 		}
@@ -7629,7 +7698,15 @@ void CacheState::imageLayoutBarrier (vk::VkPipelineStageFlags	srcStages,
 				continue;
 
 			// All write operations are available after layout transition
-			m_unavailableWriteOperations[dstStage][srcStage] = 0;
+			for (vk::VkAccessFlags dstAccess_ = 1; dstAccess_ <= m_allowedAccesses; dstAccess_ <<= 1)
+			{
+				const Access dstAccess = accessFlagToAccess((vk::VkAccessFlagBits)dstAccess_);
+
+				if ((dstAccess_ & m_allowedAccesses) == 0)
+					continue;
+
+				m_unavailableWriteOperations[dstStage][srcStage][dstAccess] = 0;
+			}
 		}
 	}
 }
@@ -7647,7 +7724,7 @@ void CacheState::barrier (vk::VkPipelineStageFlags	srcStages,
 	// Transitivity
 	{
 		vk::VkPipelineStageFlags		oldIncompleteOperations[PIPELINESTAGE_LAST];
-		vk::VkAccessFlags				oldUnavailableWriteOperations[PIPELINESTAGE_LAST][PIPELINESTAGE_LAST];
+		vk::VkAccessFlags				oldUnavailableWriteOperations[PIPELINESTAGE_LAST][PIPELINESTAGE_LAST][ACCESS_LAST];
 		bool							oldUnavailableLayoutTransition[PIPELINESTAGE_LAST];
 
 		deMemcpy(oldIncompleteOperations, m_incompleteOperations, sizeof(oldIncompleteOperations));
@@ -7682,7 +7759,15 @@ void CacheState::barrier (vk::VkPipelineStageFlags	srcStages,
 						continue;
 
 					// Writes that are available in srcStage are also available in dstStage
-					m_unavailableWriteOperations[dstStage][sharedStage] &= oldUnavailableWriteOperations[srcStage][sharedStage];
+					for (vk::VkAccessFlags sharedAccess_ = 1; sharedAccess_ <= m_allowedAccesses; sharedAccess_ <<= 1)
+					{
+						const Access sharedAccess = accessFlagToAccess((vk::VkAccessFlagBits)sharedAccess_);
+
+						if ((sharedAccess_ & m_allowedAccesses) == 0)
+							continue;
+
+						m_unavailableWriteOperations[dstStage][sharedStage][sharedAccess] &= oldUnavailableWriteOperations[srcStage][sharedStage][sharedAccess];
+					}
 				}
 			}
 		}
@@ -7707,12 +7792,20 @@ void CacheState::barrier (vk::VkPipelineStageFlags	srcStages,
 			if ((srcStage_ & m_allowedStages) == 0)
 				continue;
 
-			// Make srcAccesses from srcStage available in dstStage
-			if ((srcStage_ & srcStages) != 0)
-				m_unavailableWriteOperations[dstStage][srcStage] &= ~srcAccesses;
+			// Make srcAccesses from srcStage available in dstStage for dstAccess
+			for (vk::VkAccessFlags dstAccess_ = 1; dstAccess_ <= m_allowedAccesses; dstAccess_ <<= 1)
+			{
+				const Access dstAccess = accessFlagToAccess((vk::VkAccessFlagBits)dstAccess_);
 
-			if (m_unavailableWriteOperations[dstStage][srcStage] != 0)
-				allWritesAvailable = false;
+				if ((dstAccess_ & m_allowedAccesses) == 0)
+					continue;
+
+				if (((srcStage_ & srcStages) != 0) && ((dstAccess_ & dstAccesses) != 0))
+					m_unavailableWriteOperations[dstStage][srcStage][dstAccess] &= ~srcAccesses;
+
+				if (m_unavailableWriteOperations[dstStage][srcStage][dstAccess] != 0)
+					allWritesAvailable = false;
+			}
 		}
 
 		// If all writes are available in dstStage make dstAccesses also visible
@@ -7749,9 +7842,17 @@ bool CacheState::isClean (void) const
 			if ((srcStage_ & m_allowedStages) == 0)
 				continue;
 
-			// Some write operations are not available yet
-			if (m_unavailableWriteOperations[dstStage][srcStage] != 0)
-				return false;
+			for (vk::VkAccessFlags dstAccess_ = 1; dstAccess_ <= m_allowedAccesses; dstAccess_ <<= 1)
+			{
+				const Access dstAccess = accessFlagToAccess((vk::VkAccessFlagBits)dstAccess_);
+
+				if ((dstAccess_ & m_allowedAccesses) == 0)
+					continue;
+
+				// Some write operations are not available yet
+				if (m_unavailableWriteOperations[dstStage][srcStage][dstAccess] != 0)
+					return false;
+			}
 		}
 	}
 
@@ -8020,7 +8121,7 @@ void getAvailableOps (const State& state, bool supportsBuffers, bool supportsIma
 		{
 			ops.push_back(OP_PIPELINE_BARRIER_GLOBAL);
 
-			if (state.hasImage)
+			if (state.hasImage && (state.imageLayout != vk::VK_IMAGE_LAYOUT_UNDEFINED))
 				ops.push_back(OP_PIPELINE_BARRIER_IMAGE);
 
 			if (state.hasBuffer)
@@ -8123,7 +8224,7 @@ void getAvailableOps (const State& state, bool supportsBuffers, bool supportsIma
 		{
 			ops.push_back(OP_PIPELINE_BARRIER_GLOBAL);
 
-			if (state.hasImage)
+			if (state.hasImage && (state.imageLayout != vk::VK_IMAGE_LAYOUT_UNDEFINED))
 				ops.push_back(OP_PIPELINE_BARRIER_IMAGE);
 
 			if (state.hasBuffer)
@@ -8905,11 +9006,12 @@ de::MovePtr<CmdCommand> createCmdCommand (de::Random&	rng,
 
 de::MovePtr<RenderPassCommand> createRenderPassCommand (de::Random&,
 														const State&,
-														Op				op)
+														const TestConfig&	testConfig,
+														Op					op)
 {
 	switch (op)
 	{
-		case OP_RENDER_VERTEX_BUFFER:					return de::MovePtr<RenderPassCommand>(new RenderVertexBuffer());
+		case OP_RENDER_VERTEX_BUFFER:					return de::MovePtr<RenderPassCommand>(new RenderVertexBuffer(testConfig.vertexBufferStride));
 		case OP_RENDER_INDEX_BUFFER:					return de::MovePtr<RenderPassCommand>(new RenderIndexBuffer());
 
 		case OP_RENDER_VERTEX_UNIFORM_BUFFER:			return de::MovePtr<RenderPassCommand>(new RenderVertexUniformBuffer());
@@ -8936,12 +9038,12 @@ de::MovePtr<RenderPassCommand> createRenderPassCommand (de::Random&,
 	}
 }
 
-de::MovePtr<CmdCommand> createRenderPassCommands (const Memory&	memory,
-												  de::Random&	nextOpRng,
-												  State&		state,
-												  Usage			usage,
-												  size_t&		opNdx,
-												  size_t		opCount)
+de::MovePtr<CmdCommand> createRenderPassCommands (const Memory&		memory,
+												  de::Random&		nextOpRng,
+												  State&			state,
+												  const TestConfig&	testConfig,
+												  size_t&			opNdx,
+												  size_t			opCount)
 {
 	vector<RenderPassCommand*>	commands;
 
@@ -8951,7 +9053,7 @@ de::MovePtr<CmdCommand> createRenderPassCommands (const Memory&	memory,
 		{
 			vector<Op>	ops;
 
-			getAvailableOps(state, memory.getSupportBuffers(), memory.getSupportImages(), usage, ops);
+			getAvailableOps(state, memory.getSupportBuffers(), memory.getSupportImages(), testConfig.usage, ops);
 
 			DE_ASSERT(!ops.empty());
 
@@ -8966,15 +9068,15 @@ de::MovePtr<CmdCommand> createRenderPassCommands (const Memory&	memory,
 				{
 					de::Random	rng	(state.rng);
 
-					commands.push_back(createRenderPassCommand(rng, state, op).release());
-					applyOp(state, memory, op, usage);
+					commands.push_back(createRenderPassCommand(rng, state, testConfig, op).release());
+					applyOp(state, memory, op, testConfig.usage);
 
 					DE_ASSERT(state.rng == rng);
 				}
 			}
 		}
 
-		applyOp(state, memory, OP_RENDERPASS_END, usage);
+		applyOp(state, memory, OP_RENDERPASS_END, testConfig.usage);
 		return de::MovePtr<CmdCommand>(new SubmitRenderPass(commands));
 	}
 	catch (...)
@@ -9036,12 +9138,12 @@ de::MovePtr<CmdCommand> createSecondaryCmdCommands (const Memory&	memory,
 	}
 }
 
-de::MovePtr<Command> createCmdCommands (const Memory&	memory,
-										de::Random&		nextOpRng,
-										State&			state,
-										Usage			usage,
-										size_t&			opNdx,
-										size_t			opCount)
+de::MovePtr<Command> createCmdCommands (const Memory&		memory,
+										de::Random&			nextOpRng,
+										State&				state,
+										const TestConfig&	testConfig,
+										size_t&				opNdx,
+										size_t				opCount)
 {
 	vector<CmdCommand*>	commands;
 
@@ -9059,7 +9161,7 @@ de::MovePtr<Command> createCmdCommands (const Memory&	memory,
 		{
 			vector<Op>	ops;
 
-			getAvailableOps(state, memory.getSupportBuffers(), memory.getSupportImages(), usage, ops);
+			getAvailableOps(state, memory.getSupportBuffers(), memory.getSupportImages(), testConfig.usage, ops);
 
 			DE_ASSERT(!ops.empty());
 
@@ -9075,20 +9177,20 @@ de::MovePtr<Command> createCmdCommands (const Memory&	memory,
 					// \note Command needs to known the state before the operation
 					if (op == OP_RENDERPASS_BEGIN)
 					{
-						applyOp(state, memory, op, usage);
-						commands.push_back(createRenderPassCommands(memory, nextOpRng, state, usage, opNdx, opCount).release());
+						applyOp(state, memory, op, testConfig.usage);
+						commands.push_back(createRenderPassCommands(memory, nextOpRng, state, testConfig, opNdx, opCount).release());
 					}
 					else if (op == OP_SECONDARY_COMMAND_BUFFER_BEGIN)
 					{
-						applyOp(state, memory, op, usage);
-						commands.push_back(createSecondaryCmdCommands(memory, nextOpRng, state, usage, opNdx, opCount).release());
+						applyOp(state, memory, op, testConfig.usage);
+						commands.push_back(createSecondaryCmdCommands(memory, nextOpRng, state, testConfig.usage, opNdx, opCount).release());
 					}
 					else
 					{
 						de::Random	rng	(state.rng);
 
-						commands.push_back(createCmdCommand(rng, state, op, usage).release());
-						applyOp(state, memory, op, usage);
+						commands.push_back(createCmdCommand(rng, state, op, testConfig.usage).release());
+						applyOp(state, memory, op, testConfig.usage);
 
 						DE_ASSERT(state.rng == rng);
 					}
@@ -9097,7 +9199,7 @@ de::MovePtr<Command> createCmdCommands (const Memory&	memory,
 			}
 		}
 
-		applyOp(state, memory, OP_COMMAND_BUFFER_END, usage);
+		applyOp(state, memory, OP_COMMAND_BUFFER_END, testConfig.usage);
 		return de::MovePtr<Command>(new SubmitCommandBuffer(commands));
 	}
 	catch (...)
@@ -9112,11 +9214,10 @@ de::MovePtr<Command> createCmdCommands (const Memory&	memory,
 void createCommands (vector<Command*>&	commands,
 					 deUint32			seed,
 					 const Memory&		memory,
-					 Usage				usage,
-					 vk::VkSharingMode	sharingMode,
+					 const TestConfig&	testConfig,
 					 size_t				opCount)
 {
-	State			state		(usage, seed);
+	State			state		(testConfig.usage, seed);
 	// Used to select next operation only
 	de::Random		nextOpRng	(seed ^ 12930809);
 
@@ -9126,7 +9227,7 @@ void createCommands (vector<Command*>&	commands,
 	{
 		vector<Op>	ops;
 
-		getAvailableOps(state, memory.getSupportBuffers(), memory.getSupportImages(), usage, ops);
+		getAvailableOps(state, memory.getSupportBuffers(), memory.getSupportImages(), testConfig.usage, ops);
 
 		DE_ASSERT(!ops.empty());
 
@@ -9135,15 +9236,15 @@ void createCommands (vector<Command*>&	commands,
 
 			if (op == OP_COMMAND_BUFFER_BEGIN)
 			{
-				applyOp(state, memory, op, usage);
-				commands.push_back(createCmdCommands(memory, nextOpRng, state, usage, opNdx, opCount).release());
+				applyOp(state, memory, op, testConfig.usage);
+				commands.push_back(createCmdCommands(memory, nextOpRng, state, testConfig, opNdx, opCount).release());
 			}
 			else
 			{
 				de::Random	rng	(state.rng);
 
-				commands.push_back(createHostCommand(op, rng, usage, sharingMode).release());
-				applyOp(state, memory, op, usage);
+				commands.push_back(createHostCommand(op, rng, testConfig.usage, testConfig.sharing).release());
+				applyOp(state, memory, op, testConfig.usage);
 
 				// Make sure that random generator is in sync
 				DE_ASSERT(state.rng == rng);
@@ -9370,7 +9471,7 @@ bool MemoryTestInstance::createCommandsAndAllocateMemory (void)
 				m_memory	= MovePtr<Memory>(new Memory(vki, vkd, physicalDevice, device, m_config.size, m_memoryTypeNdx, maxBufferSize, maxImageSize[0], maxImageSize[1]));
 
 				log << TestLog::Message << "Create commands" << TestLog::EndMessage;
-				createCommands(m_commands, seed, *m_memory, m_config.usage, m_config.sharing, m_opCount);
+				createCommands(m_commands, seed, *m_memory, m_config, m_opCount);
 
 				m_stage = &MemoryTestInstance::prepare;
 				return true;
@@ -9388,7 +9489,7 @@ bool MemoryTestInstance::prepare (void)
 {
 	TestLog&					log		= m_context.getTestContext().getLog();
 	const tcu::ScopedLogSection	section	(log, "MemoryType" + de::toString(m_memoryTypeNdx) + "Prepare" + de::toString(m_iteration),
-											  "Memory type " + de::toString(m_memoryTypeNdx) + " prepare iteration" + de::toString(m_iteration));
+											  "Memory type " + de::toString(m_memoryTypeNdx) + " prepare iteration " + de::toString(m_iteration));
 
 	m_prepareContext = MovePtr<PrepareContext>(new PrepareContext(*m_renderContext, *m_memory));
 
@@ -9683,7 +9784,7 @@ struct AddPrograms
 					"#version 310 es\n"
 					"#extension GL_EXT_texture_buffer : require\n"
 					"precision highp float;\n"
-					"layout(set=0, binding=0) uniform highp usamplerBuffer u_sampler;\n"
+					"layout(set=0, binding=0) uniform highp utextureBuffer u_sampler;\n"
 					"void main (void) {\n"
 					"\tgl_PointSize = 1.0;\n"
 					"\thighp uint val = texelFetch(u_sampler, gl_VertexIndex).x;\n"
@@ -9700,9 +9801,10 @@ struct AddPrograms
 				const char* const fragmentShader =
 					"#version 310 es\n"
 					"#extension GL_EXT_texture_buffer : require\n"
+					"#extension GL_EXT_samplerless_texture_functions : require\n"
 					"precision highp float;\n"
 					"precision highp int;\n"
-					"layout(set=0, binding=0) uniform highp usamplerBuffer u_sampler;\n"
+					"layout(set=0, binding=0) uniform highp utextureBuffer u_sampler;\n"
 					"layout(location = 0) out highp vec4 o_color;\n"
 					"layout(push_constant) uniform PushC\n"
 					"{\n"
@@ -9968,6 +10070,12 @@ tcu::TestCaseGroup* createPipelineBarrierTests (tcu::TestContext& testCtx)
 		USAGE_TRANSFER_DST
 	};
 
+	const deUint32					vertexStrides[]	=
+	{
+		DEFAULT_VERTEX_BUFFER_STRIDE,
+		ALTERNATIVE_VERTEX_BUFFER_STRIDE,
+	};
+
 	for (size_t writeUsageNdx = 0; writeUsageNdx < DE_LENGTH_OF_ARRAY(writeUsages); writeUsageNdx++)
 	{
 		const Usage	writeUsage	= writeUsages[writeUsageNdx];
@@ -9982,15 +10090,30 @@ tcu::TestCaseGroup* createPipelineBarrierTests (tcu::TestContext& testCtx)
 			for (size_t sizeNdx = 0; sizeNdx < DE_LENGTH_OF_ARRAY(sizes); sizeNdx++)
 			{
 				const vk::VkDeviceSize	size		= sizes[sizeNdx];
-				const string			testName	(de::toString((deUint64)(size)));
-				const TestConfig		config		=
+				TestConfig				config		=
 				{
 					usage,
+					DEFAULT_VERTEX_BUFFER_STRIDE,
 					size,
 					vk::VK_SHARING_MODE_EXCLUSIVE
 				};
+				const string			testName	(de::toString((deUint64)(size)));
 
-				usageGroup->addChild(new InstanceFactory1<MemoryTestInstance, TestConfig, AddPrograms>(testCtx,tcu::NODETYPE_SELF_VALIDATE,  testName, testName, AddPrograms(), config));
+				if (readUsage == USAGE_VERTEX_BUFFER)
+				{
+					for (size_t strideNdx = 0; strideNdx < DE_LENGTH_OF_ARRAY(vertexStrides); ++strideNdx)
+					{
+						const deUint32	stride			= vertexStrides[strideNdx];
+						const string	finalTestName	= testName + "_vertex_buffer_stride_" + de::toString(stride);
+
+						config.vertexBufferStride = stride;
+						usageGroup->addChild(new InstanceFactory1<MemoryTestInstance, TestConfig, AddPrograms>(testCtx,tcu::NODETYPE_SELF_VALIDATE,  finalTestName, finalTestName, AddPrograms(), config));
+					}
+				}
+				else
+				{
+					usageGroup->addChild(new InstanceFactory1<MemoryTestInstance, TestConfig, AddPrograms>(testCtx,tcu::NODETYPE_SELF_VALIDATE,  testName, testName, AddPrograms(), config));
+				}
 			}
 
 			group->addChild(usageGroup.get());
@@ -10011,15 +10134,21 @@ tcu::TestCaseGroup* createPipelineBarrierTests (tcu::TestContext& testCtx)
 			for (size_t sizeNdx = 0; sizeNdx < DE_LENGTH_OF_ARRAY(sizes); sizeNdx++)
 			{
 				const vk::VkDeviceSize	size		= sizes[sizeNdx];
-				const string			testName	(de::toString((deUint64)(size)));
-				const TestConfig		config		=
-				{
-					all,
-					size,
-					vk::VK_SHARING_MODE_EXCLUSIVE
-				};
 
-				usageGroup->addChild(new InstanceFactory1<MemoryTestInstance, TestConfig, AddPrograms>(testCtx,tcu::NODETYPE_SELF_VALIDATE,  testName, testName, AddPrograms(), config));
+				for (size_t strideNdx = 0; strideNdx < DE_LENGTH_OF_ARRAY(vertexStrides); ++strideNdx)
+				{
+					const deUint32			stride		= vertexStrides[strideNdx];
+					const string			testName	= de::toString(size) + "_vertex_buffer_stride_" + de::toString(stride);
+					const TestConfig		config		=
+					{
+						all,
+						stride,
+						size,
+						vk::VK_SHARING_MODE_EXCLUSIVE
+					};
+
+					usageGroup->addChild(new InstanceFactory1<MemoryTestInstance, TestConfig, AddPrograms>(testCtx,tcu::NODETYPE_SELF_VALIDATE,  testName, testName, AddPrograms(), config));
+				}
 			}
 
 			group->addChild(usageGroup.get());
@@ -10033,15 +10162,21 @@ tcu::TestCaseGroup* createPipelineBarrierTests (tcu::TestContext& testCtx)
 			for (size_t sizeNdx = 0; sizeNdx < DE_LENGTH_OF_ARRAY(sizes); sizeNdx++)
 			{
 				const vk::VkDeviceSize	size		= sizes[sizeNdx];
-				const string			testName	(de::toString((deUint64)(size)));
-				const TestConfig		config		=
-				{
-					(Usage)(all & (~(USAGE_HOST_READ|USAGE_HOST_WRITE))),
-					size,
-					vk::VK_SHARING_MODE_EXCLUSIVE
-				};
 
-				usageGroup->addChild(new InstanceFactory1<MemoryTestInstance, TestConfig, AddPrograms>(testCtx,tcu::NODETYPE_SELF_VALIDATE,  testName, testName, AddPrograms(), config));
+				for (size_t strideNdx = 0; strideNdx < DE_LENGTH_OF_ARRAY(vertexStrides); ++strideNdx)
+				{
+					const deUint32			stride		= vertexStrides[strideNdx];
+					const string			testName	= de::toString(size) + "_vertex_buffer_stride_" + de::toString(stride);
+					const TestConfig		config		=
+					{
+						(Usage)(all & (~(USAGE_HOST_READ|USAGE_HOST_WRITE))),
+						stride,
+						size,
+						vk::VK_SHARING_MODE_EXCLUSIVE
+					};
+
+					usageGroup->addChild(new InstanceFactory1<MemoryTestInstance, TestConfig, AddPrograms>(testCtx,tcu::NODETYPE_SELF_VALIDATE,  testName, testName, AddPrograms(), config));
+				}
 			}
 
 			group->addChild(usageGroup.get());

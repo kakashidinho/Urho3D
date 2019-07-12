@@ -73,7 +73,7 @@ typedef enum VulkanObjectType {
     kVulkanObjectTypeIndirectCommandsLayoutNVX = 34,
     kVulkanObjectTypeDebugUtilsMessengerEXT = 35,
     kVulkanObjectTypeValidationCacheEXT = 36,
-    kVulkanObjectTypeAccelerationStructureNVX = 37,
+    kVulkanObjectTypeAccelerationStructureNV = 37,
     kVulkanObjectTypeMax = 38,
     // Aliases for backwards compatibilty of "promoted" types
     kVulkanObjectTypeDescriptorUpdateTemplateKHR = kVulkanObjectTypeDescriptorUpdateTemplate,
@@ -119,7 +119,7 @@ static const char * const object_string[kVulkanObjectTypeMax] = {
     "IndirectCommandsLayoutNVX",
     "DebugUtilsMessengerEXT",
     "ValidationCacheEXT",
-    "AccelerationStructureNVX",
+    "AccelerationStructureNV",
 };
 
 // Helper array to get Vulkan VK_EXT_debug_report object type enum from the internal layers version
@@ -161,7 +161,7 @@ const VkDebugReportObjectTypeEXT get_debug_report_enum[] = {
     VK_DEBUG_REPORT_OBJECT_TYPE_INDIRECT_COMMANDS_LAYOUT_NVX_EXT,   // kVulkanObjectTypeIndirectCommandsLayoutNVX
     VK_DEBUG_REPORT_OBJECT_TYPE_UNKNOWN_EXT,   // kVulkanObjectTypeDebugUtilsMessengerEXT
     VK_DEBUG_REPORT_OBJECT_TYPE_VALIDATION_CACHE_EXT_EXT,   // kVulkanObjectTypeValidationCacheEXT
-    VK_DEBUG_REPORT_OBJECT_TYPE_ACCELERATION_STRUCTURE_NVX_EXT,   // kVulkanObjectTypeAccelerationStructureNVX
+    VK_DEBUG_REPORT_OBJECT_TYPE_ACCELERATION_STRUCTURE_NV_EXT,   // kVulkanObjectTypeAccelerationStructureNV
 };
 
 // Helper array to get Official Vulkan VkObjectType enum from the internal layers version
@@ -203,7 +203,7 @@ const VkObjectType get_object_type_enum[] = {
     VK_OBJECT_TYPE_INDIRECT_COMMANDS_LAYOUT_NVX,   // kVulkanObjectTypeIndirectCommandsLayoutNVX
     VK_OBJECT_TYPE_DEBUG_UTILS_MESSENGER_EXT,   // kVulkanObjectTypeDebugUtilsMessengerEXT
     VK_OBJECT_TYPE_VALIDATION_CACHE_EXT,   // kVulkanObjectTypeValidationCacheEXT
-    VK_OBJECT_TYPE_ACCELERATION_STRUCTURE_NVX,   // kVulkanObjectTypeAccelerationStructureNVX
+    VK_OBJECT_TYPE_ACCELERATION_STRUCTURE_NV,   // kVulkanObjectTypeAccelerationStructureNV
 };
 
 // Helper function to convert from VkDebugReportObjectTypeEXT to VkObjectType
@@ -286,8 +286,8 @@ static inline VkObjectType convertDebugReportObjectToCoreObject(VkDebugReportObj
         return VK_OBJECT_TYPE_SAMPLER_YCBCR_CONVERSION_KHR;
     } else if (debug_report_obj == VK_DEBUG_REPORT_OBJECT_TYPE_VALIDATION_CACHE_EXT_EXT) {
         return VK_OBJECT_TYPE_VALIDATION_CACHE_EXT;
-    } else if (debug_report_obj == VK_DEBUG_REPORT_OBJECT_TYPE_ACCELERATION_STRUCTURE_NVX_EXT) {
-        return VK_OBJECT_TYPE_ACCELERATION_STRUCTURE_NVX;
+    } else if (debug_report_obj == VK_DEBUG_REPORT_OBJECT_TYPE_ACCELERATION_STRUCTURE_NV_EXT) {
+        return VK_OBJECT_TYPE_ACCELERATION_STRUCTURE_NV;
     }
     return VK_OBJECT_TYPE_UNKNOWN;
 }
@@ -372,8 +372,8 @@ static inline VkDebugReportObjectTypeEXT convertCoreObjectToDebugReportObject(Vk
         return VK_DEBUG_REPORT_OBJECT_TYPE_SAMPLER_YCBCR_CONVERSION_KHR_EXT;
     } else if (core_report_obj == VK_OBJECT_TYPE_VALIDATION_CACHE_EXT) {
         return VK_DEBUG_REPORT_OBJECT_TYPE_VALIDATION_CACHE_EXT_EXT;
-    } else if (core_report_obj == VK_OBJECT_TYPE_ACCELERATION_STRUCTURE_NVX) {
-        return VK_DEBUG_REPORT_OBJECT_TYPE_ACCELERATION_STRUCTURE_NVX_EXT;
+    } else if (core_report_obj == VK_OBJECT_TYPE_ACCELERATION_STRUCTURE_NV) {
+        return VK_DEBUG_REPORT_OBJECT_TYPE_ACCELERATION_STRUCTURE_NV_EXT;
     }
     return VK_DEBUG_REPORT_OBJECT_TYPE_UNKNOWN_EXT;
 }

@@ -58,6 +58,7 @@ struct NAME {											\
 
 #define VK_CHECK(EXPR)							vk::checkResult((EXPR), #EXPR, __FILE__, __LINE__)
 #define VK_CHECK_MSG(EXPR, MSG)					vk::checkResult((EXPR), MSG, __FILE__, __LINE__)
+#define VK_CHECK_WSI(EXPR)						vk::checkWsiResult((EXPR), #EXPR, __FILE__, __LINE__)
 
 /*--------------------------------------------------------------------*//*!
  * \brief Vulkan utilities
@@ -69,6 +70,7 @@ typedef deUint64	VkDeviceSize;
 typedef deUint32	VkSampleMask;
 typedef deUint32	VkBool32;
 typedef deUint32	VkFlags;
+typedef deUint64	VkDeviceAddress;
 
 // enum HandleType { HANDLE_TYPE_INSTANCE, ... };
 #include "vkHandleType.inl"
@@ -178,12 +180,14 @@ class PlatformInterface
 public:
 #include "vkVirtualPlatformInterface.inl"
 
+	virtual	GetInstanceProcAddrFunc	getGetInstanceProcAddr	() const = 0;
+
 protected:
-						PlatformInterface	(void) {}
+									PlatformInterface		(void) {}
 
 private:
-						PlatformInterface	(const PlatformInterface&);
-	PlatformInterface&	operator=			(const PlatformInterface&);
+									PlatformInterface		(const PlatformInterface&);
+	PlatformInterface&				operator=				(const PlatformInterface&);
 };
 
 class InstanceInterface
@@ -239,6 +243,7 @@ private:
 };
 
 void			checkResult			(VkResult result, const char* message, const char* file, int line);
+void			checkWsiResult		(VkResult result, const char* message, const char* file, int line);
 
 } // vk
 

@@ -28,6 +28,7 @@
 
 #include "vkImageUtil.hpp"
 #include "tcuTextureUtil.hpp"
+#include "tcuVectorUtil.hpp"
 
 namespace vkt
 {
@@ -758,7 +759,7 @@ void addComputeImageSamplerTest (tcu::TestCaseGroup* group)
 	inputData.reserve(numDataPoints);
 
 	for (deUint32 numIdx = 0; numIdx < numDataPoints; ++numIdx)
-		inputData.push_back(tcu::Vec4(rnd.getFloat(), rnd.getFloat(), rnd.getFloat(), rnd.getFloat()));
+		inputData.push_back(tcu::randomVec4(rnd));
 
 	for (deUint32 opNdx = 0u; opNdx <= READOP_IMAGESAMPLE; opNdx++)
 	{
@@ -1045,13 +1046,12 @@ void addGraphicsImageSamplerTest (tcu::TestCaseGroup* group)
 	SpecConstants				noSpecConstants;
 	PushConstants				noPushConstants;
 	GraphicsInterfaces			noInterfaces;
-	std::vector<std::string>	noFeatures;
 	std::vector<std::string>	noExtensions;
 	VulkanFeatures				vulkanFeatures		= VulkanFeatures();
 
 	vector<tcu::Vec4> inputData(numDataPoints);
 	for (deUint32 numIdx = 0; numIdx < numDataPoints; ++numIdx)
-		inputData[numIdx] = tcu::Vec4(rnd.getFloat(), rnd.getFloat(), rnd.getFloat(), rnd.getFloat());
+		inputData[numIdx] = tcu::randomVec4(rnd);
 
 	for (deUint32 opNdx = 0u; opNdx <= READOP_IMAGESAMPLE; opNdx++)
 	{
@@ -1104,7 +1104,7 @@ void addGraphicsImageSamplerTest (tcu::TestCaseGroup* group)
 
 					getDefaultColors(defaultColors);
 
-					const map<string, string>		fragments = generateGraphicsImageSamplerSource((ReadOp)opNdx, (DescriptorType)descNdx, (TestType)testNdx, DEPTH_PROPERTY_NON_DEPTH, (deUint32)resources.inputs.size(), (formatIndex + 1) % optypeimageFormatMismatchFormatCount);
+					const map<string, string>		fragments = generateGraphicsImageSamplerSource((ReadOp)opNdx, (DescriptorType)descNdx, (TestType)testNdx, DEPTH_PROPERTY_NON_DEPTH, (deUint32)resources.inputs.size(), (deUint32)((formatIndex + 1) % optypeimageFormatMismatchFormatCount));
 
 					// If testing for mismatched optypeimage, ignore the rendered
 					// result (we're only interested to see if we crash)
@@ -1117,21 +1117,21 @@ void addGraphicsImageSamplerTest (tcu::TestCaseGroup* group)
 					vulkanFeatures.coreFeatures.vertexPipelineStoresAndAtomics = DE_TRUE;
 					vulkanFeatures.coreFeatures.fragmentStoresAndAtomics = DE_FALSE;
 					createTestForStage(VK_SHADER_STAGE_VERTEX_BIT, "shader_vert", defaultColors, defaultColors, fragments, noSpecConstants,
-						noPushConstants, resources, noInterfaces, noExtensions, noFeatures, vulkanFeatures, typeGroup.get());
+						noPushConstants, resources, noInterfaces, noExtensions, vulkanFeatures, typeGroup.get());
 
 					createTestForStage(VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT, "shader_tessc", defaultColors, defaultColors, fragments, noSpecConstants,
-						noPushConstants, resources, noInterfaces, noExtensions, noFeatures, vulkanFeatures, typeGroup.get());
+						noPushConstants, resources, noInterfaces, noExtensions, vulkanFeatures, typeGroup.get());
 
 					createTestForStage(VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT, "shader_tesse", defaultColors, defaultColors, fragments, noSpecConstants,
-						noPushConstants, resources, noInterfaces, noExtensions, noFeatures, vulkanFeatures, typeGroup.get());
+						noPushConstants, resources, noInterfaces, noExtensions, vulkanFeatures, typeGroup.get());
 
 					createTestForStage(VK_SHADER_STAGE_GEOMETRY_BIT, "shader_geom", defaultColors, defaultColors, fragments, noSpecConstants,
-						noPushConstants, resources, noInterfaces, noExtensions, noFeatures, vulkanFeatures, typeGroup.get());
+						noPushConstants, resources, noInterfaces, noExtensions, vulkanFeatures, typeGroup.get());
 
 					vulkanFeatures.coreFeatures.vertexPipelineStoresAndAtomics = DE_FALSE;
 					vulkanFeatures.coreFeatures.fragmentStoresAndAtomics = DE_TRUE;
 					createTestForStage(VK_SHADER_STAGE_FRAGMENT_BIT, "shader_frag", defaultColors, defaultColors, fragments, noSpecConstants,
-						noPushConstants, resources, noInterfaces, noExtensions, noFeatures, vulkanFeatures, typeGroup.get());
+						noPushConstants, resources, noInterfaces, noExtensions, vulkanFeatures, typeGroup.get());
 
 					if (testNdx == TESTTYPE_OPTYPEIMAGE_MISMATCH)
 						testtypeGroup->addChild(typeGroup.release());
@@ -1188,7 +1188,6 @@ void addGraphicsDepthPropertyTest (tcu::TestCaseGroup* group)
 	SpecConstants				noSpecConstants;
 	PushConstants				noPushConstants;
 	GraphicsInterfaces			noInterfaces;
-	std::vector<std::string>	noFeatures;
 	std::vector<std::string>	noExtensions;
 	VulkanFeatures				vulkanFeatures		= VulkanFeatures();
 
@@ -1198,7 +1197,7 @@ void addGraphicsDepthPropertyTest (tcu::TestCaseGroup* group)
 	inputDataVec4.reserve(numDataPoints);
 
 	for (deUint32 numIdx = 0; numIdx < numDataPoints; ++numIdx)
-		inputDataVec4.push_back(Vec4(rnd.getFloat(), rnd.getFloat(), rnd.getFloat(), rnd.getFloat()));
+		inputDataVec4.push_back(tcu::randomVec4(rnd));
 
 	de::MovePtr<tcu::TestCaseGroup> testGroup (new tcu::TestCaseGroup(testCtx, "depth_property", ""));
 
@@ -1259,7 +1258,7 @@ void addGraphicsDepthPropertyTest (tcu::TestCaseGroup* group)
 				getDefaultColors(defaultColors);
 
 				createTestForStage(VK_SHADER_STAGE_FRAGMENT_BIT, "shader_frag", defaultColors, defaultColors, fragments, noSpecConstants,
-								   noPushConstants, resources, noInterfaces, noExtensions, noFeatures, vulkanFeatures, descGroup.get());
+								   noPushConstants, resources, noInterfaces, noExtensions, vulkanFeatures, descGroup.get());
 
 				readOpGroup->addChild(descGroup.release());
 			}

@@ -46,17 +46,15 @@ class InstancingTest : public ANGLETest
         setConfigAlphaBits(8);
     }
 
-    void TearDown() override
+    void testTearDown() override
     {
         glDeleteBuffers(1, &mInstanceBuffer);
         glDeleteProgram(mProgram[0]);
         glDeleteProgram(mProgram[1]);
     }
 
-    void SetUp() override
+    void testSetUp() override
     {
-        ANGLETest::SetUp();
-
         for (unsigned i = 0; i < kMaxDrawn; ++i)
         {
             mInstanceData[i] = i * kDrawSize;
@@ -104,16 +102,16 @@ class InstancingTest : public ANGLETest
     {
         if (vendor == Angle)
         {
-            ANGLE_SKIP_TEST_IF(!extensionEnabled("GL_ANGLE_instanced_arrays"));
+            ANGLE_SKIP_TEST_IF(!IsGLExtensionEnabled("GL_ANGLE_instanced_arrays"));
         }
         else if (vendor == Ext)
         {
-            ANGLE_SKIP_TEST_IF(!extensionEnabled("GL_EXT_instanced_arrays"));
+            ANGLE_SKIP_TEST_IF(!IsGLExtensionEnabled("GL_EXT_instanced_arrays"));
         }
 
         // TODO: Fix these.  http://anglebug.com/3129
         ANGLE_SKIP_TEST_IF(IsD3D9() && draw == Indexed && geometry == Point);
-        ANGLE_SKIP_TEST_IF(IsD3D9() && IsAMD() && geometry == Point);
+        ANGLE_SKIP_TEST_IF(IsD3D9() && IsAMD());
 
         // D3D11 FL9_3 has a special codepath that emulates instanced points rendering
         // but it has bugs and was only implemented for vertex positions in a buffer object,
@@ -210,7 +208,7 @@ class InstancingTest : public ANGLETest
     GLuint mInstanceBuffer;
 
     static constexpr unsigned kMaxDrawn = 16;
-    static constexpr float kDrawSize = 2.0 / kMaxDrawn;
+    static constexpr float kDrawSize    = 2.0 / kMaxDrawn;
     GLfloat mInstanceData[kMaxDrawn];
 
     // clang-format off
@@ -401,7 +399,7 @@ class InstancingTestES31 : public InstancingTest
 // Verify that VertexAttribDivisor can update both binding divisor and attribBinding.
 TEST_P(InstancingTestES31, UpdateAttribBindingByVertexAttribDivisor)
 {
-    ANGLE_SKIP_TEST_IF(!extensionEnabled("GL_ANGLE_instanced_arrays"));
+    ANGLE_SKIP_TEST_IF(!IsGLExtensionEnabled("GL_ANGLE_instanced_arrays"));
 
     glUseProgram(mProgram[0]);
 
@@ -597,8 +595,6 @@ ANGLE_INSTANTIATE_TEST(InstancingTestES31, ES31_OPENGL(), ES31_OPENGLES(), ES31_
 ANGLE_INSTANTIATE_TEST(InstancingTest,
                        ES2_D3D9(),
                        ES2_D3D11(),
-                       ES2_D3D11_FL9_3(),
-                       ES2_OPENGL(3, 0),
                        ES2_OPENGL(),
                        ES2_OPENGLES(),
                        ES2_VULKAN());

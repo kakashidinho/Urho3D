@@ -48,6 +48,7 @@
 #include "deStringUtil.hpp"
 #include "deUniquePtr.hpp"
 #include "deMath.h"
+#include "deRandom.hpp"
 #include "tcuStringTemplate.hpp"
 
 #include "vktSpvAsmCrossStageInterfaceTests.hpp"
@@ -71,6 +72,7 @@
 #include "vktSpvAsmCompositeInsertTests.hpp"
 #include "vktSpvAsmVaryingNameTests.hpp"
 #include "vktSpvAsmWorkgroupMemoryTests.hpp"
+#include "vktSpvAsmSignedIntCompareTests.hpp"
 
 #include <cmath>
 #include <limits>
@@ -102,12 +104,15 @@ using de::UniquePtr;
 using tcu::StringTemplate;
 using tcu::Vec4;
 
+const bool TEST_WITH_NAN	= true;
+const bool TEST_WITHOUT_NAN	= false;
+
 template<typename T>
 static void fillRandomScalars (de::Random& rnd, T minValue, T maxValue, void* dst, int numValues, int offset = 0)
 {
 	T* const typedPtr = (T*)dst;
 	for (int ndx = 0; ndx < numValues; ndx++)
-		typedPtr[offset + ndx] = randomScalar<T>(rnd, minValue, maxValue);
+		typedPtr[offset + ndx] = de::randomScalar<T>(rnd, minValue, maxValue);
 }
 
 // Filter is a function that returns true if a value should pass, false otherwise.
@@ -119,7 +124,7 @@ static void fillRandomScalars (de::Random& rnd, T minValue, T maxValue, void* ds
 	for (int ndx = 0; ndx < numValues; ndx++)
 	{
 		do
-			value = randomScalar<T>(rnd, minValue, maxValue);
+			value = de::randomScalar<T>(rnd, minValue, maxValue);
 		while (!filter(value));
 
 		typedPtr[offset + ndx] = value;
@@ -374,6 +379,129 @@ tcu::TestCaseGroup* createOpNopGroup (tcu::TestContext& testCtx)
 	return group.release();
 }
 
+tcu::TestCaseGroup* createUnusedVariableComputeTests (tcu::TestContext& testCtx)
+{
+	de::MovePtr<tcu::TestCaseGroup>	group			(new tcu::TestCaseGroup(testCtx, "unused_variables", "Compute shaders with unused variables"));
+	de::Random						rnd				(deStringHash(group->getName()));
+	const int						numElements		= 100;
+	vector<float>					positiveFloats	(numElements, 0);
+	vector<float>					negativeFloats	(numElements, 0);
+
+	fillRandomScalars(rnd, 1.f, 100.f, &positiveFloats[0], numElements);
+
+	for (size_t ndx = 0; ndx < numElements; ++ndx)
+		negativeFloats[ndx] = -positiveFloats[ndx];
+
+	const VariableLocation			testLocations[] =
+	{
+		// Set		Binding
+		{ 0,		5			},
+		{ 5,		5			},
+	};
+
+	for (size_t locationNdx = 0; locationNdx < DE_LENGTH_OF_ARRAY(testLocations); ++locationNdx)
+	{
+		const VariableLocation& location = testLocations[locationNdx];
+
+		// Unused variable.
+		{
+			ComputeShaderSpec				spec;
+
+			spec.assembly =
+				string(getComputeAsmShaderPreamble()) +
+
+				"OpDecorate %id BuiltIn GlobalInvocationId\n"
+
+				+ getUnusedDecorations(location)
+
+				+ string(getComputeAsmInputOutputBufferTraits()) + string(getComputeAsmCommonTypes())
+
+				+ getUnusedTypesAndConstants()
+
+				+ string(getComputeAsmInputOutputBuffer())
+
+				+ getUnusedBuffer() +
+
+				"%id        = OpVariable %uvec3ptr Input\n"
+				"%zero      = OpConstant %i32 0\n"
+
+				"%main      = OpFunction %void None %voidf\n"
+				"%label     = OpLabel\n"
+				"%idval     = OpLoad %uvec3 %id\n"
+				"%x         = OpCompositeExtract %u32 %idval 0\n"
+
+				"%inloc     = OpAccessChain %f32ptr %indata %zero %x\n"
+				"%inval     = OpLoad %f32 %inloc\n"
+				"%neg       = OpFNegate %f32 %inval\n"
+				"%outloc    = OpAccessChain %f32ptr %outdata %zero %x\n"
+				"             OpStore %outloc %neg\n"
+				"             OpReturn\n"
+				"             OpFunctionEnd\n";
+			spec.inputs.push_back(BufferSp(new Float32Buffer(positiveFloats)));
+			spec.outputs.push_back(BufferSp(new Float32Buffer(negativeFloats)));
+			spec.numWorkGroups = IVec3(numElements, 1, 1);
+
+			std::string testName		= "variable_" + location.toString();
+			std::string testDescription	= "Unused variable test with " + location.toDescription();
+
+			group->addChild(new SpvAsmComputeShaderCase(testCtx, testName.c_str(), testDescription.c_str(), spec));
+		}
+
+		// Unused function.
+		{
+			ComputeShaderSpec				spec;
+
+			spec.assembly =
+				string(getComputeAsmShaderPreamble("", "", "", getUnusedEntryPoint())) +
+
+				"OpDecorate %id BuiltIn GlobalInvocationId\n"
+
+				+ getUnusedDecorations(location)
+
+				+ string(getComputeAsmInputOutputBufferTraits()) + string(getComputeAsmCommonTypes())
+
+				+ getUnusedTypesAndConstants() +
+
+				"%c_i32_0 = OpConstant %i32 0\n"
+				"%c_i32_1 = OpConstant %i32 1\n"
+
+				+ string(getComputeAsmInputOutputBuffer())
+
+				+ getUnusedBuffer() +
+
+				"%id        = OpVariable %uvec3ptr Input\n"
+				"%zero      = OpConstant %i32 0\n"
+
+				"%main      = OpFunction %void None %voidf\n"
+				"%label     = OpLabel\n"
+				"%idval     = OpLoad %uvec3 %id\n"
+				"%x         = OpCompositeExtract %u32 %idval 0\n"
+
+				"%inloc     = OpAccessChain %f32ptr %indata %zero %x\n"
+				"%inval     = OpLoad %f32 %inloc\n"
+				"%neg       = OpFNegate %f32 %inval\n"
+				"%outloc    = OpAccessChain %f32ptr %outdata %zero %x\n"
+				"             OpStore %outloc %neg\n"
+				"             OpReturn\n"
+				"             OpFunctionEnd\n"
+
+				+ getUnusedFunctionBody();
+
+			spec.inputs.push_back(BufferSp(new Float32Buffer(positiveFloats)));
+			spec.outputs.push_back(BufferSp(new Float32Buffer(negativeFloats)));
+			spec.numWorkGroups = IVec3(numElements, 1, 1);
+
+			std::string testName		= "function_" + location.toString();
+			std::string testDescription	= "Unused function test with " + location.toDescription();
+
+			group->addChild(new SpvAsmComputeShaderCase(testCtx, testName.c_str(), testDescription.c_str(), spec));
+		}
+	}
+
+	return group.release();
+}
+
+template<bool nanSupported>
 bool compareFUnord (const std::vector<Resource>& inputs, const vector<AllocationSp>& outputAllocs, const std::vector<Resource>& expectedOutputs, TestLog& log)
 {
 	if (outputAllocs.size() != 1)
@@ -395,6 +523,9 @@ bool compareFUnord (const std::vector<Resource>& inputs, const vector<Allocation
 
 	for (size_t idx = 0; idx < expectedBytes.size() / sizeof(deInt32); ++idx)
 	{
+		if (!nanSupported && (tcu::Float32(input1AsFloat[idx]).isNaN() || tcu::Float32(input2AsFloat[idx]).isNaN()))
+			continue;
+
 		if (outputAsInt[idx] != expectedOutputAsInt[idx])
 		{
 			log << TestLog::Message << "ERROR: Sub-case failed. inputs: " << input1AsFloat[idx] << "," << input2AsFloat[idx] << " output: " << outputAsInt[idx]<< " expected output: " << expectedOutputAsInt[idx] << TestLog::EndMessage;
@@ -424,17 +555,19 @@ do { \
 	cases.push_back(OpFUnordCase(#NAME, OPCODE, compare_##NAME::compare)); \
 } while (deGetFalse())
 
-tcu::TestCaseGroup* createOpFUnordGroup (tcu::TestContext& testCtx)
+tcu::TestCaseGroup* createOpFUnordGroup (tcu::TestContext& testCtx, const bool testWithNan)
 {
-	de::MovePtr<tcu::TestCaseGroup>	group			(new tcu::TestCaseGroup(testCtx, "opfunord", "Test the OpFUnord* opcodes"));
+	const string					nan				= testWithNan ? "_nan" : "";
+	const string					groupName		= "opfunord" + nan;
+	de::MovePtr<tcu::TestCaseGroup>	group			(new tcu::TestCaseGroup(testCtx, groupName.c_str(), "Test the OpFUnord* opcodes"));
 	de::Random						rnd				(deStringHash(group->getName()));
 	const int						numElements		= 100;
 	vector<OpFUnordCase>			cases;
-
+	string							extensions		= testWithNan ? "OpExtension \"SPV_KHR_float_controls\"\n" : "";
+	string							capabilities	= testWithNan ? "OpCapability SignedZeroInfNanPreserve\n" : "";
+	string							exeModes		= testWithNan ? "OpExecutionMode %main SignedZeroInfNanPreserve 32\n" : "";
 	const StringTemplate			shaderTemplate	(
-
-		string(getComputeAsmShaderPreamble()) +
-
+		string(getComputeAsmShaderPreamble(capabilities, extensions, exeModes)) +
 		"OpSource GLSL 430\n"
 		"OpName %main           \"main\"\n"
 		"OpName %id             \"gl_GlobalInvocationID\"\n"
@@ -525,8 +658,15 @@ tcu::TestCaseGroup* createOpFUnordGroup (tcu::TestContext& testCtx)
 		spec.inputs.push_back(BufferSp(new Float32Buffer(inputFloats1)));
 		spec.inputs.push_back(BufferSp(new Float32Buffer(inputFloats2)));
 		spec.outputs.push_back(BufferSp(new Int32Buffer(expectedInts)));
-		spec.numWorkGroups = IVec3(numElements, 1, 1);
-		spec.verifyIO = &compareFUnord;
+		spec.numWorkGroups	= IVec3(numElements, 1, 1);
+		spec.verifyIO		= testWithNan ? &compareFUnord<true> : &compareFUnord<false>;
+
+		if (testWithNan)
+		{
+			spec.extensions.push_back("VK_KHR_shader_float_controls");
+			spec.requestedVulkanFeatures.floatControlsProperties.shaderSignedZeroInfNanPreserveFloat32 = DE_TRUE;
+		}
+
 		group->addChild(new SpvAsmComputeShaderCase(testCtx, cases[caseNdx].name, cases[caseNdx].name, spec));
 	}
 
@@ -5108,7 +5248,6 @@ tcu::TestCaseGroup* createLoopControlGroup (tcu::TestContext& testCtx)
 	cases.push_back(CaseParameter("none",				"None"));
 	cases.push_back(CaseParameter("unroll",				"Unroll"));
 	cases.push_back(CaseParameter("dont_unroll",		"DontUnroll"));
-	cases.push_back(CaseParameter("unroll_dont_unroll",	"Unroll|DontUnroll"));
 
 	fillRandomScalars(rnd, -100.f, 100.f, &inputFloats[0], numElements);
 
@@ -5978,7 +6117,12 @@ tcu::TestCaseGroup* createFloat16OpConstantCompositeGroup (tcu::TestContext& tes
 		spec.inputs.push_back(BufferSp(new Float32Buffer(positiveFloats)));
 		spec.outputs.push_back(BufferSp(new Float32Buffer(negativeFloats)));
 		spec.numWorkGroups = IVec3(numElements, 1, 1);
+
 		spec.extensions.push_back("VK_KHR_16bit_storage");
+		spec.extensions.push_back("VK_KHR_shader_float16_int8");
+
+		spec.requestedVulkanFeatures.ext16BitStorage = EXT16BITSTORAGEFEATURES_UNIFORM_BUFFER_BLOCK;
+		spec.requestedVulkanFeatures.extFloat16Int8 = EXTFLOAT16INT8FEATURES_FLOAT16;
 
 		group->addChild(new SpvAsmComputeShaderCase(testCtx, cases[caseNdx].name, cases[caseNdx].name, spec));
 	}
@@ -6073,7 +6217,7 @@ struct fp16isGreater		{ bool operator()(const tcu::Float16 in1, const tcu::Float
 struct fp16isLessOrEqual	{ bool operator()(const tcu::Float16 in1, const tcu::Float16 in2)	{ return in1.asFloat() <= in2.asFloat(); } };
 struct fp16isGreaterOrEqual	{ bool operator()(const tcu::Float16 in1, const tcu::Float16 in2)	{ return in1.asFloat() >= in2.asFloat(); } };
 
-template <class TestedLogicalFunction, bool onlyTestFunc, bool unationModeAnd>
+template <class TestedLogicalFunction, bool onlyTestFunc, bool unationModeAnd, bool nanSupported>
 bool compareFP16Logical (const std::vector<Resource>& inputs, const vector<AllocationSp>& outputAllocs, const std::vector<Resource>&, TestLog& log)
 {
 	if (inputs.size() != 2 || outputAllocs.size() != 1)
@@ -6115,16 +6259,23 @@ bool compareFP16Logical (const std::vector<Resource>& inputs, const vector<Alloc
 			}
 			else
 			{
+				const bool	f1nan	= f1.isNaN();
+				const bool	f2nan	= f2.isNaN();
+
+				// Skip NaN floats if not supported by implementation
+				if (!nanSupported && (f1nan || f2nan))
+					continue;
+
 				if (unationModeAnd)
 				{
-					const bool	ordered	= !f1.isNaN() && !f2.isNaN();
+					const bool	ordered		= !f1nan && !f2nan;
 
 					if (ordered && testedLogicalFunction(f1, f2))
 						expectedOutput = float16one;
 				}
 				else
 				{
-					const bool	unordered	= f1.isNaN() || f2.isNaN();
+					const bool	unordered	= f1nan || f2nan;
 
 					if (unordered || testedLogicalFunction(f1, f2))
 						expectedOutput = float16one;
@@ -7085,16 +7236,16 @@ tcu::TestCaseGroup* createSpecConstantTests (tcu::TestContext& testCtx)
 		map<string, string>			specializations;
 		map<string, string>			fragments;
 		SpecConstants				specConstants;
-		vector<string>				features;
 		PushConstants				noPushConstants;
 		GraphicsResources			noResources;
 		GraphicsInterfaces			noInterfaces;
-		std::vector<std::string>	noExtensions;
+		vector<string>				extensions;
+		VulkanFeatures				requiredFeatures;
 
 		// Special SPIR-V code for SConvert-case
 		if (strcmp(cases[caseNdx].caseName, "sconvert") == 0)
 		{
-			features.push_back("shaderInt16");
+			requiredFeatures.coreFeatures.shaderInt16 = VK_TRUE;
 			fragments["capability"]					= "OpCapability Int16\n";					// Adds 16-bit integer capability
 			specializations["OPTYPE_DEFINITIONS"]	= "%i16 = OpTypeInt 16 1\n";				// Adds 16-bit integer type
 			specializations["TYPE_CONVERT"]			= "%sc_op32 = OpSConvert %i32 %sc_op\n";	// Converts 16-bit integer to 32-bit integer
@@ -7103,7 +7254,7 @@ tcu::TestCaseGroup* createSpecConstantTests (tcu::TestContext& testCtx)
 		// Special SPIR-V code for FConvert-case
 		if (strcmp(cases[caseNdx].caseName, "fconvert") == 0)
 		{
-			features.push_back("shaderFloat64");
+			requiredFeatures.coreFeatures.shaderFloat64 = VK_TRUE;
 			fragments["capability"]					= "OpCapability Float64\n";					// Adds 64-bit float capability
 			specializations["OPTYPE_DEFINITIONS"]	= "%f64 = OpTypeFloat 64\n";				// Adds 64-bit float type
 			specializations["TYPE_CONVERT"]			= "%sc_op32 = OpConvertFToS %i32 %sc_op\n";	// Converts 64-bit float to 32-bit integer
@@ -7112,6 +7263,8 @@ tcu::TestCaseGroup* createSpecConstantTests (tcu::TestContext& testCtx)
 		// Special SPIR-V code for FConvert-case for 16-bit floats
 		if (strcmp(cases[caseNdx].caseName, "fconvert16") == 0)
 		{
+			extensions.push_back("VK_KHR_shader_float16_int8");
+			requiredFeatures.extFloat16Int8 = EXTFLOAT16INT8FEATURES_FLOAT16;
 			fragments["capability"]					= "OpCapability Float16\n";					// Adds 16-bit float capability
 			specializations["OPTYPE_DEFINITIONS"]	= "%f16 = OpTypeFloat 16\n";				// Adds 16-bit float type
 			specializations["TYPE_CONVERT"]			= "%sc_op32 = OpConvertFToS %i32 %sc_op\n";	// Converts 16-bit float to 32-bit integer
@@ -7132,7 +7285,7 @@ tcu::TestCaseGroup* createSpecConstantTests (tcu::TestContext& testCtx)
 
 		createTestsForAllStages(
 			cases[caseNdx].caseName, inputColors, cases[caseNdx].expectedColors, fragments, specConstants,
-			noPushConstants, noResources, noInterfaces, noExtensions, features, VulkanFeatures(), group.get());
+			noPushConstants, noResources, noInterfaces, extensions, requiredFeatures, group.get());
 	}
 
 	const char	decorations2[]			=
@@ -8163,6 +8316,93 @@ tcu::TestCaseGroup* createModuleTests(tcu::TestContext& testCtx)
 					createInstanceContext(pipeline, defaultColors, invertedColors, map<string, string>()));
 		}
 	}
+	return moduleTests.release();
+}
+
+std::string getUnusedVarTestNamePiece(const std::string& prefix, ShaderTask task)
+{
+	switch (task)
+	{
+		case SHADER_TASK_NONE:			return "";
+		case SHADER_TASK_NORMAL:		return prefix + "_normal";
+		case SHADER_TASK_UNUSED_VAR:	return prefix + "_unused_var";
+		case SHADER_TASK_UNUSED_FUNC:	return prefix + "_unused_func";
+		default:						DE_ASSERT(DE_FALSE);
+	}
+	// unreachable
+	return "";
+}
+
+std::string getShaderTaskIndexName(ShaderTaskIndex index)
+{
+	switch (index)
+	{
+	case SHADER_TASK_INDEX_VERTEX:			return "vertex";
+	case SHADER_TASK_INDEX_GEOMETRY:		return "geom";
+	case SHADER_TASK_INDEX_TESS_CONTROL:	return "tessc";
+	case SHADER_TASK_INDEX_TESS_EVAL:		return "tesse";
+	case SHADER_TASK_INDEX_FRAGMENT:		return "frag";
+	default:								DE_ASSERT(DE_FALSE);
+	}
+	// unreachable
+	return "";
+}
+
+std::string getUnusedVarTestName(const ShaderTaskArray& shaderTasks, const VariableLocation& location)
+{
+	std::string testName = location.toString();
+
+	for (size_t i = 0; i < DE_LENGTH_OF_ARRAY(shaderTasks); ++i)
+	{
+		if (shaderTasks[i] != SHADER_TASK_NONE)
+		{
+			testName += "_" + getUnusedVarTestNamePiece(getShaderTaskIndexName((ShaderTaskIndex)i), shaderTasks[i]);
+		}
+	}
+
+	return testName;
+}
+
+tcu::TestCaseGroup* createUnusedVariableTests(tcu::TestContext& testCtx)
+{
+	de::MovePtr<tcu::TestCaseGroup>		moduleTests				(new tcu::TestCaseGroup(testCtx, "unused_variables", "Graphics shaders with unused variables"));
+
+	ShaderTaskArray						shaderCombinations[]	=
+	{
+		// Vertex					Geometry					Tess. Control				Tess. Evaluation			Fragment
+		{ SHADER_TASK_UNUSED_VAR,	SHADER_TASK_NONE,			SHADER_TASK_NONE,			SHADER_TASK_NONE,			SHADER_TASK_NORMAL	},
+		{ SHADER_TASK_UNUSED_FUNC,	SHADER_TASK_NONE,			SHADER_TASK_NONE,			SHADER_TASK_NONE,			SHADER_TASK_NORMAL	},
+		{ SHADER_TASK_NORMAL,		SHADER_TASK_NONE,			SHADER_TASK_NONE,			SHADER_TASK_NONE,			SHADER_TASK_UNUSED_VAR	},
+		{ SHADER_TASK_NORMAL,		SHADER_TASK_NONE,			SHADER_TASK_NONE,			SHADER_TASK_NONE,			SHADER_TASK_UNUSED_FUNC	},
+		{ SHADER_TASK_NORMAL,		SHADER_TASK_UNUSED_VAR,		SHADER_TASK_NONE,			SHADER_TASK_NONE,			SHADER_TASK_NORMAL	},
+		{ SHADER_TASK_NORMAL,		SHADER_TASK_UNUSED_FUNC,	SHADER_TASK_NONE,			SHADER_TASK_NONE,			SHADER_TASK_NORMAL	},
+		{ SHADER_TASK_NORMAL,		SHADER_TASK_NONE,			SHADER_TASK_UNUSED_VAR,		SHADER_TASK_NORMAL,			SHADER_TASK_NORMAL	},
+		{ SHADER_TASK_NORMAL,		SHADER_TASK_NONE,			SHADER_TASK_UNUSED_FUNC,	SHADER_TASK_NORMAL,			SHADER_TASK_NORMAL	},
+		{ SHADER_TASK_NORMAL,		SHADER_TASK_NONE,			SHADER_TASK_NORMAL,			SHADER_TASK_UNUSED_VAR,		SHADER_TASK_NORMAL	},
+		{ SHADER_TASK_NORMAL,		SHADER_TASK_NONE,			SHADER_TASK_NORMAL,			SHADER_TASK_UNUSED_FUNC,	SHADER_TASK_NORMAL	}
+	};
+
+	const VariableLocation				testLocations[] =
+	{
+		// Set		Binding
+		{ 0,		5			},
+		{ 5,		5			},
+	};
+
+	for (size_t combNdx = 0; combNdx < DE_LENGTH_OF_ARRAY(shaderCombinations); ++combNdx)
+	{
+		for (size_t locationNdx = 0; locationNdx < DE_LENGTH_OF_ARRAY(testLocations); ++locationNdx)
+		{
+			const ShaderTaskArray&	shaderTasks		= shaderCombinations[combNdx];
+			const VariableLocation&	location		= testLocations[locationNdx];
+			std::string				testName		= getUnusedVarTestName(shaderTasks, location);
+
+			addFunctionCaseWithPrograms<UnusedVariableContext>(
+				moduleTests.get(), testName, "", createUnusedVariableModules, runAndVerifyUnusedVariablePipeline,
+				createUnusedVariableContext(shaderTasks, location));
+		}
+	}
+
 	return moduleTests.release();
 }
 
@@ -9632,7 +9872,6 @@ tcu::TestCaseGroup* createConvertGraphicsTests (tcu::TestContext& testCtx, const
 	for (vector<ConvertCase>::const_iterator test = testCases.begin(); test != testCases.end(); ++test)
 	{
 		map<string, string>	fragments		= getConvertCaseFragments(instruction, *test);
-		vector<string>		features;
 		VulkanFeatures		vulkanFeatures;
 		GraphicsResources	resources;
 		vector<string>		extensions;
@@ -9648,9 +9887,12 @@ tcu::TestCaseGroup* createConvertGraphicsTests (tcu::TestContext& testCtx, const
 
 		getVulkanFeaturesAndExtensions(test->m_fromType, test->m_toType, vulkanFeatures, extensions);
 
+		vulkanFeatures.coreFeatures.vertexPipelineStoresAndAtomics	= true;
+		vulkanFeatures.coreFeatures.fragmentStoresAndAtomics		= true;
+
 		createTestsForAllStages(
 			test->m_name, defaultColors, defaultColors, fragments, noSpecConstants,
-			noPushConstants, resources, noInterfaces, extensions, features, vulkanFeatures, group.get());
+			noPushConstants, resources, noInterfaces, extensions, vulkanFeatures, group.get());
 	}
 	return group.release();
 }
@@ -9815,6 +10057,7 @@ tcu::TestCaseGroup* createOpConstantFloat16Tests(tcu::TestContext& testCtx)
 
 	extensions.push_back("VK_KHR_16bit_storage");
 	extensions.push_back("VK_KHR_shader_float16_int8");
+	features.extFloat16Int8 = EXTFLOAT16INT8FEATURES_FLOAT16;
 
 	for (size_t testNdx = 0; testNdx < sizeof(tests) / sizeof(NameConstantsCode); ++testNdx)
 	{
@@ -9876,12 +10119,16 @@ void finalizeTestsCreation (ComputeShaderSpec&			specResource,
 }
 
 template<class SpecResource>
-tcu::TestCaseGroup* createFloat16LogicalSet (tcu::TestContext& testCtx)
+tcu::TestCaseGroup* createFloat16LogicalSet (tcu::TestContext& testCtx, const bool nanSupported)
 {
-	de::MovePtr<tcu::TestCaseGroup>		testGroup			(new tcu::TestCaseGroup(testCtx, "logical", "Float 16 logical tests"));
+	const string						nan					= nanSupported ? "_nan" : "";
+	const string						groupName			= "logical" + nan;
+	de::MovePtr<tcu::TestCaseGroup>		testGroup			(new tcu::TestCaseGroup(testCtx, groupName.c_str(), "Float 16 logical tests"));
 
 	de::Random							rnd					(deStringHash(testGroup->getName()));
-	const StringTemplate				capabilities		("OpCapability ${cap}\n");
+	const string						spvCapabilities		= string("OpCapability StorageUniformBufferBlock16\n") + (nanSupported ? "OpCapability SignedZeroInfNanPreserve\n" : "");
+	const string						spvExtensions		= string("OpExtension \"SPV_KHR_16bit_storage\"\n") + (nanSupported ? "OpExtension \"SPV_KHR_float_controls\"\n" : "");
+	const string						spvExecutionMode	= nanSupported ? "OpExecutionMode %BP_main SignedZeroInfNanPreserve 16\n" : "";
 	const deUint32						numDataPoints		= 16;
 	const vector<deFloat16>				float16Data			= getFloat16s(rnd, numDataPoints);
 	const vector<deFloat16>				float16Data1		= squarize(float16Data, 0);
@@ -9894,26 +10141,27 @@ tcu::TestCaseGroup* createFloat16LogicalSet (tcu::TestContext& testCtx)
 	struct TestOp
 	{
 		const char*		opCode;
-		VerifyIOFunc	verifyFunc;
+		VerifyIOFunc	verifyFuncNan;
+		VerifyIOFunc	verifyFuncNonNan;
 		const deUint32	argCount;
 	};
 
 	const TestOp	testOps[]	=
 	{
-		{ "OpIsNan"						,	compareFP16Logical<fp16isNan,				true,  false>	,	1	},
-		{ "OpIsInf"						,	compareFP16Logical<fp16isInf,				true,  false>	,	1	},
-		{ "OpFOrdEqual"					,	compareFP16Logical<fp16isEqual,				false, true>	,	2	},
-		{ "OpFUnordEqual"				,	compareFP16Logical<fp16isEqual,				false, false>	,	2	},
-		{ "OpFOrdNotEqual"				,	compareFP16Logical<fp16isUnequal,			false, true>	,	2	},
-		{ "OpFUnordNotEqual"			,	compareFP16Logical<fp16isUnequal,			false, false>	,	2	},
-		{ "OpFOrdLessThan"				,	compareFP16Logical<fp16isLess,				false, true>	,	2	},
-		{ "OpFUnordLessThan"			,	compareFP16Logical<fp16isLess,				false, false>	,	2	},
-		{ "OpFOrdGreaterThan"			,	compareFP16Logical<fp16isGreater,			false, true>	,	2	},
-		{ "OpFUnordGreaterThan"			,	compareFP16Logical<fp16isGreater,			false, false>	,	2	},
-		{ "OpFOrdLessThanEqual"			,	compareFP16Logical<fp16isLessOrEqual,		false, true>	,	2	},
-		{ "OpFUnordLessThanEqual"		,	compareFP16Logical<fp16isLessOrEqual,		false, false>	,	2	},
-		{ "OpFOrdGreaterThanEqual"		,	compareFP16Logical<fp16isGreaterOrEqual,	false, true>	,	2	},
-		{ "OpFUnordGreaterThanEqual"	,	compareFP16Logical<fp16isGreaterOrEqual,	false, false>	,	2	},
+		{ "OpIsNan"						,	compareFP16Logical<fp16isNan,				true,  false, true>,	compareFP16Logical<fp16isNan,				true,  false, false>,	1	},
+		{ "OpIsInf"						,	compareFP16Logical<fp16isInf,				true,  false, true>,	compareFP16Logical<fp16isInf,				true,  false, false>,	1	},
+		{ "OpFOrdEqual"					,	compareFP16Logical<fp16isEqual,				false, true,  true>,	compareFP16Logical<fp16isEqual,				false, true,  false>,	2	},
+		{ "OpFUnordEqual"				,	compareFP16Logical<fp16isEqual,				false, false, true>,	compareFP16Logical<fp16isEqual,				false, false, false>,	2	},
+		{ "OpFOrdNotEqual"				,	compareFP16Logical<fp16isUnequal,			false, true,  true>,	compareFP16Logical<fp16isUnequal,			false, true,  false>,	2	},
+		{ "OpFUnordNotEqual"			,	compareFP16Logical<fp16isUnequal,			false, false, true>,	compareFP16Logical<fp16isUnequal,			false, false, false>,	2	},
+		{ "OpFOrdLessThan"				,	compareFP16Logical<fp16isLess,				false, true,  true>,	compareFP16Logical<fp16isLess,				false, true,  false>,	2	},
+		{ "OpFUnordLessThan"			,	compareFP16Logical<fp16isLess,				false, false, true>,	compareFP16Logical<fp16isLess,				false, false, false>,	2	},
+		{ "OpFOrdGreaterThan"			,	compareFP16Logical<fp16isGreater,			false, true,  true>,	compareFP16Logical<fp16isGreater,			false, true,  false>,	2	},
+		{ "OpFUnordGreaterThan"			,	compareFP16Logical<fp16isGreater,			false, false, true>,	compareFP16Logical<fp16isGreater,			false, false, false>,	2	},
+		{ "OpFOrdLessThanEqual"			,	compareFP16Logical<fp16isLessOrEqual,		false, true,  true>,	compareFP16Logical<fp16isLessOrEqual,		false, true,  false>,	2	},
+		{ "OpFUnordLessThanEqual"		,	compareFP16Logical<fp16isLessOrEqual,		false, false, true>,	compareFP16Logical<fp16isLessOrEqual,		false, false, false>,	2	},
+		{ "OpFOrdGreaterThanEqual"		,	compareFP16Logical<fp16isGreaterOrEqual,	false, true,  true>,	compareFP16Logical<fp16isGreaterOrEqual,	false, true,  false>,	2	},
+		{ "OpFUnordGreaterThanEqual"	,	compareFP16Logical<fp16isGreaterOrEqual,	false, false, true>,	compareFP16Logical<fp16isGreaterOrEqual,	false, false, false>,	2	},
 	};
 
 	{ // scalar cases
@@ -10004,14 +10252,14 @@ tcu::TestCaseGroup* createFloat16LogicalSet (tcu::TestContext& testCtx)
 			map<string, string>	fragments;
 			vector<string>		extensions;
 
-			specs["cap"]				= "StorageUniformBufferBlock16";
 			specs["num_data_points"]	= de::toString(iterations);
 			specs["op_code"]			= testOp.opCode;
 			specs["op_arg1"]			= (testOp.argCount == 1) ? "" : "%val_src1";
 			specs["op_arg1_calc"]		= (testOp.argCount == 1) ? "" : arg1Calc.specialize(specs);
 
-			fragments["extension"]		= "OpExtension \"SPV_KHR_16bit_storage\"";
-			fragments["capability"]		= capabilities.specialize(specs);
+			fragments["extension"]		= spvExtensions;
+			fragments["capability"]		= spvCapabilities;
+			fragments["execution_mode"]	= spvExecutionMode;
 			fragments["decoration"]		= decoration.specialize(specs);
 			fragments["pre_main"]		= preMain.specialize(specs);
 			fragments["testfun"]		= testFun.specialize(specs);
@@ -10019,10 +10267,17 @@ tcu::TestCaseGroup* createFloat16LogicalSet (tcu::TestContext& testCtx)
 			specResource.inputs.push_back(Resource(BufferSp(new Float16Buffer(float16Data1)), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER));
 			specResource.inputs.push_back(Resource(BufferSp(new Float16Buffer(float16Data2)), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER));
 			specResource.outputs.push_back(Resource(BufferSp(new Float16Buffer(float16OutDummy)), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER));
-			specResource.verifyIO = testOp.verifyFunc;
+			specResource.verifyIO = nanSupported ? testOp.verifyFuncNan : testOp.verifyFuncNonNan;
 
 			extensions.push_back("VK_KHR_16bit_storage");
 			extensions.push_back("VK_KHR_shader_float16_int8");
+
+			if (nanSupported)
+			{
+				extensions.push_back("VK_KHR_shader_float_controls");
+
+				features.floatControlsProperties.shaderSignedZeroInfNanPreserveFloat16 = DE_TRUE;
+			}
 
 			features.ext16BitStorage = EXT16BITSTORAGEFEATURES_UNIFORM_BUFFER_BLOCK;
 			features.extFloat16Int8 = EXTFLOAT16INT8FEATURES_FLOAT16;
@@ -10123,14 +10378,14 @@ tcu::TestCaseGroup* createFloat16LogicalSet (tcu::TestContext& testCtx)
 			VulkanFeatures		features;
 			map<string, string>	fragments;
 
-			specs["cap"]				= "StorageUniformBufferBlock16";
 			specs["num_data_points"]	= de::toString(iterations);
 			specs["op_code"]			= testOp.opCode;
 			specs["op_arg1"]			= (testOp.argCount == 1) ? "" : "%val_src1";
 			specs["op_arg1_calc"]		= (testOp.argCount == 1) ? "" : arg1Calc.specialize(specs);
 
-			fragments["extension"]		= "OpExtension \"SPV_KHR_16bit_storage\"";
-			fragments["capability"]		= capabilities.specialize(specs);
+			fragments["extension"]		= spvExtensions;
+			fragments["capability"]		= spvCapabilities;
+			fragments["execution_mode"]	= spvExecutionMode;
 			fragments["decoration"]		= decoration.specialize(specs);
 			fragments["pre_main"]		= preMain.specialize(specs);
 			fragments["testfun"]		= testFun.specialize(specs);
@@ -10138,10 +10393,17 @@ tcu::TestCaseGroup* createFloat16LogicalSet (tcu::TestContext& testCtx)
 			specResource.inputs.push_back(Resource(BufferSp(new Float16Buffer(float16DataVec1)), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER));
 			specResource.inputs.push_back(Resource(BufferSp(new Float16Buffer(float16DataVec2)), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER));
 			specResource.outputs.push_back(Resource(BufferSp(new Float16Buffer(float16OutVecDummy)), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER));
-			specResource.verifyIO = testOp.verifyFunc;
+			specResource.verifyIO = nanSupported ? testOp.verifyFuncNan : testOp.verifyFuncNonNan;
 
 			extensions.push_back("VK_KHR_16bit_storage");
 			extensions.push_back("VK_KHR_shader_float16_int8");
+
+			if (nanSupported)
+			{
+				extensions.push_back("VK_KHR_shader_float_controls");
+
+				features.floatControlsProperties.shaderSignedZeroInfNanPreserveFloat16 = DE_TRUE;
+			}
 
 			features.ext16BitStorage = EXT16BITSTORAGEFEATURES_UNIFORM_BUFFER_BLOCK;
 			features.extFloat16Int8 = EXTFLOAT16INT8FEATURES_FLOAT16;
@@ -10584,9 +10846,9 @@ tcu::TestCaseGroup* createDerivativeTests (tcu::TestContext& testCtx)
 		{ "OpDPdxFine"		,	float16InputX	,	compareDerivative<R, N, 1, getFDxFine		>	},
 		{ "OpDPdyFine"		,	float16InputY	,	compareDerivative<R, N, 1, getFDyFine		>	},
 		{ "OpFwidthFine"	,	float16InputW	,	compareDerivative<R, N, 1, getFWidthFine	>	},
-		{ "OpDPdxCoarse"	,	float16InputX	,	compareDerivative<R, N, 2, getFDxCoarse	>	},
-		{ "OpDPdyCoarse"	,	float16InputY	,	compareDerivative<R, N, 2, getFDyCoarse	>	},
-		{ "OpFwidthCoarse"	,	float16InputW	,	compareDerivative<R, N, 4, getFWidthCoarse	>	},
+		{ "OpDPdxCoarse"	,	float16InputX	,	compareDerivative<R, N, 3, getFDx			>	},
+		{ "OpDPdyCoarse"	,	float16InputY	,	compareDerivative<R, N, 3, getFDy			>	},
+		{ "OpFwidthCoarse"	,	float16InputW	,	compareDerivative<R, N, 5, getFWidth		>	},
 		{ "OpDPdx"			,	float16InputX	,	compareDerivative<R, N, 3, getFDx			>	},
 		{ "OpDPdy"			,	float16InputY	,	compareDerivative<R, N, 3, getFDy			>	},
 		{ "OpFwidth"		,	float16InputW	,	compareDerivative<R, N, 5, getFWidth		>	},
@@ -10693,7 +10955,6 @@ tcu::TestCaseGroup* createDerivativeTests (tcu::TestContext& testCtx)
 		SpecConstants		noSpecConstants;
 		PushConstants		noPushConstants;
 		GraphicsInterfaces	noInterfaces;
-		vector<string>		noFeatures;
 
 		specs["op_code"]			= testOp.opCode;
 		specs["num_data_points"]	= de::toString(testOp.inputData.size() / N);
@@ -10719,7 +10980,7 @@ tcu::TestCaseGroup* createDerivativeTests (tcu::TestContext& testCtx)
 		features.ext16BitStorage	= EXT16BITSTORAGEFEATURES_UNIFORM_BUFFER_BLOCK;
 
 		createTestForStage(VK_SHADER_STAGE_FRAGMENT_BIT, testName.c_str(), defaultColors, defaultColors, fragments, noSpecConstants,
-							noPushConstants, specResource, noInterfaces, extensions, noFeatures, features, testGroup.get(), QP_TEST_RESULT_FAIL, string(), true);
+							noPushConstants, specResource, noInterfaces, extensions, features, testGroup.get(), QP_TEST_RESULT_FAIL, string(), true);
 	}
 
 	return testGroup.release();
@@ -13695,6 +13956,12 @@ struct fp16SmoothStep : public fp16PerComponent
 
 struct fp16Fma : public fp16PerComponent
 {
+	fp16Fma()
+	{
+		flavorNames.push_back("DoubleCalc");
+		flavorNames.push_back("EmulatingFP16");
+	}
+
 	virtual double getULPs(vector<const deFloat16*>& in)
 	{
 		DE_UNREF(in);
@@ -13714,10 +13981,30 @@ struct fp16Fma : public fp16PerComponent
 		const fp16type	a		(*in[0]);
 		const fp16type	b		(*in[1]);
 		const fp16type	c		(*in[2]);
-		const double	ad		(a.asDouble());
-		const double	bd		(b.asDouble());
-		const double	cd		(c.asDouble());
-		const double	result	(deMadd(ad, bd, cd));
+		double			result	(0.0);
+
+		if (getFlavor() == 0)
+		{
+			const double	ad	(a.asDouble());
+			const double	bd	(b.asDouble());
+			const double	cd	(c.asDouble());
+
+			result	= deMadd(ad, bd, cd);
+		}
+		else if (getFlavor() == 1)
+		{
+			const double	ad	(a.asDouble());
+			const double	bd	(b.asDouble());
+			const double	cd	(c.asDouble());
+			const fp16type	ab	(ad * bd);
+			const fp16type	r	(ab.asDouble() + cd);
+
+			result	= r.asDouble();
+		}
+		else
+		{
+			TCU_THROW(InternalError, "Unknown flavor");
+		}
 
 		out[0] = fp16type(result).bits();
 		min[0] = getMin(result, getULPs(in));
@@ -14634,12 +14921,13 @@ struct fp16VectorTimesScalar : public fp16AllComponents
 
 		for (size_t componentNdx = 0; componentNdx < getArgCompCount(0); ++componentNdx)
 		{
-			const fp16type	x	(in[0][componentNdx]);
-			const fp16type	m	(s.asDouble() * x.asDouble());
+			const fp16type	x	   (in[0][componentNdx]);
+			const double    result (s.asDouble() * x.asDouble());
+			const fp16type	m	   (result);
 
 			out[componentNdx] = m.bits();
-			min[componentNdx] = getMin(m.asDouble(), getULPs(in));
-			max[componentNdx] = getMax(m.asDouble(), getULPs(in));
+			min[componentNdx] = getMin(result, getULPs(in));
+			max[componentNdx] = getMax(result, getULPs(in));
 		}
 
 		return true;
@@ -17599,7 +17887,8 @@ tcu::TestCaseGroup* createFloat16Tests (tcu::TestContext& testCtx)
 	de::MovePtr<tcu::TestCaseGroup>		testGroup			(new tcu::TestCaseGroup(testCtx, "float16", "Float 16 tests"));
 
 	testGroup->addChild(createOpConstantFloat16Tests(testCtx));
-	testGroup->addChild(createFloat16LogicalSet<GraphicsResources>(testCtx));
+	testGroup->addChild(createFloat16LogicalSet<GraphicsResources>(testCtx, TEST_WITH_NAN));
+	testGroup->addChild(createFloat16LogicalSet<GraphicsResources>(testCtx, TEST_WITHOUT_NAN));
 	testGroup->addChild(createFloat16FuncSet<GraphicsResources>(testCtx));
 	testGroup->addChild(createDerivativeTests<256, 1>(testCtx));
 	testGroup->addChild(createDerivativeTests<256, 2>(testCtx));
@@ -17624,7 +17913,8 @@ tcu::TestCaseGroup* createFloat16Group (tcu::TestContext& testCtx)
 	de::MovePtr<tcu::TestCaseGroup>		testGroup			(new tcu::TestCaseGroup(testCtx, "float16", "Float 16 tests"));
 
 	testGroup->addChild(createFloat16OpConstantCompositeGroup(testCtx));
-	testGroup->addChild(createFloat16LogicalSet<ComputeShaderSpec>(testCtx));
+	testGroup->addChild(createFloat16LogicalSet<ComputeShaderSpec>(testCtx, TEST_WITH_NAN));
+	testGroup->addChild(createFloat16LogicalSet<ComputeShaderSpec>(testCtx, TEST_WITHOUT_NAN));
 	testGroup->addChild(createFloat16FuncSet<ComputeShaderSpec>(testCtx));
 	testGroup->addChild(createFloat16VectorExtractSet<ComputeShaderSpec>(testCtx));
 	testGroup->addChild(createFloat16VectorInsertSet<ComputeShaderSpec>(testCtx));
@@ -17997,6 +18287,292 @@ tcu::TestCaseGroup* createOpMemberNameAbuseTests (tcu::TestContext& testCtx)
 	return abuseGroup.release();
 }
 
+vector<deUint32> getSparseIdsAbuseData (const deUint32 numDataPoints, const deUint32 seed)
+{
+	vector<deUint32>	result;
+	de::Random			rnd		(seed);
+
+	result.reserve(numDataPoints);
+
+	for (deUint32 dataPointNdx = 0; dataPointNdx < numDataPoints; ++dataPointNdx)
+		result.push_back(rnd.getUint32());
+
+	return result;
+}
+
+vector<deUint32> getSparseIdsAbuseResults (const vector<deUint32>& inData1, const vector<deUint32>& inData2)
+{
+	vector<deUint32>	result;
+
+	result.reserve(inData1.size());
+
+	for (size_t dataPointNdx = 0; dataPointNdx < inData1.size(); ++dataPointNdx)
+		result.push_back(inData1[dataPointNdx] + inData2[dataPointNdx]);
+
+	return result;
+}
+
+template<class SpecResource>
+void createSparseIdsAbuseTest (tcu::TestContext& testCtx, de::MovePtr<tcu::TestCaseGroup>& testGroup)
+{
+	const deUint32			numDataPoints	= 16;
+	const std::string		testName		("sparse_ids");
+	const deUint32			seed			(deStringHash(testName.c_str()));
+	const vector<deUint32>	inData1			(getSparseIdsAbuseData(numDataPoints, seed + 1));
+	const vector<deUint32>	inData2			(getSparseIdsAbuseData(numDataPoints, seed + 2));
+	const vector<deUint32>	outData			(getSparseIdsAbuseResults(inData1, inData2));
+	const StringTemplate	preMain
+	(
+		"%c_i32_ndp = OpConstant %i32 ${num_data_points}\n"
+		"   %up_u32 = OpTypePointer Uniform %u32\n"
+		"   %ra_u32 = OpTypeArray %u32 %c_i32_ndp\n"
+		"   %SSBO32 = OpTypeStruct %ra_u32\n"
+		"%up_SSBO32 = OpTypePointer Uniform %SSBO32\n"
+		"%ssbo_src0 = OpVariable %up_SSBO32 Uniform\n"
+		"%ssbo_src1 = OpVariable %up_SSBO32 Uniform\n"
+		" %ssbo_dst = OpVariable %up_SSBO32 Uniform\n"
+	);
+	const StringTemplate	decoration
+	(
+		"OpDecorate %ra_u32 ArrayStride 4\n"
+		"OpMemberDecorate %SSBO32 0 Offset 0\n"
+		"OpDecorate %SSBO32 BufferBlock\n"
+		"OpDecorate %ssbo_src0 DescriptorSet 0\n"
+		"OpDecorate %ssbo_src0 Binding 0\n"
+		"OpDecorate %ssbo_src1 DescriptorSet 0\n"
+		"OpDecorate %ssbo_src1 Binding 1\n"
+		"OpDecorate %ssbo_dst DescriptorSet 0\n"
+		"OpDecorate %ssbo_dst Binding 2\n"
+	);
+	const StringTemplate	testFun
+	(
+		"%test_code = OpFunction %v4f32 None %v4f32_v4f32_function\n"
+		"    %param = OpFunctionParameter %v4f32\n"
+
+		"    %entry = OpLabel\n"
+		"        %i = OpVariable %fp_i32 Function\n"
+		"             OpStore %i %c_i32_0\n"
+		"             OpBranch %loop\n"
+
+		"     %loop = OpLabel\n"
+		"    %i_cmp = OpLoad %i32 %i\n"
+		"       %lt = OpSLessThan %bool %i_cmp %c_i32_ndp\n"
+		"             OpLoopMerge %merge %next None\n"
+		"             OpBranchConditional %lt %write %merge\n"
+
+		"    %write = OpLabel\n"
+		"      %ndx = OpLoad %i32 %i\n"
+
+		"      %127 = OpAccessChain %up_u32 %ssbo_src0 %c_i32_0 %ndx\n"
+		"      %128 = OpLoad %u32 %127\n"
+
+		// The test relies on SPIR-V compiler option SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS set in assembleSpirV()
+		"  %4194000 = OpAccessChain %up_u32 %ssbo_src1 %c_i32_0 %ndx\n"
+		"  %4194001 = OpLoad %u32 %4194000\n"
+
+		"  %2097151 = OpIAdd %u32 %128 %4194001\n"
+		"  %2097152 = OpAccessChain %up_u32 %ssbo_dst %c_i32_0 %ndx\n"
+		"             OpStore %2097152 %2097151\n"
+		"             OpBranch %next\n"
+
+		"     %next = OpLabel\n"
+		"    %i_cur = OpLoad %i32 %i\n"
+		"    %i_new = OpIAdd %i32 %i_cur %c_i32_1\n"
+		"             OpStore %i %i_new\n"
+		"             OpBranch %loop\n"
+
+		"    %merge = OpLabel\n"
+		"             OpReturnValue %param\n"
+
+		"             OpFunctionEnd\n"
+	);
+	SpecResource			specResource;
+	map<string, string>		specs;
+	VulkanFeatures			features;
+	map<string, string>		fragments;
+	vector<string>			extensions;
+
+	specs["num_data_points"]	= de::toString(numDataPoints);
+
+	fragments["decoration"]		= decoration.specialize(specs);
+	fragments["pre_main"]		= preMain.specialize(specs);
+	fragments["testfun"]		= testFun.specialize(specs);
+
+	specResource.inputs.push_back(Resource(BufferSp(new Uint32Buffer(inData1)), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER));
+	specResource.inputs.push_back(Resource(BufferSp(new Uint32Buffer(inData2)), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER));
+	specResource.outputs.push_back(Resource(BufferSp(new Uint32Buffer(outData)), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER));
+
+	features.coreFeatures.vertexPipelineStoresAndAtomics	= true;
+	features.coreFeatures.fragmentStoresAndAtomics			= true;
+
+	finalizeTestsCreation(specResource, fragments, testCtx, *testGroup.get(), testName, features, extensions, IVec3(1, 1, 1));
+}
+
+vector<deUint32> getLotsIdsAbuseData (const deUint32 numDataPoints, const deUint32 seed)
+{
+	vector<deUint32>	result;
+	de::Random			rnd		(seed);
+
+	result.reserve(numDataPoints);
+
+	// Fixed value
+	result.push_back(1u);
+
+	// Random values
+	for (deUint32 dataPointNdx = 1; dataPointNdx < numDataPoints; ++dataPointNdx)
+		result.push_back(rnd.getUint8());
+
+	return result;
+}
+
+vector<deUint32> getLotsIdsAbuseResults (const vector<deUint32>& inData1, const vector<deUint32>& inData2, const deUint32 count)
+{
+	vector<deUint32>	result;
+
+	result.reserve(inData1.size());
+
+	for (size_t dataPointNdx = 0; dataPointNdx < inData1.size(); ++dataPointNdx)
+		result.push_back(inData1[dataPointNdx] + count * inData2[dataPointNdx]);
+
+	return result;
+}
+
+template<class SpecResource>
+void createLotsIdsAbuseTest (tcu::TestContext& testCtx, de::MovePtr<tcu::TestCaseGroup>& testGroup)
+{
+	const deUint32			numDataPoints	= 16;
+	const deUint32			firstNdx		= 100u;
+	const deUint32			sequenceCount	= 10000u;
+	const std::string		testName		("lots_ids");
+	const deUint32			seed			(deStringHash(testName.c_str()));
+	const vector<deUint32>	inData1			(getLotsIdsAbuseData(numDataPoints, seed + 1));
+	const vector<deUint32>	inData2			(getLotsIdsAbuseData(numDataPoints, seed + 2));
+	const vector<deUint32>	outData			(getLotsIdsAbuseResults(inData1, inData2, sequenceCount));
+	const StringTemplate preMain
+	(
+		"%c_i32_ndp = OpConstant %i32 ${num_data_points}\n"
+		"   %up_u32 = OpTypePointer Uniform %u32\n"
+		"   %ra_u32 = OpTypeArray %u32 %c_i32_ndp\n"
+		"   %SSBO32 = OpTypeStruct %ra_u32\n"
+		"%up_SSBO32 = OpTypePointer Uniform %SSBO32\n"
+		"%ssbo_src0 = OpVariable %up_SSBO32 Uniform\n"
+		"%ssbo_src1 = OpVariable %up_SSBO32 Uniform\n"
+		" %ssbo_dst = OpVariable %up_SSBO32 Uniform\n"
+	);
+	const StringTemplate decoration
+	(
+		"OpDecorate %ra_u32 ArrayStride 4\n"
+		"OpMemberDecorate %SSBO32 0 Offset 0\n"
+		"OpDecorate %SSBO32 BufferBlock\n"
+		"OpDecorate %ssbo_src0 DescriptorSet 0\n"
+		"OpDecorate %ssbo_src0 Binding 0\n"
+		"OpDecorate %ssbo_src1 DescriptorSet 0\n"
+		"OpDecorate %ssbo_src1 Binding 1\n"
+		"OpDecorate %ssbo_dst DescriptorSet 0\n"
+		"OpDecorate %ssbo_dst Binding 2\n"
+	);
+	const StringTemplate testFun
+	(
+		"%test_code = OpFunction %v4f32 None %v4f32_v4f32_function\n"
+		"    %param = OpFunctionParameter %v4f32\n"
+
+		"    %entry = OpLabel\n"
+		"        %i = OpVariable %fp_i32 Function\n"
+		"             OpStore %i %c_i32_0\n"
+		"             OpBranch %loop\n"
+
+		"     %loop = OpLabel\n"
+		"    %i_cmp = OpLoad %i32 %i\n"
+		"       %lt = OpSLessThan %bool %i_cmp %c_i32_ndp\n"
+		"             OpLoopMerge %merge %next None\n"
+		"             OpBranchConditional %lt %write %merge\n"
+
+		"    %write = OpLabel\n"
+		"      %ndx = OpLoad %i32 %i\n"
+
+		"       %90 = OpAccessChain %up_u32 %ssbo_src1 %c_i32_0 %ndx\n"
+		"       %91 = OpLoad %u32 %90\n"
+
+		"       %98 = OpAccessChain %up_u32 %ssbo_src0 %c_i32_0 %ndx\n"
+		"       %${zeroth_id} = OpLoad %u32 %98\n"
+
+		"${seq}\n"
+
+		// The test relies on SPIR-V compiler option SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS set in assembleSpirV()
+		"      %dst = OpAccessChain %up_u32 %ssbo_dst %c_i32_0 %ndx\n"
+		"             OpStore %dst %${last_id}\n"
+		"             OpBranch %next\n"
+
+		"     %next = OpLabel\n"
+		"    %i_cur = OpLoad %i32 %i\n"
+		"    %i_new = OpIAdd %i32 %i_cur %c_i32_1\n"
+		"             OpStore %i %i_new\n"
+		"             OpBranch %loop\n"
+
+		"    %merge = OpLabel\n"
+		"             OpReturnValue %param\n"
+
+		"             OpFunctionEnd\n"
+	);
+	deUint32				lastId			= firstNdx;
+	SpecResource			specResource;
+	map<string, string>		specs;
+	VulkanFeatures			features;
+	map<string, string>		fragments;
+	vector<string>			extensions;
+	std::string				sequence;
+
+	for (deUint32 sequenceNdx = 0; sequenceNdx < sequenceCount; ++sequenceNdx)
+	{
+		const deUint32		sequenceId		= sequenceNdx + firstNdx;
+		const std::string	sequenceIdStr	= de::toString(sequenceId);
+
+		sequence += "%" + sequenceIdStr + " = OpIAdd %u32 %91 %" + de::toString(sequenceId - 1) + "\n";
+		lastId = sequenceId;
+
+		if (sequenceNdx == 0)
+			sequence.reserve((10 + sequence.length()) * sequenceCount);
+	}
+
+	specs["num_data_points"]	= de::toString(numDataPoints);
+	specs["zeroth_id"]			= de::toString(firstNdx - 1);
+	specs["last_id"]			= de::toString(lastId);
+	specs["seq"]				= sequence;
+
+	fragments["decoration"]		= decoration.specialize(specs);
+	fragments["pre_main"]		= preMain.specialize(specs);
+	fragments["testfun"]		= testFun.specialize(specs);
+
+	specResource.inputs.push_back(Resource(BufferSp(new Uint32Buffer(inData1)), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER));
+	specResource.inputs.push_back(Resource(BufferSp(new Uint32Buffer(inData2)), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER));
+	specResource.outputs.push_back(Resource(BufferSp(new Uint32Buffer(outData)), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER));
+
+	features.coreFeatures.vertexPipelineStoresAndAtomics	= true;
+	features.coreFeatures.fragmentStoresAndAtomics			= true;
+
+	finalizeTestsCreation(specResource, fragments, testCtx, *testGroup.get(), testName, features, extensions, IVec3(1, 1, 1));
+}
+
+tcu::TestCaseGroup* createSpirvIdsAbuseTests (tcu::TestContext& testCtx)
+{
+	de::MovePtr<tcu::TestCaseGroup>	testGroup	(new tcu::TestCaseGroup(testCtx, "spirv_ids_abuse", "SPIR-V abuse tests"));
+
+	createSparseIdsAbuseTest<GraphicsResources>(testCtx, testGroup);
+	createLotsIdsAbuseTest<GraphicsResources>(testCtx, testGroup);
+
+	return testGroup.release();
+}
+
+tcu::TestCaseGroup* createSpirvIdsAbuseGroup (tcu::TestContext& testCtx)
+{
+	de::MovePtr<tcu::TestCaseGroup>	testGroup	(new tcu::TestCaseGroup(testCtx, "spirv_ids_abuse", "SPIR-V abuse tests"));
+
+	createSparseIdsAbuseTest<ComputeShaderSpec>(testCtx, testGroup);
+	createLotsIdsAbuseTest<ComputeShaderSpec>(testCtx, testGroup);
+
+	return testGroup.release();
+}
+
 tcu::TestCaseGroup* createInstructionTests (tcu::TestContext& testCtx)
 {
 	const bool testComputePipeline = true;
@@ -18008,7 +18584,8 @@ tcu::TestCaseGroup* createInstructionTests (tcu::TestContext& testCtx)
 	computeTests->addChild(createSpivVersionCheckTests(testCtx, testComputePipeline));
 	computeTests->addChild(createLocalSizeGroup(testCtx));
 	computeTests->addChild(createOpNopGroup(testCtx));
-	computeTests->addChild(createOpFUnordGroup(testCtx));
+	computeTests->addChild(createOpFUnordGroup(testCtx, TEST_WITHOUT_NAN));
+	computeTests->addChild(createOpFUnordGroup(testCtx, TEST_WITH_NAN));
 	computeTests->addChild(createOpAtomicGroup(testCtx, false));
 	computeTests->addChild(createOpAtomicGroup(testCtx, true));					// Using new StorageBuffer decoration
 	computeTests->addChild(createOpAtomicGroup(testCtx, false, 1024, true));	// Return value validation
@@ -18071,6 +18648,7 @@ tcu::TestCaseGroup* createInstructionTests (tcu::TestContext& testCtx)
 	computeTests->addChild(createConditionalBranchComputeGroup(testCtx));
 	computeTests->addChild(createIndexingComputeGroup(testCtx));
 	computeTests->addChild(createVariablePointersComputeGroup(testCtx));
+	computeTests->addChild(createPhysicalPointersComputeGroup(testCtx));
 	computeTests->addChild(createImageSamplerComputeGroup(testCtx));
 	computeTests->addChild(createOpNameGroup(testCtx));
 	computeTests->addChild(createOpMemberNameGroup(testCtx));
@@ -18078,6 +18656,9 @@ tcu::TestCaseGroup* createInstructionTests (tcu::TestContext& testCtx)
 	computeTests->addChild(createFloat16Group(testCtx));
 	computeTests->addChild(createBoolGroup(testCtx));
 	computeTests->addChild(createWorkgroupMemoryComputeGroup(testCtx));
+	computeTests->addChild(createSpirvIdsAbuseGroup(testCtx));
+	computeTests->addChild(createSignedIntCompareGroup(testCtx));
+	computeTests->addChild(createUnusedVariableComputeTests(testCtx));
 
 	graphicsTests->addChild(createCrossStageInterfaceTests(testCtx));
 	graphicsTests->addChild(createSpivVersionCheckTests(testCtx, !testComputePipeline));
@@ -18093,6 +18674,7 @@ tcu::TestCaseGroup* createInstructionTests (tcu::TestContext& testCtx)
 	graphicsTests->addChild(createOpUndefTests(testCtx));
 	graphicsTests->addChild(createSelectionBlockOrderTests(testCtx));
 	graphicsTests->addChild(createModuleTests(testCtx));
+	graphicsTests->addChild(createUnusedVariableTests(testCtx));
 	graphicsTests->addChild(createSwitchBlockOrderTests(testCtx));
 	graphicsTests->addChild(createOpPhiTests(testCtx));
 	graphicsTests->addChild(createNoContractionTests(testCtx));
@@ -18137,8 +18719,8 @@ tcu::TestCaseGroup* createInstructionTests (tcu::TestContext& testCtx)
 	graphicsTests->addChild(createConvertGraphicsTests(testCtx, "OpConvertFToU", "convertftou"));
 	graphicsTests->addChild(createPointerParameterGraphicsGroup(testCtx));
 	graphicsTests->addChild(createVaryingNameGraphicsGroup(testCtx));
-
 	graphicsTests->addChild(createFloat16Tests(testCtx));
+	graphicsTests->addChild(createSpirvIdsAbuseTests(testCtx));
 
 	instructionTests->addChild(computeTests.release());
 	instructionTests->addChild(graphicsTests.release());

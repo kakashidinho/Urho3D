@@ -30,26 +30,25 @@ class FenceSyncVk
     FenceSyncVk();
     ~FenceSyncVk();
 
-    void onDestroy(RendererVk *renderer);
+    void onDestroy(ContextVk *contextVk);
+    void onDestroy(DisplayVk *display);
 
-    angle::Result initialize(vk::Context *context);
+    angle::Result initialize(ContextVk *contextVk);
     angle::Result clientWait(vk::Context *context,
+                             ContextVk *contextVk,
                              bool flushCommands,
                              uint64_t timeout,
                              VkResult *outResult);
-    angle::Result serverWait(vk::Context *context);
+    angle::Result serverWait(vk::Context *context, ContextVk *contextVk);
     angle::Result getStatus(vk::Context *context, bool *signaled);
 
   private:
-    bool hasPendingWork(RendererVk *renderer);
-
     // The vkEvent that's signaled on `init` and can be waited on in `serverWait`, or queried with
     // `getStatus`.
     vk::Event mEvent;
-    // The serial in which the event was inserted.  Used in `clientWait` to know whether flush is
-    // necessary, and to be able to wait on the vkFence that's automatically inserted at the end of
-    // each submissions.
-    Serial mSignalSerial;
+    // The vkFence that's signaled once the command buffer including the `init` signal is executed.
+    // `clientWait` waits on this fence.
+    vk::Shared<vk::Fence> mFence;
 };
 
 class SyncVk final : public SyncImpl
@@ -82,13 +81,20 @@ class EGLSyncVk final : public EGLSyncImpl
 
     void onDestroy(const egl::Display *display) override;
 
-    egl::Error initialize(const egl::Display *display, EGLenum type) override;
+    egl::Error initialize(const egl::Display *display,
+                          const gl::Context *context,
+                          EGLenum type) override;
     egl::Error clientWait(const egl::Display *display,
+                          const gl::Context *context,
                           EGLint flags,
                           EGLTime timeout,
                           EGLint *outResult) override;
-    egl::Error serverWait(const egl::Display *display, EGLint flags) override;
+    egl::Error serverWait(const egl::Display *display,
+                          const gl::Context *context,
+                          EGLint flags) override;
     egl::Error getStatus(const egl::Display *display, EGLint *outStatus) override;
+
+    egl::Error dupNativeFenceFD(const egl::Display *display, EGLint *result) const override;
 
   private:
     FenceSyncVk mFenceSync;

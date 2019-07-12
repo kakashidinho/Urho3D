@@ -453,7 +453,8 @@ GLenum GLVariablePrecision(const TType &type)
             case EbpLow:
                 return GL_LOW_FLOAT;
             case EbpUndefined:
-            // Should be defined as the default precision by the parser
+                // Desktop specs do not use precision
+                return GL_NONE;
             default:
                 UNREACHABLE();
         }
@@ -469,7 +470,8 @@ GLenum GLVariablePrecision(const TType &type)
             case EbpLow:
                 return GL_LOW_INT;
             case EbpUndefined:
-            // Should be defined as the default precision by the parser
+                // Desktop specs do not use precision
+                return GL_NONE;
             default:
                 UNREACHABLE();
         }
@@ -707,6 +709,11 @@ bool IsBuiltinFragmentInputVariable(TQualifier qualifier)
     return false;
 }
 
+bool IsShaderOutput(TQualifier qualifier)
+{
+    return IsVaryingOut(qualifier) || IsBuiltinOutputVariable(qualifier);
+}
+
 bool IsOutputESSL(ShShaderOutput output)
 {
     return output == SH_ESSL_OUTPUT;
@@ -811,6 +818,11 @@ GLenum GetImageInternalFormatType(TLayoutImageInternalFormat iifq)
         default:
             return GL_NONE;
     }
+}
+
+bool IsSpecWithFunctionBodyNewScope(ShShaderSpec shaderSpec, int shaderVersion)
+{
+    return (shaderVersion == 100 && !sh::IsWebGLBasedSpec(shaderSpec));
 }
 
 }  // namespace sh

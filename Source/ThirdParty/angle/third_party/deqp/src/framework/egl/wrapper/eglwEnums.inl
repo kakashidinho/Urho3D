@@ -1,7 +1,7 @@
 /* WARNING: This is auto-generated file. Do not modify, since changes will
  * be lost! Modify the generating script instead.
  *
- * Generated from Khronos EGL API description (egl.xml) revision 13a26984991216cbf9a44fbf390f95dc05b5493a.
+ * Generated from Khronos EGL API description (egl.xml) revision 3338ed0db494d6a4db7f76627b38f0b1892db096.
  */
 #define EGL_PBUFFER_BIT										0x0001
 #define EGL_PIXMAP_BIT										0x0002
@@ -119,9 +119,9 @@
 #define EGL_SINGLE_BUFFER									0x3085
 #define EGL_RENDER_BUFFER									0x3086
 #define EGL_COLORSPACE										0x3087
-#define EGL_COLORSPACE										0x3087
+#define EGL_VG_COLORSPACE									0x3087
 #define EGL_ALPHA_FORMAT									0x3088
-#define EGL_ALPHA_FORMAT									0x3088
+#define EGL_VG_ALPHA_FORMAT									0x3088
 #define EGL_COLORSPACE_sRGB									0x3089
 #define EGL_GL_COLORSPACE_SRGB								0x3089
 #define EGL_GL_COLORSPACE_SRGB_KHR							0x3089
@@ -131,9 +131,9 @@
 #define EGL_GL_COLORSPACE_LINEAR_KHR						0x308A
 #define EGL_VG_COLORSPACE_LINEAR							0x308A
 #define EGL_ALPHA_FORMAT_NONPRE								0x308B
-#define EGL_ALPHA_FORMAT_NONPRE								0x308B
+#define EGL_VG_ALPHA_FORMAT_NONPRE							0x308B
 #define EGL_ALPHA_FORMAT_PRE								0x308C
-#define EGL_ALPHA_FORMAT_PRE								0x308C
+#define EGL_VG_ALPHA_FORMAT_PRE								0x308C
 #define EGL_CLIENT_APIS										0x308D
 #define EGL_RGB_BUFFER										0x308E
 #define EGL_LUMINANCE_BUFFER								0x308F
@@ -233,7 +233,7 @@
 #define EGL_CONTEXT_OPENGL_ROBUST_ACCESS					0x31B2
 #define EGL_CONTEXT_OPENGL_NO_ERROR_KHR						0x31B3
 #define EGL_CONTEXT_OPENGL_RESET_NOTIFICATION_STRATEGY_KHR	0x31BD
-#define EGL_CONTEXT_OPENGL_RESET_NOTIFICATION_STRATEGY_KHR	0x31BD
+#define EGL_CONTEXT_OPENGL_RESET_NOTIFICATION_STRATEGY		0x31BD
 #define EGL_NO_RESET_NOTIFICATION							0x31BE
 #define EGL_NO_RESET_NOTIFICATION_KHR						0x31BE
 #define EGL_NO_RESET_NOTIFICATION_EXT						0x31BE
@@ -290,3 +290,4 @@
 #define EGL_CTA861_3_MAX_FRAME_AVERAGE_LEVEL_EXT			0x3361
 #define EGL_GL_COLORSPACE_DISPLAY_P3_LINEAR_EXT				0x3362
 #define EGL_GL_COLORSPACE_DISPLAY_P3_EXT					0x3363
+#define EGL_GL_COLORSPACE_DISPLAY_P3_PASSTHROUGH_EXT		0x3490

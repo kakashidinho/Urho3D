@@ -85,23 +85,6 @@ rr::PrimitiveType mapVkPrimitiveToRRPrimitive(const vk::VkPrimitiveTopology& pri
 	return de::getSizedArrayElement<vk::VK_PRIMITIVE_TOPOLOGY_PATCH_LIST>(primitiveTypeTable, primitiveTopology);
 }
 
-VkBufferCreateInfo makeBufferCreateInfo (const VkDeviceSize			bufferSize,
-										 const VkBufferUsageFlags	usage)
-{
-	const VkBufferCreateInfo bufferCreateInfo =
-	{
-		VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,	// VkStructureType		sType;
-		DE_NULL,								// const void*			pNext;
-		(VkBufferCreateFlags)0,					// VkBufferCreateFlags	flags;
-		bufferSize,								// VkDeviceSize			size;
-		usage,									// VkBufferUsageFlags	usage;
-		VK_SHARING_MODE_EXCLUSIVE,				// VkSharingMode		sharingMode;
-		0u,										// deUint32				queueFamilyIndexCount;
-		DE_NULL,								// const deUint32*		pQueueFamilyIndices;
-	};
-	return bufferCreateInfo;
-}
-
 Move<VkCommandPool> makeCommandPool (const DeviceInterface& vk, const VkDevice device, const deUint32 queueFamilyIndex)
 {
 	const VkCommandPoolCreateInfo info =
@@ -125,22 +108,6 @@ Move<VkCommandBuffer> makeCommandBuffer (const DeviceInterface& vk, const VkDevi
 		1u,													// deUint32				commandBufferCount;
 	};
 	return allocateCommandBuffer(vk, device, &info);
-}
-
-Move<VkDescriptorSet> makeDescriptorSet (const DeviceInterface&			vk,
-										 const VkDevice					device,
-										 const VkDescriptorPool			descriptorPool,
-										 const VkDescriptorSetLayout	setLayout)
-{
-	const VkDescriptorSetAllocateInfo info =
-	{
-		VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,		// VkStructureType				sType;
-		DE_NULL,											// const void*					pNext;
-		descriptorPool,										// VkDescriptorPool				descriptorPool;
-		1u,													// deUint32						descriptorSetCount;
-		&setLayout,											// const VkDescriptorSetLayout*	pSetLayouts;
-	};
-	return allocateDescriptorSet(vk, device, &info);
 }
 
 Move<VkPipelineLayout> makePipelineLayout (const DeviceInterface&		vk,
@@ -176,27 +143,6 @@ Move<VkPipelineLayout> makePipelineLayoutWithoutDescriptors (const DeviceInterfa
 	return createPipelineLayout(vk, device, &info);
 }
 
-Move<VkImageView> makeImageView (const DeviceInterface&			vk,
-								 const VkDevice					device,
-								 const VkImage					image,
-								 const VkImageViewType			viewType,
-								 const VkFormat					format,
-								 const VkImageSubresourceRange	subresourceRange)
-{
-	const VkImageViewCreateInfo imageViewParams =
-	{
-		VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,		// VkStructureType			sType;
-		DE_NULL,										// const void*				pNext;
-		(VkImageViewCreateFlags)0,						// VkImageViewCreateFlags	flags;
-		image,											// VkImage					image;
-		viewType,										// VkImageViewType			viewType;
-		format,											// VkFormat					format;
-		makeComponentMappingRGBA(),						// VkComponentMapping		components;
-		subresourceRange,								// VkImageSubresourceRange	subresourceRange;
-	};
-	return createImageView(vk, device, &imageViewParams);
-}
-
 VkBufferImageCopy makeBufferImageCopy (const VkImageSubresourceLayers	subresourceLayers,
 									   const VkExtent3D					extent)
 {
@@ -218,20 +164,23 @@ std::string getPrimitiveTopologyShortName (const VkPrimitiveTopology topology)
 	return de::toLower(name.substr(22));
 }
 
-DrawState::DrawState(const vk::VkPrimitiveTopology topology_, deUint32 renderWidth_, deUint32 renderHeight_)
-	: topology				(topology_)
-	, colorFormat			(VK_FORMAT_R8G8B8A8_UNORM)
-	, renderSize			(tcu::UVec2(renderWidth_, renderHeight_))
-	, depthClampEnable		(false)
-	, depthTestEnable		(false)
-	, depthWriteEnable		(false)
-	, compareOp				(rr::TESTFUNC_LESS)
-	, depthBoundsTestEnable	(false)
-	, blendEnable			(false)
-	, lineWidth				(1.0)
-	, numPatchControlPoints	(0)
-	, numSamples			(VK_SAMPLE_COUNT_1_BIT)
-	, sampleShadingEnable	(false)
+DrawState::DrawState(const vk::VkPrimitiveTopology topology_, deUint32 renderWidth_, deUint32 renderHeight_, const int subpixelBits_)
+	: topology					(topology_)
+	, colorFormat				(VK_FORMAT_R8G8B8A8_UNORM)
+	, renderSize				(tcu::UVec2(renderWidth_, renderHeight_))
+	, depthClampEnable			(false)
+	, depthTestEnable			(false)
+	, depthWriteEnable			(false)
+	, compareOp					(rr::TESTFUNC_LESS)
+	, depthBoundsTestEnable		(false)
+	, blendEnable				(false)
+	, lineWidth					(1.0)
+	, numPatchControlPoints		(0)
+	, numSamples				(VK_SAMPLE_COUNT_1_BIT)
+	, sampleShadingEnable		(false)
+	, subpixelBits			(subpixelBits_)
+	, explicitDepthClipEnable	(false)
+	, depthClipEnable			(false)
 {
 	DE_ASSERT(renderSize.x() != 0 && renderSize.y() != 0);
 }
@@ -249,7 +198,7 @@ void ReferenceDrawContext::draw (void)
 		const rr::Program						program(&m_vertexShader, &m_fragmentShader);
 		const rr::MultisamplePixelBufferAccess	referenceColorBuffer = rr::MultisamplePixelBufferAccess::fromSinglesampleAccess(m_refImage.getAccess());
 		const rr::RenderTarget					renderTarget(referenceColorBuffer);
-		const rr::RenderState					renderState((rr::ViewportState(referenceColorBuffer)), rr::VIEWPORTORIENTATION_UPPER_LEFT);
+		const rr::RenderState					renderState((rr::ViewportState(referenceColorBuffer)), m_drawState.subpixelBits, rr::VIEWPORTORIENTATION_UPPER_LEFT);
 		const rr::Renderer						renderer;
 		const rr::VertexAttrib					vertexAttrib[] =
 		{
@@ -472,7 +421,7 @@ VulkanDrawContext::VulkanDrawContext ( Context&				context,
 		const std::vector<VkViewport>	viewports	(1, makeViewport(m_drawState.renderSize));
 		const std::vector<VkRect2D>		scissors	(1, makeRect2D(m_drawState.renderSize));
 
-		const VkPipelineRasterizationStateCreateInfo pipelineRasterizationStateInfo =
+		VkPipelineRasterizationStateCreateInfo pipelineRasterizationStateInfo =
 		{
 			VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,		// VkStructureType							sType;
 			DE_NULL,														// const void*								pNext;
@@ -488,6 +437,16 @@ VulkanDrawContext::VulkanDrawContext ( Context&				context,
 			0.0f,															// float									depthBiasSlopeFactor;
 			m_drawState.lineWidth,											// float									lineWidth;
 		};
+
+		VkPipelineRasterizationDepthClipStateCreateInfoEXT pipelineRasterizationDepthCliptateInfo =
+		{
+			VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_DEPTH_CLIP_STATE_CREATE_INFO_EXT,	// VkStructureType										sType;
+			DE_NULL,																	// const void*											pNext;
+			(VkPipelineRasterizationDepthClipStateCreateFlagsEXT)0,						// VkPipelineRasterizationDepthClipStateCreateFlagsEXT	flags;
+			m_drawState.depthClipEnable,												// VkBool32												depthClipEnable;
+		};
+		if (m_drawState.explicitDepthClipEnable)
+			pipelineRasterizationStateInfo.pNext = &pipelineRasterizationDepthCliptateInfo;
 
 		const VkPipelineMultisampleStateCreateInfo pipelineMultisampleStateInfo =
 		{

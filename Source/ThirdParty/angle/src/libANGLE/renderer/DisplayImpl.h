@@ -16,9 +16,15 @@
 #include "libANGLE/Stream.h"
 #include "libANGLE/Version.h"
 #include "libANGLE/renderer/EGLImplFactory.h"
+#include "platform/Feature.h"
 
 #include <set>
 #include <vector>
+
+namespace angle
+{
+struct FrontendFeatures;
+}  // namespace angle
 
 namespace egl
 {
@@ -35,7 +41,7 @@ class Thread;
 namespace gl
 {
 class Context;
-}
+}  // namespace gl
 
 namespace rx
 {
@@ -88,6 +94,12 @@ class DisplayImpl : public EGLImplFactory
 
     void setBlobCache(egl::BlobCache *blobCache) { mBlobCache = blobCache; }
     egl::BlobCache *getBlobCache() const { return mBlobCache; }
+
+    virtual void initializeFrontendFeatures(angle::FrontendFeatures *features) const {}
+
+    virtual void populateFeatureList(angle::FeatureList *features) = 0;
+
+    const egl::DisplayState &getState() const { return mState; }
 
   protected:
     const egl::DisplayState &mState;

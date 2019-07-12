@@ -6,6 +6,8 @@
 
 #include "test_utils/ANGLETest.h"
 
+#include "test_utils/gl_raii.h"
+
 using namespace angle;
 
 class LineLoopTest : public ANGLETest
@@ -21,10 +23,8 @@ class LineLoopTest : public ANGLETest
         setConfigAlphaBits(8);
     }
 
-    virtual void SetUp()
+    void testSetUp() override
     {
-        ANGLETest::SetUp();
-
         mProgram = CompileProgram(essl1_shaders::vs::Simple(), essl1_shaders::fs::UniformColor());
         if (mProgram == 0)
         {
@@ -41,12 +41,7 @@ class LineLoopTest : public ANGLETest
         ASSERT_GL_NO_ERROR();
     }
 
-    virtual void TearDown()
-    {
-        glDeleteProgram(mProgram);
-
-        ANGLETest::TearDown();
-    }
+    void testTearDown() override { glDeleteProgram(mProgram); }
 
     void runTest(GLenum indexType, GLuint indexBuffer, const void *indexPtr)
     {
@@ -118,7 +113,7 @@ TEST_P(LineLoopTest, LineLoopUShortIndices)
 
 TEST_P(LineLoopTest, LineLoopUIntIndices)
 {
-    if (!extensionEnabled("GL_OES_element_index_uint"))
+    if (!IsGLExtensionEnabled("GL_OES_element_index_uint"))
     {
         return;
     }
@@ -166,7 +161,7 @@ TEST_P(LineLoopTest, LineLoopUShortIndexBuffer)
 
 TEST_P(LineLoopTest, LineLoopUIntIndexBuffer)
 {
-    if (!extensionEnabled("GL_OES_element_index_uint"))
+    if (!IsGLExtensionEnabled("GL_OES_element_index_uint"))
     {
         return;
     }
@@ -184,6 +179,22 @@ TEST_P(LineLoopTest, LineLoopUIntIndexBuffer)
     runTest(GL_UNSIGNED_INT, buf, reinterpret_cast<const void *>(sizeof(GLuint)));
 
     glDeleteBuffers(1, &buf);
+}
+
+// Tests an edge case with a very large line loop element count.
+// Disabled because it is slow and triggers an internal error.
+TEST_P(LineLoopTest, DISABLED_DrawArraysWithLargeCount)
+{
+    constexpr char kVS[] = "void main() { gl_Position = vec4(0); }";
+    constexpr char kFS[] = "void main() { gl_FragColor = vec4(0, 1, 0, 1); }";
+
+    ANGLE_GL_PROGRAM(program, kVS, kFS);
+    glUseProgram(program);
+    glDrawArrays(GL_LINE_LOOP, 0, 0x3FFFFFFE);
+    EXPECT_GL_ERROR(GL_OUT_OF_MEMORY);
+
+    glDrawArrays(GL_LINE_LOOP, 0, 0x1FFFFFFE);
+    EXPECT_GL_NO_ERROR();
 }
 
 // Use this to select which configurations (e.g. which renderer, which GLES major version) these

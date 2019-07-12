@@ -26,18 +26,8 @@ class CopyTexture3DTest : public ANGLETest
         setConfigAlphaBits(8);
     }
 
-    void SetUp() override
+    void testSetUp() override
     {
-        ANGLETest::SetUp();
-
-        if (extensionEnabled("GL_ANGLE_copy_texture_3d"))
-        {
-            glCopyTexture3DANGLE = reinterpret_cast<PFNGLCOPYTEXTURE3DANGLEPROC>(
-                eglGetProcAddress("glCopyTexture3DANGLE"));
-            glCopySubTexture3DANGLE = reinterpret_cast<PFNGLCOPYSUBTEXTURE3DANGLEPROC>(
-                eglGetProcAddress("glCopySubTexture3DANGLE"));
-        }
-
         const char *vertexShaderSource   = getVertexShaderSource();
         const char *fragmentShaderSource = getFragmentShaderSource();
 
@@ -61,11 +51,9 @@ class CopyTexture3DTest : public ANGLETest
                "}\n";
     }
 
-    void TearDown() override { ANGLETest::TearDown(); }
-
     bool checkExtensions() const
     {
-        if (!extensionEnabled("GL_ANGLE_copy_texture_3d"))
+        if (!IsGLExtensionEnabled("GL_ANGLE_copy_texture_3d"))
         {
             std::cout << "Test skipped because GL_ANGLE_copy_texture_3d is not available."
                       << std::endl;
@@ -243,9 +231,6 @@ class CopyTexture3DTest : public ANGLETest
     GLuint mProgram = 0;
     GLTexture sourceTexture;
     GLTexture destTexture;
-
-    PFNGLCOPYTEXTURE3DANGLEPROC glCopyTexture3DANGLE       = nullptr;
-    PFNGLCOPYSUBTEXTURE3DANGLEPROC glCopySubTexture3DANGLE = nullptr;
 };
 
 class Texture3DCopy : public CopyTexture3DTest
@@ -1284,9 +1269,6 @@ TEST_P(Texture2DArrayCopy, SnormFormats)
 {
     ANGLE_SKIP_TEST_IF(!checkExtensions());
 
-    // http://anglebug.com/2865
-    ANGLE_SKIP_TEST_IF(IsWindows() && IsNVIDIA() && IsD3D11());
-
     testCopy(GL_TEXTURE_2D_ARRAY, GLColor(250, 200, 150, 190), GL_R8_SNORM, GL_BYTE, false, false,
              false, GLColor(251, 0, 0, 255));
     testCopy(GL_TEXTURE_2D_ARRAY, GLColor(250, 200, 150, 190), GL_R8_SNORM, GL_BYTE, false, true,
@@ -1431,9 +1413,6 @@ TEST_P(Texture2DArrayCopy, UnsignedByteFormats)
 TEST_P(Texture2DArrayCopy, FloatFormats)
 {
     ANGLE_SKIP_TEST_IF(!checkExtensions());
-
-    // http://anglebug.com/2865
-    ANGLE_SKIP_TEST_IF(IsWindows() && IsNVIDIA() && IsD3D11());
 
     std::vector<GLenum> floatTypes = {GL_FLOAT, GL_HALF_FLOAT, GL_UNSIGNED_INT_10F_11F_11F_REV,
                                       GL_UNSIGNED_INT_5_9_9_9_REV};

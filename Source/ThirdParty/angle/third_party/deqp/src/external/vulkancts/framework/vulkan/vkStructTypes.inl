@@ -1496,7 +1496,7 @@ struct VkPhysicalDeviceMultiviewProperties
 	deUint32		maxMultiviewInstanceIndex;
 };
 
-struct VkPhysicalDeviceVariablePointerFeatures
+struct VkPhysicalDeviceVariablePointersFeatures
 {
 	VkStructureType	sType;
 	void*			pNext;
@@ -1737,7 +1737,7 @@ struct VkDescriptorSetLayoutSupport
 	VkBool32		supported;
 };
 
-struct VkPhysicalDeviceShaderDrawParameterFeatures
+struct VkPhysicalDeviceShaderDrawParametersFeatures
 {
 	VkStructureType	sType;
 	void*			pNext;
@@ -2396,6 +2396,13 @@ struct VkPhysicalDeviceDepthStencilResolvePropertiesKHR
 	VkBool32				independentResolve;
 };
 
+struct VkSurfaceProtectedCapabilitiesKHR
+{
+	VkStructureType	sType;
+	const void*		pNext;
+	VkBool32		supportsProtected;
+};
+
 struct VkDebugReportCallbackCreateInfoEXT
 {
 	VkStructureType					sType;
@@ -2460,6 +2467,38 @@ struct VkDedicatedAllocationMemoryAllocateInfoNV
 	const void*		pNext;
 	VkImage			image;
 	VkBuffer		buffer;
+};
+
+struct VkPhysicalDeviceTransformFeedbackFeaturesEXT
+{
+	VkStructureType	sType;
+	void*			pNext;
+	VkBool32		transformFeedback;
+	VkBool32		geometryStreams;
+};
+
+struct VkPhysicalDeviceTransformFeedbackPropertiesEXT
+{
+	VkStructureType	sType;
+	void*			pNext;
+	deUint32		maxTransformFeedbackStreams;
+	deUint32		maxTransformFeedbackBuffers;
+	VkDeviceSize	maxTransformFeedbackBufferSize;
+	deUint32		maxTransformFeedbackStreamDataSize;
+	deUint32		maxTransformFeedbackBufferDataSize;
+	deUint32		maxTransformFeedbackBufferDataStride;
+	VkBool32		transformFeedbackQueries;
+	VkBool32		transformFeedbackStreamsLinesTriangles;
+	VkBool32		transformFeedbackRasterizationStreamSelect;
+	VkBool32		transformFeedbackDraw;
+};
+
+struct VkPipelineRasterizationStateStreamCreateInfoEXT
+{
+	VkStructureType										sType;
+	const void*											pNext;
+	VkPipelineRasterizationStateStreamCreateFlagsEXT	flags;
+	deUint32											rasterizationStream;
 };
 
 struct VkTextureLODGatherFormatPropertiesAMD
@@ -3222,6 +3261,7 @@ struct VkPhysicalDeviceVulkanMemoryModelFeaturesKHR
 	void*			pNext;
 	VkBool32		vulkanMemoryModel;
 	VkBool32		vulkanMemoryModelDeviceScope;
+	VkBool32		vulkanMemoryModelAvailabilityVisibilityChains;
 };
 
 struct VkPhysicalDeviceScalarBlockLayoutFeaturesEXT
@@ -3230,6 +3270,149 @@ struct VkPhysicalDeviceScalarBlockLayoutFeaturesEXT
 	void*			pNext;
 	VkBool32		scalarBlockLayout;
 };
+
+struct VkPhysicalDeviceDepthClipEnableFeaturesEXT
+{
+	VkStructureType	sType;
+	void*			pNext;
+	VkBool32		depthClipEnable;
+};
+
+struct VkPipelineRasterizationDepthClipStateCreateInfoEXT
+{
+	VkStructureType										sType;
+	const void*											pNext;
+	VkPipelineRasterizationDepthClipStateCreateFlagsEXT	flags;
+	VkBool32											depthClipEnable;
+};
+
+struct VkPhysicalDeviceBufferDeviceAddressFeaturesEXT
+{
+	VkStructureType	sType;
+	void*			pNext;
+	VkBool32		bufferDeviceAddress;
+	VkBool32		bufferDeviceAddressCaptureReplay;
+	VkBool32		bufferDeviceAddressMultiDevice;
+};
+
+struct VkBufferDeviceAddressInfoEXT
+{
+	VkStructureType	sType;
+	const void*		pNext;
+	VkBuffer		buffer;
+};
+
+struct VkBufferDeviceAddressCreateInfoEXT
+{
+	VkStructureType	sType;
+	const void*		pNext;
+	VkDeviceSize	deviceAddress;
+};
+
+struct VkImageStencilUsageCreateInfoEXT
+{
+	VkStructureType		sType;
+	const void*			pNext;
+	VkImageUsageFlags	stencilUsage;
+};
+
+struct VkCooperativeMatrixPropertiesNV
+{
+	VkStructureType		sType;
+	void*				pNext;
+	deUint32			MSize;
+	deUint32			NSize;
+	deUint32			KSize;
+	VkComponentTypeNV	AType;
+	VkComponentTypeNV	BType;
+	VkComponentTypeNV	CType;
+	VkComponentTypeNV	DType;
+	VkScopeNV			scope;
+};
+
+struct VkPhysicalDeviceCooperativeMatrixPropertiesNV
+{
+	VkStructureType		sType;
+	void*				pNext;
+	VkShaderStageFlags	cooperativeMatrixSupportedStages;
+};
+
+struct VkPhysicalDeviceCooperativeMatrixFeaturesNV
+{
+	VkStructureType	sType;
+	void*			pNext;
+	VkBool32		cooperativeMatrix;
+	VkBool32		cooperativeMatrixRobustBufferAccess;
+};
+
+struct VkPhysicalDeviceHostQueryResetFeaturesEXT
+{
+	VkStructureType	sType;
+	void*			pNext;
+	VkBool32		hostQueryReset;
+};
+
+struct VkPhysicalDevicePCIBusInfoPropertiesEXT
+{
+	VkStructureType	sType;
+	void*			pNext;
+	deUint32		pciDomain;
+	deUint32		pciBus;
+	deUint32		pciDevice;
+	deUint32		pciFunction;
+};
+
+struct VkPhysicalDeviceMemoryBudgetPropertiesEXT
+{
+	VkStructureType	sType;
+	void*			pNext;
+	VkDeviceSize	heapBudget[VK_MAX_MEMORY_HEAPS];
+	VkDeviceSize	heapUsage[VK_MAX_MEMORY_HEAPS];
+};
+
+struct VkPhysicalDeviceMemoryPriorityFeaturesEXT
+{
+	VkStructureType	sType;
+	void*			pNext;
+	VkBool32		memoryPriority;
+};
+
+struct VkMemoryPriorityAllocateInfoEXT
+{
+	VkStructureType	sType;
+	const void*		pNext;
+	float			priority;
+};
+
+struct VkPhysicalDeviceUniformBufferStandardLayoutFeaturesKHR
+{
+	VkStructureType	sType;
+	void*			pNext;
+	VkBool32		uniformBufferStandardLayout;
+};
+
+struct VkPipelineCreationFeedbackEXT
+{
+	VkPipelineCreationFeedbackFlagsEXT	flags;
+	deUint64							duration;
+};
+
+struct VkPipelineCreationFeedbackCreateInfoEXT
+{
+	VkStructureType					sType;
+	const void*						pNext;
+	VkPipelineCreationFeedbackEXT*	pPipelineCreationFeedback;
+	deUint32						pipelineStageCreationFeedbackCount;
+	VkPipelineCreationFeedbackEXT*	pPipelineStageCreationFeedbacks;
+};
+
+struct VkCalibratedTimestampInfoEXT
+{
+	VkStructureType	sType;
+	const void*		pNext;
+	VkTimeDomainEXT	timeDomain;
+};
+
 
 
 

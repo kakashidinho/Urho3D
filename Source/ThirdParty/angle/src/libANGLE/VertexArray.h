@@ -116,7 +116,9 @@ class VertexArray final : public angle::ObserverInterface,
         return mState.getBindingFromAttribIndex(attribIndex);
     }
 
-    void detachBuffer(const Context *context, GLuint bufferName);
+    // Returns true if the function finds and detaches a bound buffer.
+    bool detachBuffer(const Context *context, GLuint bufferName);
+
     void setVertexAttribDivisor(const Context *context, size_t index, GLuint divisor);
     void enableAttribute(size_t attribIndex, bool enabledState);
 
@@ -154,6 +156,7 @@ class VertexArray final : public angle::ObserverInterface,
                                    GLint size,
                                    VertexAttribType type,
                                    bool normalized,
+                                   bool pureInteger,
                                    GLuint relativeOffset);
     void bindVertexBufferImpl(const Context *context,
                               size_t bindingIndex,
@@ -194,9 +197,7 @@ class VertexArray final : public angle::ObserverInterface,
     }
 
     // Observer implementation
-    void onSubjectStateChange(const gl::Context *context,
-                              angle::SubjectIndex index,
-                              angle::SubjectMessage message) override;
+    void onSubjectStateChange(angle::SubjectIndex index, angle::SubjectMessage message) override;
 
     // Dirty bits for VertexArrays use a heirarchical design. At the top level, each attribute
     // has a single dirty bit. Then an array of MAX_ATTRIBS dirty bits each has a dirty bit for
@@ -278,6 +279,11 @@ class VertexArray final : public angle::ObserverInterface,
         return getIndexRangeImpl(context, type, indexCount, indices, indexRangeOut);
     }
 
+    void setBufferAccessValidationEnabled(bool enabled)
+    {
+        mBufferAccessValidationEnabled = enabled;
+    }
+
   private:
     ~VertexArray() override;
 
@@ -288,12 +294,10 @@ class VertexArray final : public angle::ObserverInterface,
     void setDirtyBindingBit(size_t bindingIndex, DirtyBindingBitType dirtyBindingBit);
 
     DirtyBitType getDirtyBitFromIndex(bool contentsChanged, angle::SubjectIndex index) const;
-    void setDependentDirtyBit(const gl::Context *context,
-                              bool contentsChanged,
-                              angle::SubjectIndex index);
+    void setDependentDirtyBit(bool contentsChanged, angle::SubjectIndex index);
 
     // These are used to optimize draw call validation.
-    void updateCachedBufferBindingSize(const Context *context, VertexBinding *binding);
+    void updateCachedBufferBindingSize(VertexBinding *binding);
     void updateCachedTransformFeedbackBindingValidation(size_t bindingIndex, const Buffer *buffer);
     void updateCachedMappedArrayBuffers(bool isMapped, const AttributesMask &boundAttributesMask);
     void updateCachedMappedArrayBuffersBinding(const VertexBinding &binding);
@@ -364,6 +368,7 @@ class VertexArray final : public angle::ObserverInterface,
     };
 
     mutable IndexRangeCache mIndexRangeCache;
+    bool mBufferAccessValidationEnabled;
 };
 
 }  // namespace gl

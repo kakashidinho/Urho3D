@@ -42,6 +42,7 @@ struct TranslatedAttribute;
 namespace gl
 {
 class Buffer;
+class BinaryInputStream;
 struct Caps;
 class Context;
 struct Extensions;
@@ -74,6 +75,7 @@ enum class LinkMismatchError
     BINDING_MISMATCH,
     LOCATION_MISMATCH,
     OFFSET_MISMATCH,
+    INSTANCE_NAME_MISMATCH,
 
     // Interface block specific
     LAYOUT_QUALIFIER_MISMATCH,
@@ -178,6 +180,11 @@ struct VariableLocation
     void markUnused() { index = kUnused; }
     void markIgnored() { ignored = true; }
 
+    bool operator==(const VariableLocation &other) const
+    {
+        return arrayIndex == other.arrayIndex && index == other.index;
+    }
+
     // "arrayIndex" stores the index of the innermost GLSL array. It's zero for non-arrays.
     unsigned int arrayIndex;
     // "index" is an index of the variable. The variable contains the indices for other than the
@@ -247,6 +254,7 @@ struct TransformFeedbackVarying : public sh::Varying
         interpolation               = parent.interpolation;
         isInvariant                 = parent.isInvariant;
         name                        = parent.name + "." + name;
+        mappedName                  = parent.mappedName + "." + mappedName;
     }
 
     std::string nameWithArrayIndex() const
@@ -341,18 +349,29 @@ class ProgramState final : angle::NonCopyable
     {
         return mLinkedTransformFeedbackVaryings;
     }
+    const std::vector<GLsizei> &getTransformFeedbackStrides() const
+    {
+        return mTransformFeedbackStrides;
+    }
+    size_t getTransformFeedbackBufferCount() const { return mTransformFeedbackStrides.size(); }
     const std::vector<AtomicCounterBuffer> &getAtomicCounterBuffers() const
     {
         return mAtomicCounterBuffers;
     }
+
+    // Count the number of uniform and storage buffer declarations, counting arrays as one.
+    size_t getUniqueUniformBlockCount() const;
+    size_t getUniqueStorageBlockCount() const;
 
     GLuint getUniformIndexFromName(const std::string &name) const;
     GLuint getUniformIndexFromLocation(GLint location) const;
     Optional<GLuint> getSamplerIndex(GLint location) const;
     bool isSamplerUniformIndex(GLuint index) const;
     GLuint getSamplerIndexFromUniformIndex(GLuint uniformIndex) const;
+    GLuint getUniformIndexFromSamplerIndex(GLuint samplerIndex) const;
     bool isImageUniformIndex(GLuint index) const;
     GLuint getImageIndexFromUniformIndex(GLuint uniformIndex) const;
+    GLuint getUniformIndexFromImageIndex(GLuint imageIndex) const;
     GLuint getAttributeLocation(const std::string &name) const;
 
     GLuint getBufferVariableIndexFromName(const std::string &name) const;
@@ -361,6 +380,11 @@ class ProgramState final : angle::NonCopyable
     bool usesMultiview() const { return mNumViews != -1; }
 
     const ShaderBitSet &getLinkedShaderStages() const { return mLinkedShaderStages; }
+    bool hasLinkedShaderStage(ShaderType shaderType) const
+    {
+        return mLinkedShaderStages.test(shaderType);
+    }
+    size_t getLinkedShaderStageCount() const { return mLinkedShaderStages.count(); }
 
     bool hasAttachedShader() const;
 
@@ -472,6 +496,16 @@ class ProgramState final : angle::NonCopyable
     ActiveTextureMask mActiveImagesMask;
 };
 
+struct ProgramBinding
+{
+    ProgramBinding() : location(GL_INVALID_INDEX), aliased(false) {}
+    ProgramBinding(GLuint index) : location(index), aliased(false) {}
+
+    GLuint location;
+    // Whether another binding was set that may potentially alias this.
+    bool aliased;
+};
+
 class ProgramBindings final : angle::NonCopyable
 {
   public:
@@ -479,14 +513,15 @@ class ProgramBindings final : angle::NonCopyable
     ~ProgramBindings();
 
     void bindLocation(GLuint index, const std::string &name);
-    int getBinding(const std::string &name) const;
+    int getBindingByName(const std::string &name) const;
+    int getBinding(const sh::VariableWithLocation &variable) const;
 
-    using const_iterator = std::unordered_map<std::string, GLuint>::const_iterator;
+    using const_iterator = std::unordered_map<std::string, ProgramBinding>::const_iterator;
     const_iterator begin() const;
     const_iterator end() const;
 
   private:
-    std::unordered_map<std::string, GLuint> mBindings;
+    std::unordered_map<std::string, ProgramBinding> mBindings;
 };
 
 struct ProgramVaryingRef
@@ -782,7 +817,6 @@ class Program final : angle::NonCopyable, public LabeledObject
     }
 
     bool isValidated() const;
-    bool samplesFromTexture(const State &state, GLuint textureID) const;
 
     const AttributesMask &getActiveAttribLocationsMask() const
     {
@@ -881,22 +915,19 @@ class Program final : angle::NonCopyable, public LabeledObject
     // Writes a program's binary to the output memory buffer.
     void serialize(const Context *context, angle::MemoryBuffer *binaryOut) const;
 
-    // Loads program state according to the specified binary blob.
-    angle::Result deserialize(const Context *context,
-                              const uint8_t *binary,
-                              size_t length,
-                              InfoLog &infoLog);
-
   private:
     struct LinkingState;
 
     ~Program() override;
 
+    // Loads program state according to the specified binary blob.
+    angle::Result deserialize(const Context *context, BinaryInputStream &stream, InfoLog &infoLog);
+
     void unlink();
     void deleteSelf(const Context *context);
 
     bool linkValidateShaders(InfoLog &infoLog);
-    bool linkAttributes(const Caps &caps, InfoLog &infoLog);
+    bool linkAttributes(const Context *context, InfoLog &infoLog);
     bool linkInterfaceBlocks(const Caps &caps,
                              const Version &version,
                              bool webglCompatibility,

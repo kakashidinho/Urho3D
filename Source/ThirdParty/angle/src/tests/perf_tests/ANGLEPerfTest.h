@@ -136,7 +136,7 @@ class ANGLERenderTest : public ANGLEPerfTest
 
     std::vector<TraceEvent> &getTraceEventBuffer();
 
-    virtual void overrideWorkaroundsD3D(angle::WorkaroundsD3D *workaroundsD3D) {}
+    virtual void overrideWorkaroundsD3D(angle::FeaturesD3D *featuresD3D) {}
 
   protected:
     const RenderTestParams &mTestParams;
@@ -146,6 +146,9 @@ class ANGLERenderTest : public ANGLEPerfTest
 
     void startGpuTimer();
     void stopGpuTimer();
+
+    void beginInternalTraceEvent(const char *name);
+    void endInternalTraceEvent(const char *name);
 
   private:
     void SetUp() override;
@@ -157,12 +160,11 @@ class ANGLERenderTest : public ANGLEPerfTest
 
     bool areExtensionPrerequisitesFulfilled() const;
 
-    static EGLWindow *createEGLWindow(const RenderTestParams &testParams);
-
     GLWindowBase *mGLWindow;
     OSWindow *mOSWindow;
     std::vector<const char *> mExtensionPrerequisites;
     angle::PlatformMethods mPlatformMethods;
+    ConfigParameters mConfigParams;
 
     GLuint mTimestampQuery;
 

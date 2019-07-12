@@ -28,12 +28,13 @@ class ProgramBinaryTest : public ANGLETest
         setConfigGreenBits(8);
         setConfigBlueBits(8);
         setConfigAlphaBits(8);
+
+        // Test flakiness was noticed when reusing displays.
+        forceNewDisplay();
     }
 
-    void SetUp() override
+    void testSetUp() override
     {
-        ANGLETest::SetUp();
-
         mProgram = CompileProgram(essl1_shaders::vs::Simple(), essl1_shaders::fs::Red());
         if (mProgram == 0)
         {
@@ -48,12 +49,10 @@ class ProgramBinaryTest : public ANGLETest
         ASSERT_GL_NO_ERROR();
     }
 
-    void TearDown() override
+    void testTearDown() override
     {
         glDeleteProgram(mProgram);
         glDeleteBuffers(1, &mBuffer);
-
-        ANGLETest::TearDown();
     }
 
     GLint getAvailableProgramBinaryFormatCount() const
@@ -65,7 +64,7 @@ class ProgramBinaryTest : public ANGLETest
 
     bool supported() const
     {
-        if (!extensionEnabled("GL_OES_get_program_binary"))
+        if (!IsGLExtensionEnabled("GL_OES_get_program_binary"))
         {
             std::cout << "Test skipped because GL_OES_get_program_binary is not available."
                       << std::endl;
@@ -80,6 +79,62 @@ class ProgramBinaryTest : public ANGLETest
         }
 
         return true;
+    }
+
+    void saveAndLoadProgram(GLuint programToSave, GLuint loadedProgram)
+    {
+        GLint programLength = 0;
+        GLint writtenLength = 0;
+        GLenum binaryFormat = 0;
+
+        glGetProgramiv(programToSave, GL_PROGRAM_BINARY_LENGTH_OES, &programLength);
+        EXPECT_GL_NO_ERROR();
+
+        std::vector<uint8_t> binary(programLength);
+        glGetProgramBinaryOES(programToSave, programLength, &writtenLength, &binaryFormat,
+                              binary.data());
+        EXPECT_GL_NO_ERROR();
+
+        // The lengths reported by glGetProgramiv and glGetProgramBinaryOES should match
+        EXPECT_EQ(programLength, writtenLength);
+
+        if (writtenLength)
+        {
+            glProgramBinaryOES(loadedProgram, binaryFormat, binary.data(), writtenLength);
+
+            EXPECT_GL_NO_ERROR();
+
+            GLint linkStatus;
+            glGetProgramiv(loadedProgram, GL_LINK_STATUS, &linkStatus);
+            if (linkStatus == 0)
+            {
+                GLint infoLogLength;
+                glGetProgramiv(loadedProgram, GL_INFO_LOG_LENGTH, &infoLogLength);
+
+                if (infoLogLength > 0)
+                {
+                    std::vector<GLchar> infoLog(infoLogLength);
+                    glGetProgramInfoLog(loadedProgram, static_cast<GLsizei>(infoLog.size()),
+                                        nullptr, &infoLog[0]);
+                    FAIL() << "program link failed: " << &infoLog[0];
+                }
+                else
+                {
+                    FAIL() << "program link failed.";
+                }
+            }
+            else
+            {
+                glUseProgram(loadedProgram);
+                glBindBuffer(GL_ARRAY_BUFFER, mBuffer);
+
+                glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 8, nullptr);
+                glEnableVertexAttribArray(0);
+                glDrawArrays(GL_POINTS, 0, 1);
+
+                EXPECT_GL_NO_ERROR();
+            }
+        }
     }
 
     GLuint mProgram;
@@ -146,60 +201,32 @@ TEST_P(ProgramBinaryTest, SaveAndLoadBinary)
         return;
     }
 
-    GLint programLength = 0;
-    GLint writtenLength = 0;
-    GLenum binaryFormat = 0;
+    GLuint programToLoad = glCreateProgram();
 
-    glGetProgramiv(mProgram, GL_PROGRAM_BINARY_LENGTH_OES, &programLength);
+    saveAndLoadProgram(mProgram, programToLoad);
+
+    glDeleteProgram(programToLoad);
     EXPECT_GL_NO_ERROR();
+}
 
-    std::vector<uint8_t> binary(programLength);
-    glGetProgramBinaryOES(mProgram, programLength, &writtenLength, &binaryFormat, binary.data());
-    EXPECT_GL_NO_ERROR();
-
-    // The lengths reported by glGetProgramiv and glGetProgramBinaryOES should match
-    EXPECT_EQ(programLength, writtenLength);
-
-    if (writtenLength)
+// This tests the ability to successfully save and load a program binary and then
+// save and load from the same program that was loaded.
+TEST_P(ProgramBinaryTest, SaveAndLoadBinaryTwice)
+{
+    if (!supported())
     {
-        GLuint program2 = glCreateProgram();
-        glProgramBinaryOES(program2, binaryFormat, binary.data(), writtenLength);
-
-        EXPECT_GL_NO_ERROR();
-
-        GLint linkStatus;
-        glGetProgramiv(program2, GL_LINK_STATUS, &linkStatus);
-        if (linkStatus == 0)
-        {
-            GLint infoLogLength;
-            glGetProgramiv(program2, GL_INFO_LOG_LENGTH, &infoLogLength);
-
-            if (infoLogLength > 0)
-            {
-                std::vector<GLchar> infoLog(infoLogLength);
-                glGetProgramInfoLog(program2, static_cast<GLsizei>(infoLog.size()), nullptr,
-                                    &infoLog[0]);
-                FAIL() << "program link failed: " << &infoLog[0];
-            }
-            else
-            {
-                FAIL() << "program link failed.";
-            }
-        }
-        else
-        {
-            glUseProgram(program2);
-            glBindBuffer(GL_ARRAY_BUFFER, mBuffer);
-
-            glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 8, nullptr);
-            glEnableVertexAttribArray(0);
-            glDrawArrays(GL_POINTS, 0, 1);
-
-            EXPECT_GL_NO_ERROR();
-        }
-
-        glDeleteProgram(program2);
+        return;
     }
+
+    GLuint programToLoad  = glCreateProgram();
+    GLuint programToLoad2 = glCreateProgram();
+
+    saveAndLoadProgram(mProgram, programToLoad);
+    saveAndLoadProgram(programToLoad, programToLoad2);
+
+    glDeleteProgram(programToLoad);
+    glDeleteProgram(programToLoad2);
+    EXPECT_GL_NO_ERROR();
 }
 
 // Ensures that we init the compiler before calling ProgramBinary.
@@ -225,8 +252,7 @@ TEST_P(ProgramBinaryTest, CallProgramBinaryBeforeLink)
     ASSERT_GL_NO_ERROR();
 
     // Shutdown and restart GL entirely.
-    TearDown();
-    SetUp();
+    recreateTestFixture();
 
     ANGLE_GL_BINARY_OES_PROGRAM(binaryProgram, binaryBlob, binaryFormat);
     ASSERT_GL_NO_ERROR();
@@ -254,11 +280,18 @@ ANGLE_INSTANTIATE_TEST(ProgramBinaryTest,
                        ES3_D3D11(),
                        ES2_OPENGL(),
                        ES3_OPENGL(),
-                       ES2_VULKAN());
+                       ES2_VULKAN(),
+                       ES3_VULKAN());
 
 class ProgramBinaryES3Test : public ANGLETest
 {
   protected:
+    ProgramBinaryES3Test()
+    {
+        // Test flakiness was noticed when reusing displays.
+        forceNewDisplay();
+    }
+
     void testBinaryAndUBOBlockIndexes(bool drawWithProgramFirst);
 };
 
@@ -355,7 +388,11 @@ TEST_P(ProgramBinaryES3Test, UniformBlockBindingNoDraw)
     testBinaryAndUBOBlockIndexes(false);
 }
 
-ANGLE_INSTANTIATE_TEST(ProgramBinaryES3Test, ES3_D3D11(), ES3_OPENGL(), ES3_OPENGLES());
+ANGLE_INSTANTIATE_TEST(ProgramBinaryES3Test,
+                       ES3_D3D11(),
+                       ES3_OPENGL(),
+                       ES3_OPENGLES(),
+                       ES3_VULKAN());
 
 class ProgramBinaryES31Test : public ANGLETest
 {
@@ -368,6 +405,9 @@ class ProgramBinaryES31Test : public ANGLETest
         setConfigGreenBits(8);
         setConfigBlueBits(8);
         setConfigAlphaBits(8);
+
+        // Test flakiness was noticed when reusing displays.
+        forceNewDisplay();
     }
 };
 
@@ -554,10 +594,8 @@ class ProgramBinaryTransformFeedbackTest : public ANGLETest
         setConfigAlphaBits(8);
     }
 
-    void SetUp() override
+    void testSetUp() override
     {
-        ANGLETest::SetUp();
-
         constexpr char kVS[] = R"(#version 300 es
 in vec4 inputAttribute;
 out vec4 outputVarying;
@@ -587,12 +625,7 @@ void main()
         ASSERT_GL_NO_ERROR();
     }
 
-    void TearDown() override
-    {
-        glDeleteProgram(mProgram);
-
-        ANGLETest::TearDown();
-    }
+    void testTearDown() override { glDeleteProgram(mProgram); }
 
     GLint getAvailableProgramBinaryFormatCount() const
     {
@@ -608,7 +641,7 @@ void main()
 // should not internally cause a vertex shader recompile (for conversion).
 TEST_P(ProgramBinaryTransformFeedbackTest, GetTransformFeedbackVarying)
 {
-    ANGLE_SKIP_TEST_IF(!extensionEnabled("GL_OES_get_program_binary"));
+    ANGLE_SKIP_TEST_IF(!IsGLExtensionEnabled("GL_OES_get_program_binary"));
 
     ANGLE_SKIP_TEST_IF(!getAvailableProgramBinaryFormatCount());
 
@@ -654,7 +687,7 @@ TEST_P(ProgramBinaryTransformFeedbackTest, GetTransformFeedbackVarying)
 
 // Use this to select which configurations (e.g. which renderer, which GLES major version) these
 // tests should be run against.
-ANGLE_INSTANTIATE_TEST(ProgramBinaryTransformFeedbackTest, ES3_D3D11(), ES3_OPENGL());
+ANGLE_INSTANTIATE_TEST(ProgramBinaryTransformFeedbackTest, ES3_D3D11(), ES3_OPENGL(), ES3_VULKAN());
 
 // For the ProgramBinariesAcrossPlatforms tests, we need two sets of params:
 // - a set to save the program binary
@@ -703,15 +736,17 @@ class ProgramBinariesAcrossPlatforms : public testing::TestWithParam<PlatformsWi
             FAIL() << "Failed to create OS window";
         }
 
-        mEntryPointsLib.reset(angle::OpenSharedLibrary(ANGLE_EGL_LIBRARY_NAME));
+        mEntryPointsLib.reset(
+            angle::OpenSharedLibrary(ANGLE_EGL_LIBRARY_NAME, angle::SearchType::ApplicationDir));
     }
 
     EGLWindow *createAndInitEGLWindow(angle::PlatformParameters &param)
     {
-        EGLWindow *eglWindow =
-            EGLWindow::New(param.majorVersion, param.minorVersion, param.eglParameters);
-        bool result = eglWindow->initializeGL(mOSWindow, mEntryPointsLib.get());
-        if (result == false)
+        EGLWindow *eglWindow = EGLWindow::New(param.majorVersion, param.minorVersion);
+        ConfigParameters configParams;
+        bool result = eglWindow->initializeGL(mOSWindow, mEntryPointsLib.get(), param.eglParameters,
+                                              configParams);
+        if (!result)
         {
             EGLWindow::Delete(&eglWindow);
         }
@@ -887,9 +922,6 @@ ANGLE_INSTANTIATE_TEST(ProgramBinariesAcrossPlatforms,
                        //                     | using these params | using these params    | link result
                        PlatformsWithLinkResult(ES2_D3D11(),         ES2_D3D11(),            true         ), // Loading + reloading binary should work
                        PlatformsWithLinkResult(ES3_D3D11(),         ES3_D3D11(),            true         ), // Loading + reloading binary should work
-                       PlatformsWithLinkResult(ES2_D3D11_FL11_0(),  ES2_D3D11_FL9_3(),      false        ), // Switching feature level shouldn't work
-                       PlatformsWithLinkResult(ES2_D3D11(),         ES2_D3D11_WARP(),       false        ), // Switching from hardware to software shouldn't work
-                       PlatformsWithLinkResult(ES2_D3D11_FL9_3(),   ES2_D3D11_FL9_3_WARP(), false        ), // Switching from hardware to software shouldn't work for FL9 either
                        PlatformsWithLinkResult(ES2_D3D11(),         ES2_D3D9(),             false        ), // Switching from D3D11 to D3D9 shouldn't work
                        PlatformsWithLinkResult(ES2_D3D9(),          ES2_D3D11(),            false        ), // Switching from D3D9 to D3D11 shouldn't work
                        PlatformsWithLinkResult(ES2_D3D11(),         ES3_D3D11(),            false        ), // Switching to newer client version shouldn't work

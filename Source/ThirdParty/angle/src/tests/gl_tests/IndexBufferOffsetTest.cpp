@@ -24,10 +24,8 @@ class IndexBufferOffsetTest : public ANGLETest
         setConfigAlphaBits(8);
     }
 
-    void SetUp() override
+    void testSetUp() override
     {
-        ANGLETest::SetUp();
-
         constexpr char kVS[] =
             R"(precision highp float;
             attribute vec2 position;
@@ -61,12 +59,11 @@ class IndexBufferOffsetTest : public ANGLETest
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mIndexBuffer);
     }
 
-    void TearDown() override
+    void testTearDown() override
     {
         glDeleteBuffers(1, &mVertexBuffer);
         glDeleteBuffers(1, &mIndexBuffer);
         glDeleteProgram(mProgram);
-        ANGLETest::TearDown();
     }
 
     void runTest(GLenum type, int typeWidth, void *indexData)
@@ -94,7 +91,7 @@ class IndexBufferOffsetTest : public ANGLETest
         for (int i = 0; i < 16; i++)
         {
             glDrawElements(GL_TRIANGLES, 6, type, reinterpret_cast<void *>(indexDataWidth));
-            EXPECT_PIXEL_EQ(64, 64, 255, 0, 0, 255);
+            EXPECT_PIXEL_COLOR_EQ(64, 64, GLColor::red);
         }
 
         glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, indexDataWidth, indexDataWidth, nullIndexData);
@@ -102,7 +99,7 @@ class IndexBufferOffsetTest : public ANGLETest
 
         glUniform4f(mColorUniformLocation, 0.0f, 1.0f, 0.0f, 1.0f);
         glDrawElements(GL_TRIANGLES, 6, type, reinterpret_cast<void *>(indexDataWidth * 2));
-        EXPECT_PIXEL_EQ(64, 64, 0, 255, 0, 255);
+        EXPECT_PIXEL_COLOR_EQ(64, 64, GLColor::green);
 
         EXPECT_GL_NO_ERROR();
         swapBuffers();
@@ -138,7 +135,7 @@ TEST_P(IndexBufferOffsetTest, UInt16Index)
 TEST_P(IndexBufferOffsetTest, UInt32Index)
 {
     ANGLE_SKIP_TEST_IF(getClientMajorVersion() < 3 &&
-                       !extensionEnabled("GL_OES_element_index_uint"));
+                       !IsGLExtensionEnabled("GL_OES_element_index_uint"));
 
     GLuint indexData[] = {0, 1, 2, 1, 2, 3};
     runTest(GL_UNSIGNED_INT, 4, indexData);

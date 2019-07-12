@@ -2,6 +2,16 @@
 # Split into two libraries - one that depends on spirv/glslang libraries
 # which have long build times, and one that can build in parallel with those.
 
+include(CheckIncludeFileCXX)
+check_include_file_cxx(
+	${CMAKE_SOURCE_DIR}/external/renderdoc/src/renderdoc_app.h
+	HAVE_RENDERDOC_APP_H)
+if(HAVE_RENDERDOC_APP_H)
+	set(VKRENDERDOC_SRC vkRenderDocUtil.cpp)
+else()
+	set(VKRENDERDOC_SRC vkNoRenderDocUtil.cpp)
+endif(HAVE_RENDERDOC_APP_H)
+
 set(VKUTILNOSHADER_SRCS
 	vkApiVersion.cpp
 	vkApiVersion.hpp
@@ -47,8 +57,6 @@ set(VKUTILNOSHADER_SRCS
 	vkBufferWithMemory.hpp
 	vkImageWithMemory.cpp
 	vkImageWithMemory.hpp
-	vkBufferWithMemory.cpp
-	vkBufferWithMemory.hpp
 	vkImageWithMemory.cpp
 	vkImageWithMemory.hpp
 	vkShaderProgram.cpp
@@ -58,8 +66,11 @@ set(VKUTILNOSHADER_SRCS
 	vkYCbCrImageWithMemory.hpp
 	vkObjUtil.cpp
 	vkObjUtil.hpp
+	${VKRENDERDOC_SRC}
 	vkRenderDocUtil.hpp
-	vkRenderDocUtil.cpp
+	vkDeviceFeatures.hpp
+	vkDeviceFeatures.cpp
+	vkDeviceFeatures.inl
 	)
 
 set(VKUTIL_SRCS
@@ -93,7 +104,7 @@ if (DEQP_HAVE_GLSLANG)
 	if (DE_COMPILER_IS_GCC OR DE_COMPILER_IS_CLANG)
 		set_source_files_properties(
 			FILES vkShaderToSpirV.cpp
-			PROPERTIES COMPILE_FLAGS "${DE_3RD_PARTY_CXX_FLAGS} -std=c++11")
+			PROPERTIES COMPILE_FLAGS "${DE_3RD_PARTY_CXX_FLAGS}")
 	endif ()
 
 	set(VKUTIL_LIBS ${VKUTIL_LIBS} ${GLSLANG_LIBRARIES})
@@ -108,7 +119,7 @@ if(DEQP_HAVE_SPIRV_TOOLS)
 	if (DE_COMPILER_IS_GCC OR DE_COMPILER_IS_CLANG)
 		set_source_files_properties(
 			FILES vkPrograms.cpp
-			PROPERTIES COMPILE_FLAGS "${DE_3RD_PARTY_CXX_FLAGS} -std=c++11")
+			PROPERTIES COMPILE_FLAGS "${DE_3RD_PARTY_CXX_FLAGS}")
 	endif ()
 
 	add_definitions(-DDEQP_HAVE_SPIRV_TOOLS=1)

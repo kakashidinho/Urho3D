@@ -23,10 +23,10 @@
 
 set (TARGET_NAME angle)
 
-add_definitions(-DANGLE_ENABLE_VULKAN -DAPI_NAME=\"Vulkan\" -DVULKAN_NON_CMAKE_BUILD -DSDL_VIDEO_STATIC_ANGLE -DANGLE_EXPORT=  -DANGLE_VK_ICD_JSON="" -DANGLE_VK_DATA_DIR="")
+add_definitions(-DANGLE_USE_CUSTOM_VULKAN_CMD_BUFFERS=1 -DANGLE_ENABLE_VULKAN -DAPI_NAME=\"Vulkan\" -DVULKAN_NON_CMAKE_BUILD -DSDL_VIDEO_STATIC_ANGLE -DANGLE_EXPORT=  -DANGLE_VK_ICD_JSON="" -DANGLE_VK_DATA_DIR="")
 #add_definitions(-DGL_API=  -DGL_APIENTRY=  -DEGLAPI=  -DANGLE_PLATFORM_EXPORT=    -DGL_APICALL=  -DGL_APIENTRY= -DANGLE_EXPORT= -DEGLAPIENTRY= -DANGLE_APIENTRY=)
 
-
+#-DANGLE_USE_CUSTOM_VULKAN_CMD_BUFFERS=1 
 
 if(ANDROID)
 	add_definitions(-DVK_USE_PLATFORM_ANDROID_KHR  -DVK_USE_PLATFORM_ANDROID_KHX -DREDEF )
@@ -61,7 +61,7 @@ endif()
 
 set (libangle_common_sources
   src/common/Color.h
-  src/common/Color.inl
+  src/common/Color.inc
   src/common/FastVector.h
   src/common/FixedVector.h
   src/common/Float16ToFloat32.cpp
@@ -74,8 +74,12 @@ set (libangle_common_sources
   src/common/PackedEnums.h
   src/common/PackedGLEnums_autogen.cpp
   src/common/PackedGLEnums_autogen.h
+  src/common/PoolAlloc.cpp
+  src/common/PoolAlloc.h
   src/common/aligned_memory.cpp
   src/common/aligned_memory.h
+  src/common/android_util.cpp
+  src/common/android_util.h
   src/common/angleutils.cpp
   src/common/angleutils.h
   src/common/bitset_utils.h
@@ -122,14 +126,14 @@ list (APPEND SOURCE_FILES ${libangle_common_sources})
 set (libangle_image_util_sources
   src/image_util/copyimage.cpp
   src/image_util/copyimage.h
-  src/image_util/copyimage.inl
+  src/image_util/copyimage.inc
   src/image_util/generatemip.h
-  src/image_util/generatemip.inl
+  src/image_util/generatemip.inc
   src/image_util/imageformats.cpp
   src/image_util/imageformats.h
   src/image_util/loadimage.cpp
   src/image_util/loadimage.h
-  src/image_util/loadimage.inl
+  src/image_util/loadimage.inc
   src/image_util/loadimage_etc.cpp
 )
 
@@ -199,7 +203,7 @@ set (libangle_sources
   src/libANGLE/EGLSync.h
   src/libANGLE/Error.cpp
   src/libANGLE/Error.h
-  src/libANGLE/Error.inl
+  src/libANGLE/Error.inc
   src/libANGLE/ErrorStrings.h
   src/libANGLE/Fence.cpp
   src/libANGLE/Fence.h
@@ -224,6 +228,8 @@ set (libangle_sources
   src/libANGLE/IndexRangeCache.h
   src/libANGLE/LoggingAnnotator.cpp
   src/libANGLE/LoggingAnnotator.h
+  src/libANGLE/MemoryObject.h
+  src/libANGLE/MemoryObject.cpp
   src/libANGLE/MemoryProgramCache.cpp
   src/libANGLE/MemoryProgramCache.h
   src/libANGLE/Observer.cpp
@@ -247,6 +253,8 @@ set (libangle_sources
   src/libANGLE/ResourceMap.h
   src/libANGLE/Sampler.cpp
   src/libANGLE/Sampler.h
+  src/libANGLE/Semaphore.cpp
+  src/libANGLE/Semaphore.h
   src/libANGLE/Shader.cpp
   src/libANGLE/Shader.h
   src/libANGLE/SizedMRUCache.h
@@ -267,18 +275,17 @@ set (libangle_sources
   src/libANGLE/VaryingPacking.cpp
   src/libANGLE/VaryingPacking.h
   src/libANGLE/Version.h
-  src/libANGLE/Version.inl
+  src/libANGLE/Version.inc
   src/libANGLE/VertexArray.cpp
   src/libANGLE/VertexArray.h
   src/libANGLE/VertexAttribute.cpp
   src/libANGLE/VertexAttribute.h
-  src/libANGLE/VertexAttribute.inl
-  src/libANGLE/Workarounds.h
+  src/libANGLE/VertexAttribute.inc
   src/libANGLE/WorkerThread.cpp
   src/libANGLE/WorkerThread.h
   src/libANGLE/angletypes.cpp
   src/libANGLE/angletypes.h
-  src/libANGLE/angletypes.inl
+  src/libANGLE/angletypes.inc
   src/libANGLE/es3_copy_conversion_table_autogen.cpp
   src/libANGLE/features.h
   src/libANGLE/format_map_autogen.cpp
@@ -330,6 +337,8 @@ set (libangle_sources
   src/libANGLE/renderer/load_functions_table_autogen.cpp
   src/libANGLE/renderer/renderer_utils.cpp
   src/libANGLE/renderer/renderer_utils.h
+  src/libANGLE/renderer/ShaderImpl.cpp
+  src/libANGLE/renderer/SamplerImpl.h
   src/libANGLE/validationEGL.cpp
   src/libANGLE/validationEGL.h
   src/libANGLE/validationES.cpp
@@ -372,6 +381,7 @@ set(libangle_vulkan_sources
   src/libANGLE/renderer/vulkan/GlslangWrapper.h
   src/libANGLE/renderer/vulkan/ImageVk.cpp
   src/libANGLE/renderer/vulkan/ImageVk.h
+  src/libANGLE/renderer/vulkan/MemoryObjectVk.cpp
   src/libANGLE/renderer/vulkan/ProgramVk.cpp
   src/libANGLE/renderer/vulkan/ProgramVk.h
   src/libANGLE/renderer/vulkan/ProgramPipelineVk.cpp
@@ -386,6 +396,10 @@ set(libangle_vulkan_sources
   src/libANGLE/renderer/vulkan/RenderTargetVk.h
   src/libANGLE/renderer/vulkan/SamplerVk.cpp
   src/libANGLE/renderer/vulkan/SamplerVk.h
+  src/libANGLE/renderer/vulkan/SecondaryCommandBuffer.cpp
+  src/libANGLE/renderer/vulkan/SecondaryCommandBuffer.h
+  src/libANGLE/renderer/vulkan/SemaphoreVk.cpp
+  src/libANGLE/renderer/vulkan/SemaphoreVk.h
   src/libANGLE/renderer/vulkan/ShaderVk.cpp
   src/libANGLE/renderer/vulkan/ShaderVk.h
   src/libANGLE/renderer/vulkan/SurfaceVk.cpp
@@ -468,7 +482,6 @@ set (libglesv2_sources
   src/libGLESv2/entry_points_egl.h
   src/libGLESv2/entry_points_egl_ext.cpp
   src/libGLESv2/entry_points_egl_ext.h
-  src/libGLESv2/entry_points_enum_autogen.h
   src/libGLESv2/entry_points_gles_1_0_autogen.cpp
   src/libGLESv2/entry_points_gles_1_0_autogen.h
   src/libGLESv2/entry_points_gles_2_0_autogen.cpp
@@ -483,8 +496,8 @@ set (libglesv2_sources
   src/libGLESv2/global_state.h
   src/libGLESv2/libGLESv2_autogen.cpp
   src/libGLESv2/libGLESv2.rc
-  src/libGLESv2/proc_table.h
-  src/libGLESv2/proc_table_autogen.cpp
+  src/libGLESv2/proc_table_egl.h
+  src/libGLESv2/proc_table_egl_autogen.cpp
   src/libGLESv2/resource.h
 )
 source_group("libGLESv2"            FILES ${libglesv2_sources})
@@ -622,10 +635,10 @@ set (angle_translator_sources
   src/compiler/translator/tree_ops/DeclareAndInitBuiltinsForInstancedMultiview.cpp
   src/compiler/translator/tree_ops/DeferGlobalInitializers.cpp
   src/compiler/translator/tree_ops/DeferGlobalInitializers.h
-  src/compiler/translator/tree_ops/EmulateGLDrawID.cpp
-  src/compiler/translator/tree_ops/EmulateGLDrawID.h
   src/compiler/translator/tree_ops/EmulateGLFragColorBroadcast.cpp
   src/compiler/translator/tree_ops/EmulateGLFragColorBroadcast.h
+  src/compiler/translator/tree_ops/EmulateMultiDrawShaderBuiltins.cpp
+  src/compiler/translator/tree_ops/EmulateMultiDrawShaderBuiltins.h
   src/compiler/translator/tree_ops/EmulatePrecision.cpp
   src/compiler/translator/tree_ops/EmulatePrecision.h
   src/compiler/translator/tree_ops/ExpandIntegerPowExpressions.cpp
@@ -654,6 +667,8 @@ set (angle_translator_sources
   src/compiler/translator/tree_ops/RemoveUnreferencedVariables.h
   src/compiler/translator/tree_ops/RewriteAtomicFunctionExpressions.cpp
   src/compiler/translator/tree_ops/RewriteAtomicFunctionExpressions.h
+  src/compiler/translator/tree_ops/RewriteDfdy.cpp
+  src/compiler/translator/tree_ops/RewriteDfdy.h
   src/compiler/translator/tree_ops/RewriteDoWhile.cpp
   src/compiler/translator/tree_ops/RewriteDoWhile.h
   src/compiler/translator/tree_ops/RewriteStructSamplers.cpp
@@ -681,6 +696,8 @@ set (angle_translator_sources
   src/compiler/translator/tree_ops/VectorizeVectorScalarArithmetic.cpp
   src/compiler/translator/tree_ops/VectorizeVectorScalarArithmetic.h
   src/compiler/translator/tree_util/BuiltIn_autogen.h
+  src/compiler/translator/tree_util/FindFunction.cpp
+  src/compiler/translator/tree_util/FindFunction.h
   src/compiler/translator/tree_util/FindMain.cpp
   src/compiler/translator/tree_util/FindMain.h
   src/compiler/translator/tree_util/FindSymbolNode.cpp
@@ -692,6 +709,7 @@ set (angle_translator_sources
   src/compiler/translator/tree_util/IntermTraverse.cpp
   src/compiler/translator/tree_util/IntermTraverse.h
   src/compiler/translator/tree_util/NodeSearch.h
+  src/compiler/translator/tree_util/ReplaceShadowingVariables.cpp
   src/compiler/translator/tree_util/ReplaceVariable.cpp
   src/compiler/translator/tree_util/ReplaceVariable.h
   src/compiler/translator/tree_util/RunAtTheEndOfShader.cpp
@@ -1175,7 +1193,7 @@ set (libangle_includes
   include/platform
   include
   src
-  third_party/vulkan-headers/src/include
+  third_party/vulkan-headers/src/include/
   src/common/third_party/base
   third_party/glslang/src
   third_party/spirv-tools/src

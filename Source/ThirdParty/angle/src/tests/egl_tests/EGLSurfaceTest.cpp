@@ -30,8 +30,7 @@ using namespace angle;
 namespace
 {
 
-class EGLSurfaceTest : public EGLTest,
-                       public ::testing::WithParamInterface<angle::PlatformParameters>
+class EGLSurfaceTest : public ANGLETest
 {
   protected:
     EGLSurfaceTest()
@@ -43,16 +42,14 @@ class EGLSurfaceTest : public EGLTest,
           mOSWindow(nullptr)
     {}
 
-    void SetUp() override
+    void testSetUp() override
     {
-        EGLTest::SetUp();
-
         mOSWindow = OSWindow::New();
         mOSWindow->initialize("EGLSurfaceTest", 64, 64);
     }
 
     // Release any resources created in the test body
-    void TearDown() override
+    void testTearDown() override
     {
         if (mDisplay != EGL_NO_DISPLAY)
         {
@@ -305,6 +302,9 @@ TEST_P(EGLSurfaceTest, ResizeWindow)
     // TODO(syoussefi): http://anglebug.com/3123
     ANGLE_SKIP_TEST_IF(IsAndroid());
 
+    // Necessary for a window resizing test
+    mOSWindow->setVisible(true);
+
     GLenum platform               = GetParam().getRenderer();
     bool platformSupportsZeroSize = platform == EGL_PLATFORM_ANGLE_TYPE_D3D11_ANGLE ||
                                     platform == EGL_PLATFORM_ANGLE_TYPE_D3D9_ANGLE;
@@ -353,6 +353,11 @@ TEST_P(EGLSurfaceTest, SwapInterval)
 {
     // On OSX, maxInterval >= 1 is advertised, but is not implemented.  http://anglebug.com/3140
     ANGLE_SKIP_TEST_IF(IsOSX());
+    // Flaky hang on Nexus 5X and 6P. http://anglebug.com/3364
+    ANGLE_SKIP_TEST_IF((IsNexus5X() || IsNexus6P()) && isGLESRenderer());
+    // Flaky hang on Ubuntu 19.04 NVIDIA Vulkan. http://anglebug.com/3618
+    // Maybe hang due to bug in NVIDIA Linux Vulkan driver. http://anglebug.com/3450
+    ANGLE_SKIP_TEST_IF(IsLinux() && IsNVIDIA() && isVulkanRenderer());
 
     initializeDisplay();
     initializeSurfaceWithDefaultConfig();
@@ -399,7 +404,7 @@ TEST_P(EGLSurfaceTest, SwapInterval)
 
                 // Second eglSwapBuffers causes an EGL_BAD_SURFACE on Nvidia shield tv.
                 // http://anglebug.com/3144.
-                ANGLE_SKIP_TEST_IF(IsAndroid());
+                ANGLE_SKIP_TEST_IF(IsNVIDIAShield());
             }
             timer->stop();
             ASSERT_EGL_SUCCESS();
@@ -539,8 +544,7 @@ TEST_P(EGLSurfaceTest, FixedSizeWindow)
     initializeDisplay();
     ANGLE_SKIP_TEST_IF(EGLWindow::FindEGLConfig(mDisplay, configAttributes, &mConfig) == EGL_FALSE);
 
-    ANGLE_SKIP_TEST_IF(
-        !ANGLETest::eglDisplayExtensionEnabled(mDisplay, "EGL_ANGLE_window_fixed_size"));
+    ANGLE_SKIP_TEST_IF(!IsEGLDisplayExtensionEnabled(mDisplay, "EGL_ANGLE_window_fixed_size"));
 
     constexpr EGLint kInitialSize = 64;
     constexpr EGLint kUpdateSize  = 32;
@@ -595,11 +599,7 @@ class EGLSurfaceTestD3D11 : public EGLSurfaceTest
 // Test that rendering to an IDCompositionSurface using a pbuffer works.
 TEST_P(EGLSurfaceTestD3D11, CreateDirectCompositionSurface)
 {
-    if (!ANGLETest::eglDisplayExtensionEnabled(EGL_NO_DISPLAY, "EGL_ANGLE_platform_angle_d3d"))
-    {
-        std::cout << "D3D Platform not supported in ANGLE" << std::endl;
-        return;
-    }
+    ANGLE_SKIP_TEST_IF(!IsEGLClientExtensionEnabled("EGL_ANGLE_platform_angle_d3d"));
     initializeDisplay();
 
     EGLAttrib device       = 0;
@@ -670,11 +670,7 @@ TEST_P(EGLSurfaceTestD3D11, CreateDirectCompositionSurface)
 
 TEST_P(EGLSurfaceTestD3D11, CreateSurfaceWithMSAA)
 {
-    if (!ANGLETest::eglDisplayExtensionEnabled(EGL_NO_DISPLAY, "EGL_ANGLE_platform_angle_d3d"))
-    {
-        std::cout << "D3D Platform not supported in ANGLE" << std::endl;
-        return;
-    }
+    ANGLE_SKIP_TEST_IF(!IsEGLClientExtensionEnabled("EGL_ANGLE_platform_angle_d3d"));
 
     // clang-format off
     const EGLint configAttributes[] =
@@ -744,15 +740,15 @@ TEST_P(EGLSurfaceTestD3D11, CreateSurfaceWithMSAA)
 }  // anonymous namespace
 
 ANGLE_INSTANTIATE_TEST(EGLSurfaceTest,
-                       ES2_D3D9(),
-                       ES2_D3D11(),
-                       ES3_D3D11(),
-                       ES2_OPENGL(),
-                       ES3_OPENGL(),
-                       ES2_OPENGLES(),
-                       ES3_OPENGLES(),
-                       ES2_VULKAN());
+                       WithNoFixture(ES2_D3D9()),
+                       WithNoFixture(ES2_D3D11()),
+                       WithNoFixture(ES3_D3D11()),
+                       WithNoFixture(ES2_OPENGL()),
+                       WithNoFixture(ES3_OPENGL()),
+                       WithNoFixture(ES2_OPENGLES()),
+                       WithNoFixture(ES3_OPENGLES()),
+                       WithNoFixture(ES2_VULKAN()));
 
 #if defined(ANGLE_ENABLE_D3D11)
-ANGLE_INSTANTIATE_TEST(EGLSurfaceTestD3D11, ES2_D3D11(), ES3_D3D11());
+ANGLE_INSTANTIATE_TEST(EGLSurfaceTestD3D11, WithNoFixture(ES2_D3D11()), WithNoFixture(ES3_D3D11()));
 #endif

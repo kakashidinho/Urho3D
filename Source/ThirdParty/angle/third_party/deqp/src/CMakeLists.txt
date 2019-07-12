@@ -4,7 +4,7 @@
 cmake_minimum_required(VERSION 2.8.2)
 
 find_package(Git)
-find_package(PythonInterp 2)
+find_package(PythonInterp 3)
 
 # dEQP Target.
 set(DEQP_TARGET "default" CACHE STRING "dEQP Target (default, android...)")
@@ -88,16 +88,16 @@ add_subdirectory(external/glslang)
 # spirv-tools
 add_subdirectory(external/spirv-tools)
 
-# VkRunner
-add_subdirectory(external/vkrunner)
-include_directories(external/vkrunner/src)
-
 # spirv-headers
 set(SPIRV_INCLUDE_PATH "${PROJECT_SOURCE_DIR}/external/spirv-headers/src/include")
 if (NOT EXISTS ${SPIRV_INCLUDE_PATH})
 	message(FATAL_ERROR "SPIR-V headers not found, please run external/fetch_sources.py")
 endif()
 include_directories(${SPIRV_INCLUDE_PATH})
+
+# Amber
+add_subdirectory(external/amber)
+include_directories(external/amber)
 
 # RenderDoc API
 include_directories(external/renderdoc/src)

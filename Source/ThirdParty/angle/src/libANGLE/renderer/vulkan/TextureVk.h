@@ -87,11 +87,22 @@ class TextureVk : public TextureImpl
                                  bool unpackUnmultiplyAlpha,
                                  const gl::Texture *source) override;
 
+    angle::Result copyCompressedTexture(const gl::Context *context,
+                                        const gl::Texture *source) override;
+
     angle::Result setStorage(const gl::Context *context,
                              gl::TextureType type,
                              size_t levels,
                              GLenum internalFormat,
                              const gl::Extents &size) override;
+
+    angle::Result setStorageExternalMemory(const gl::Context *context,
+                                           gl::TextureType type,
+                                           size_t levels,
+                                           GLenum internalFormat,
+                                           const gl::Extents &size,
+                                           gl::MemoryObject *memoryObject,
+                                           GLuint64 offset) override;
 
     angle::Result setEGLImageTarget(const gl::Context *context,
                                     gl::TextureType type,
@@ -142,6 +153,8 @@ class TextureVk : public TextureImpl
     void releaseOwnershipOfImage(const gl::Context *context);
 
     const vk::ImageView &getReadImageView() const;
+    // A special view for cube maps as a 2D array, used with shaders that do texelFetch().
+    const vk::ImageView &getFetchImageView() const;
     angle::Result getLayerLevelDrawImageView(vk::Context *context,
                                              size_t layer,
                                              size_t level,
@@ -150,6 +163,13 @@ class TextureVk : public TextureImpl
 
     angle::Result ensureImageInitialized(ContextVk *contextVk);
 
+    Serial getSerial() const { return mSerial; }
+
+    void overrideStagingBufferSizeForTesting(size_t initialSizeForTesting)
+    {
+        mStagingBufferInitialSize = initialSizeForTesting;
+    }
+
   private:
     // Transform an image index from the frontend into one that can be used on the backing
     // ImageHelper, taking into account mipmap or cube face offsets
@@ -157,19 +177,37 @@ class TextureVk : public TextureImpl
     uint32_t getNativeImageLevel(uint32_t frontendLevel) const;
     uint32_t getNativeImageLayer(uint32_t frontendLayer) const;
 
-    void releaseAndDeleteImage(const gl::Context *context, RendererVk *renderer);
-    angle::Result ensureImageAllocated(RendererVk *renderer);
-    void setImageHelper(RendererVk *renderer,
+    void releaseAndDeleteImage(ContextVk *contextVk);
+    angle::Result ensureImageAllocated(ContextVk *contextVk, const vk::Format &format);
+    void setImageHelper(ContextVk *contextVk,
                         vk::ImageHelper *imageHelper,
                         gl::TextureType imageType,
+                        const vk::Format &format,
                         uint32_t imageLevelOffset,
                         uint32_t imageLayerOffset,
                         bool selfOwned);
+    void updateImageHelper(ContextVk *context, const vk::Format &internalFormat);
 
     angle::Result redefineImage(const gl::Context *context,
                                 const gl::ImageIndex &index,
-                                const gl::InternalFormat &internalFormat,
+                                const vk::Format &format,
                                 const gl::Extents &size);
+
+    angle::Result setImageImpl(const gl::Context *context,
+                               const gl::ImageIndex &index,
+                               const gl::InternalFormat &formatInfo,
+                               const gl::Extents &size,
+                               GLenum type,
+                               const gl::PixelUnpackState &unpack,
+                               const uint8_t *pixels);
+    angle::Result setSubImageImpl(const gl::Context *context,
+                                  const gl::ImageIndex &index,
+                                  const gl::Box &area,
+                                  const gl::InternalFormat &formatInfo,
+                                  GLenum type,
+                                  const gl::PixelUnpackState &unpack,
+                                  const uint8_t *pixels,
+                                  const vk::Format &vkFormat);
 
     angle::Result copyImageDataToBuffer(ContextVk *contextVk,
                                         size_t sourceLevel,
@@ -233,8 +271,9 @@ class TextureVk : public TextureImpl
                             const gl::Extents &extents,
                             const uint32_t levelCount,
                             vk::CommandBuffer *commandBuffer);
-    void releaseImage(RendererVk *renderer);
-    void releaseStagingBuffer(RendererVk *renderer);
+    void releaseImage(ContextVk *context);
+    void releaseImageViews(ContextVk *contextVk);
+    void releaseStagingBuffer(ContextVk *context);
     uint32_t getLevelCount() const;
     angle::Result initImageViews(ContextVk *contextVk,
                                  const vk::Format &format,
@@ -245,6 +284,8 @@ class TextureVk : public TextureImpl
                                              const gl::Extents &baseLevelExtents,
                                              uint32_t levelCount,
                                              const vk::Format &format);
+
+    void onStagingBufferChange() { onStateChange(angle::SubjectMessage::SubjectChanged); }
 
     bool mOwnsImage;
 
@@ -263,11 +304,20 @@ class TextureVk : public TextureImpl
     vk::ImageView mDrawBaseLevelImageView;
     vk::ImageView mReadBaseLevelImageView;
     vk::ImageView mReadMipmapImageView;
+    vk::ImageView mFetchBaseLevelImageView;
+    vk::ImageView mFetchMipmapImageView;
     std::vector<std::vector<vk::ImageView>> mLayerLevelDrawImageViews;
     vk::Sampler mSampler;
 
     RenderTargetVk mRenderTarget;
+    std::vector<vk::ImageView> mLayerFetchImageView;
     std::vector<RenderTargetVk> mCubeMapRenderTargets;
+
+    // The serial is used for cache indexing.
+    Serial mSerial;
+
+    // Overridden in some tests.
+    size_t mStagingBufferInitialSize;
 };
 
 }  // namespace rx

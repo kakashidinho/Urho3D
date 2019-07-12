@@ -470,6 +470,7 @@ struct TestParams
 	VkClearValue	clearValue[2];		//!< the second value is used with more than one mip map
 	LayerRange		clearLayerRange;
 	AllocationKind	allocationKind;
+	bool			isCube;
 };
 
 class ImageClearingTestInstance : public vkt::TestInstance
@@ -498,7 +499,8 @@ protected:
 	enum ViewType
 	{
 		VIEW_TYPE_SINGLE,
-		VIEW_TYPE_ARRAY
+		VIEW_TYPE_ARRAY,
+		VIEW_TYPE_CUBE
 	};
 	VkImageViewType						getCorrespondingImageViewType	(VkImageType imageType, ViewType viewType) const;
 	VkImageUsageFlags					getImageUsageFlags				(VkFormat format) const;
@@ -507,6 +509,8 @@ protected:
 	bool								getIsStencilFormat				(VkFormat format) const;
 	bool								getIsDepthFormat				(VkFormat format) const;
 	VkImageFormatProperties				getImageFormatProperties		(void) const;
+	VkImageCreateFlags					getImageCreateFlags				(void) const;
+	ViewType							getViewType						(deUint32 imageLayerCount) const;
 	de::MovePtr<Allocation>				allocateAndBindImageMemory		(VkImage image) const;
 
 	const TestParams&					m_params;
@@ -561,7 +565,7 @@ ImageClearingTestInstance::ImageClearingTestInstance (Context& context, const Te
 
 	, m_imageMemory				(allocateAndBindImageMemory(*m_image))
 	, m_imageView				(m_isAttachmentFormat ? createImageView(*m_image,
-												 getCorrespondingImageViewType(params.imageType, params.imageLayerCount > 1u ? VIEW_TYPE_ARRAY : VIEW_TYPE_SINGLE),
+												 getCorrespondingImageViewType(params.imageType, getViewType(params.imageLayerCount)),
 												 params.imageFormat,
 												 m_imageAspectFlags,
 												 params.imageViewLayerRange) : vk::Move<VkImageView>())
@@ -576,6 +580,14 @@ ImageClearingTestInstance::ImageClearingTestInstance (Context& context, const Te
 	}
 }
 
+ImageClearingTestInstance::ViewType ImageClearingTestInstance::getViewType (deUint32 imageLayerCount) const
+{
+	if (imageLayerCount > 1u)
+		return m_params.isCube ? VIEW_TYPE_CUBE : VIEW_TYPE_ARRAY;
+	else
+		return VIEW_TYPE_SINGLE;
+}
+
 VkImageViewType ImageClearingTestInstance::getCorrespondingImageViewType (VkImageType imageType, ViewType viewType) const
 {
 	switch (imageType)
@@ -583,7 +595,12 @@ VkImageViewType ImageClearingTestInstance::getCorrespondingImageViewType (VkImag
 	case VK_IMAGE_TYPE_1D:
 		return (viewType == VIEW_TYPE_ARRAY) ?  VK_IMAGE_VIEW_TYPE_1D_ARRAY : VK_IMAGE_VIEW_TYPE_1D;
 	case VK_IMAGE_TYPE_2D:
-		return (viewType == VIEW_TYPE_ARRAY) ?  VK_IMAGE_VIEW_TYPE_2D_ARRAY : VK_IMAGE_VIEW_TYPE_2D;
+		if (viewType == VIEW_TYPE_ARRAY)
+			return VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+		else if (viewType == VIEW_TYPE_CUBE)
+			return VK_IMAGE_VIEW_TYPE_CUBE;
+		else
+			return VK_IMAGE_VIEW_TYPE_2D;
 	case VK_IMAGE_TYPE_3D:
 		if (viewType != VIEW_TYPE_SINGLE)
 		{
@@ -655,11 +672,16 @@ bool ImageClearingTestInstance::getIsDepthFormat (VkFormat format) const
 	return false;
 }
 
+VkImageCreateFlags ImageClearingTestInstance::getImageCreateFlags (void) const
+{
+	return m_params.isCube ? (VkImageCreateFlags)VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : (VkImageCreateFlags)0;
+}
+
 VkImageFormatProperties ImageClearingTestInstance::getImageFormatProperties (void) const
 {
 	VkImageFormatProperties properties;
 	const VkResult result = m_vki.getPhysicalDeviceImageFormatProperties(m_context.getPhysicalDevice(), m_params.imageFormat, m_params.imageType,
-																		 m_params.imageTiling, m_imageUsageFlags, (VkImageCreateFlags)0, &properties);
+																		 m_params.imageTiling, m_imageUsageFlags, getImageCreateFlags(), &properties);
 
 	if (result == VK_ERROR_FORMAT_NOT_SUPPORTED)
 		TCU_THROW(NotSupportedError, "Format not supported");
@@ -693,7 +715,7 @@ Move<VkImage> ImageClearingTestInstance::createImage (VkImageType imageType, VkF
 	{
 		VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,		// VkStructureType			sType;
 		DE_NULL,									// const void*				pNext;
-		0u,											// VkImageCreateFlags		flags;
+		getImageCreateFlags(),						// VkImageCreateFlags		flags;
 		imageType,									// VkImageType				imageType;
 		format,										// VkFormat					format;
 		extent,										// VkExtent3D				extent;
@@ -1291,8 +1313,8 @@ public:
 		}
 		else
 		{
-			const deUint32	clearX		= m_params.imageExtent.width  / 4u;
-			const deUint32	clearY		= m_params.imageExtent.height / 4u;
+			const deUint32	clearX		= m_params.imageExtent.width  / 8u;
+			const deUint32	clearY		= m_params.imageExtent.height / 8u;
 			const deUint32	clearWidth	= m_params.imageExtent.width  / 2u;
 			const deUint32	clearHeight	= m_params.imageExtent.height / 2u;
 
@@ -1638,6 +1660,7 @@ TestCaseGroup* createImageClearingTestsCommon (TestContext& testCtx, tcu::TestCa
 		LayerRange		clearLayerRange;
 		bool			twoStep;
 		const char*		testName;
+		bool			isCube;
 	};
 	const ImageLayerParams imageLayerParamsToTest[] =
 	{
@@ -1646,28 +1669,40 @@ TestCaseGroup* createImageClearingTestsCommon (TestContext& testCtx, tcu::TestCa
 			{0u, 1u},							// imageViewRange
 			{0u, 1u},							// clearLayerRange
 			false,								// twoStep
-			"single_layer"						// testName
+			"single_layer",						// testName
+			false								// isCube
 		},
 		{
 			16u,								// imageLayerCount
 			{3u, 12u},							// imageViewRange
 			{2u, 5u},							// clearLayerRange
 			false,								// twoStep
-			"multiple_layers"					// testName
+			"multiple_layers",					// testName
+			false								// isCube
+		},
+		{
+			15u,								// imageLayerCount
+			{ 3u, 6u },							// imageViewRange
+			{ 2u, 1u },							// clearLayerRange
+			false,								// twoStep
+			"cube_layers",						// testName
+			true								// isCube
 		},
 		{
 			16u,								// imageLayerCount
 			{ 3u, 12u },						// imageViewRange
 			{ 8u, VK_REMAINING_ARRAY_LAYERS },	// clearLayerRange
 			false,								// twoStep
-			"remaining_array_layers"			// testName
+			"remaining_array_layers",			// testName
+			false								// isCube
 		},
 		{
 			16u,								// imageLayerCount
 			{ 3u, 12u },						// imageViewRange
 			{ 8u, VK_REMAINING_ARRAY_LAYERS },	// clearLayerRange
 			true,								// twoStep
-			"remaining_array_layers_twostep"	// testName
+			"remaining_array_layers_twostep",	// testName
+			false								// isCube
 		}
 	};
 
@@ -1696,9 +1731,9 @@ TestCaseGroup* createImageClearingTestsCommon (TestContext& testCtx, tcu::TestCa
 
 		const VkExtent3D			imageDimensionsByType[]	=
 		{
-			{ 256, 1, 1},
-			{ 256, 256, 1},
-			{ 256, 256, 16}
+			{ 200, 1, 1},
+			{ 200, 180, 1},
+			{ 200, 180, 16}
 		};
 
 		for (size_t	imageTypeIndex = 0; imageTypeIndex < numOfImageTypesToTest; ++imageTypeIndex)
@@ -1713,6 +1748,10 @@ TestCaseGroup* createImageClearingTestsCommon (TestContext& testCtx, tcu::TestCa
 				{
 					// 3D ARRAY images are not supported
 					if (imageLayerParamsToTest[imageLayerParamsIndex].imageLayerCount > 1u && imageTypesToTest[imageTypeIndex] == VK_IMAGE_TYPE_3D)
+						continue;
+
+					// CUBE images are not tested in clear image tests (they are tested in clear attachment tests)
+					if (imageLayerParamsToTest[imageLayerParamsIndex].isCube)
 						continue;
 
 					de::MovePtr<TestCaseGroup> imageLayersGroup(new TestCaseGroup(testCtx, imageLayerParamsToTest[imageLayerParamsIndex].testName, ""));
@@ -1739,7 +1778,8 @@ TestCaseGroup* createImageClearingTestsCommon (TestContext& testCtx, tcu::TestCa
 								makeClearColorValue(format, 0.3f, 0.6f, 0.2f, 0.7f),				// VkClearValue		clearValue[1];
 							},
 							imageLayerParamsToTest[imageLayerParamsIndex].clearLayerRange,		// LayerRange       clearLayerRange;
-							allocationKind														// AllocationKind	allocationKind;
+							allocationKind,														// AllocationKind	allocationKind;
+							false																// bool				isCube;
 						};
 						if (!imageLayerParamsToTest[imageLayerParamsIndex].twoStep)
 							imageLayersGroup->addChild(new InstanceFactory1<ClearColorImageTestInstance, TestParams>(testCtx, NODETYPE_SELF_VALIDATE, testCaseName, "Clear Color Image", testParams));
@@ -1759,6 +1799,10 @@ TestCaseGroup* createImageClearingTestsCommon (TestContext& testCtx, tcu::TestCa
 	{
 		for (size_t imageLayerParamsIndex = 0; imageLayerParamsIndex < numOfImageLayerParamsToTest; ++imageLayerParamsIndex)
 		{
+			// CUBE images are not tested in clear image tests (they are tested in clear attachment tests)
+			if (imageLayerParamsToTest[imageLayerParamsIndex].isCube)
+				continue;
+
 			de::MovePtr<TestCaseGroup> imageLayersGroup(new TestCaseGroup(testCtx, imageLayerParamsToTest[imageLayerParamsIndex].testName, ""));
 
 			for (size_t imageFormatIndex = 0; imageFormatIndex < numOfDepthStencilImageFormatsToTest; ++imageFormatIndex)
@@ -1771,7 +1815,7 @@ TestCaseGroup* createImageClearingTestsCommon (TestContext& testCtx, tcu::TestCa
 					VK_IMAGE_TYPE_2D,													// VkImageType		imageType;
 					format,																// VkFormat			format;
 					VK_IMAGE_TILING_OPTIMAL,											// VkImageTiling	tiling;
-					{ 256, 256, 1 },													// VkExtent3D		extent;
+					{ 200, 180, 1 },													// VkExtent3D		extent;
 					imageLayerParamsToTest[imageLayerParamsIndex].imageLayerCount,		// deUint32         imageLayerCount;
 					{
 						0u,
@@ -1783,7 +1827,8 @@ TestCaseGroup* createImageClearingTestsCommon (TestContext& testCtx, tcu::TestCa
 						makeClearValueDepthStencil(0.3f, 0x04),								// VkClearValue		clearValue[1];
 					},
 					imageLayerParamsToTest[imageLayerParamsIndex].clearLayerRange,		// LayerRange       clearLayerRange;
-					allocationKind														// AllocationKind	allocationKind;
+					allocationKind,														// AllocationKind	allocationKind;
+					false																// bool				isCube;
 				};
 
 				if (!imageLayerParamsToTest[imageLayerParamsIndex].twoStep)
@@ -1809,13 +1854,14 @@ TestCaseGroup* createImageClearingTestsCommon (TestContext& testCtx, tcu::TestCa
 				{
 					const VkFormat		format			= colorImageFormatsToTest[imageFormatIndex];
 					const std::string	testCaseName	= getFormatCaseName(format);
+					const bool			isCube			= imageLayerParamsToTest[imageLayerParamsIndex].isCube;
 					const TestParams	testParams		=
 					{
 						true,															// bool				useSingleMipLevel;
 						VK_IMAGE_TYPE_2D,												// VkImageType		imageType;
 						format,															// VkFormat			format;
 						VK_IMAGE_TILING_OPTIMAL,										// VkImageTiling	tiling;
-						{ 256, 256, 1 },												// VkExtent3D		extent;
+						{ 200u, isCube ? 200u : 180u, 1u },								// VkExtent3D		extent;
 						imageLayerParamsToTest[imageLayerParamsIndex].imageLayerCount,	// deUint32         imageLayerCount;
 						imageLayerParamsToTest[imageLayerParamsIndex].imageViewRange,	// LayerRange		imageViewLayerRange;
 						makeClearColorValue(format, 0.2f, 0.1f, 0.7f, 0.8f),			// VkClearValue		initValue
@@ -1824,7 +1870,8 @@ TestCaseGroup* createImageClearingTestsCommon (TestContext& testCtx, tcu::TestCa
 							makeClearColorValue(format, 0.3f, 0.6f, 0.2f, 0.7f),			// VkClearValue		clearValue[1];
 						},
 						imageLayerParamsToTest[imageLayerParamsIndex].clearLayerRange,	// LayerRange       clearLayerRange;
-						allocationKind													// AllocationKind	allocationKind;
+						allocationKind,													// AllocationKind	allocationKind;
+						isCube															// bool				isCube;
 					};
 					colorAttachmentClearLayersGroup->addChild(new InstanceFactory1<ClearAttachmentTestInstance, TestParams>(testCtx, NODETYPE_SELF_VALIDATE, testCaseName, "Clear Color Attachment", testParams));
 					partialColorAttachmentClearLayersGroup->addChild(new InstanceFactory1<PartialClearAttachmentTestInstance, TestParams>(testCtx, NODETYPE_SELF_VALIDATE, testCaseName, "Partial Clear Color Attachment", testParams));
@@ -1850,13 +1897,14 @@ TestCaseGroup* createImageClearingTestsCommon (TestContext& testCtx, tcu::TestCa
 				{
 					const VkFormat		format			= depthStencilImageFormatsToTest[imageFormatIndex];
 					const std::string	testCaseName	= getFormatCaseName(format);
+					const bool			isCube			= imageLayerParamsToTest[imageLayerParamsIndex].isCube;
 					const TestParams	testParams		=
 					{
 						true,															// bool				useSingleMipLevel;
 						VK_IMAGE_TYPE_2D,												// VkImageType		imageType;
 						format,															// VkFormat			format;
 						VK_IMAGE_TILING_OPTIMAL,										// VkImageTiling	tiling;
-						{ 256, 256, 1 },												// VkExtent3D		extent;
+						{ 200u, isCube ? 200u : 180u, 1u },								// VkExtent3D		extent;
 						imageLayerParamsToTest[imageLayerParamsIndex].imageLayerCount,	// deUint32         imageLayerCount;
 						imageLayerParamsToTest[imageLayerParamsIndex].imageViewRange,	// LayerRange		imageViewLayerRange;
 						makeClearValueDepthStencil(0.5f, 0x03),							// VkClearValue		initValue
@@ -1865,7 +1913,8 @@ TestCaseGroup* createImageClearingTestsCommon (TestContext& testCtx, tcu::TestCa
 							makeClearValueDepthStencil(0.3f, 0x04),							// VkClearValue		clearValue[1];
 						},
 						imageLayerParamsToTest[imageLayerParamsIndex].clearLayerRange,	// LayerRange       clearLayerRange;
-						allocationKind													// AllocationKind	allocationKind;
+						allocationKind,													// AllocationKind	allocationKind;
+						isCube															// bool				isCube;
 					};
 					depthStencilLayersGroup->addChild(new InstanceFactory1<ClearAttachmentTestInstance, TestParams>(testCtx, NODETYPE_SELF_VALIDATE, testCaseName, "Clear Depth/Stencil Attachment", testParams));
 					partialDepthStencilLayersGroup->addChild(new InstanceFactory1<PartialClearAttachmentTestInstance, TestParams>(testCtx, NODETYPE_SELF_VALIDATE, testCaseName, "Parital Clear Depth/Stencil Attachment", testParams));

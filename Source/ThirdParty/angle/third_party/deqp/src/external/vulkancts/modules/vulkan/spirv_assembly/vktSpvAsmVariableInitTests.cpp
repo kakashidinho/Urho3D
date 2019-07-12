@@ -187,6 +187,7 @@ void addGraphicsVariableInitPrivateTest (tcu::TestCaseGroup* group)
 	RGBA					defaultColors[4];
 	GraphicsResources		resources;
 	vector<string>			extensions;
+	VulkanFeatures			features;
 	tcu::TestCaseGroup*		privateGroup		= new tcu::TestCaseGroup(testCtx, "private", "Tests OpVariable initialization in private storage class.");
 	const int				numFloats			= 128;
 	vector<float>			expectedOutput;
@@ -226,7 +227,6 @@ void addGraphicsVariableInitPrivateTest (tcu::TestCaseGroup* group)
 		"                         OpReturnValue %param\n"
 		"                         OpFunctionEnd\n");
 
-
 	group->addChild(privateGroup);
 
 	getDefaultColors(defaultColors);
@@ -237,6 +237,9 @@ void addGraphicsVariableInitPrivateTest (tcu::TestCaseGroup* group)
 
 	resources.outputs.push_back(Resource(BufferSp(new Float32Buffer(expectedOutput)), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER));
 	extensions.push_back("VK_KHR_storage_buffer_storage_class");
+
+	features.coreFeatures.vertexPipelineStoresAndAtomics	= true;
+	features.coreFeatures.fragmentStoresAndAtomics			= true;
 
 	for (int paramIdx = 0; paramIdx < DE_LENGTH_OF_ARRAY(params); paramIdx++)
 	{
@@ -261,7 +264,7 @@ void addGraphicsVariableInitPrivateTest (tcu::TestCaseGroup* group)
 		fragments["decoration"]		= decoration.specialize(shaderSpec);
 		fragments["testfun"]		= testFun.specialize(shaderSpec);
 
-		createTestsForAllStages(params[paramIdx].name, defaultColors, defaultColors, fragments, resources, extensions, privateGroup);
+		createTestsForAllStages(params[paramIdx].name, defaultColors, defaultColors, fragments, resources, extensions, privateGroup, features);
 	}
 }
 
@@ -556,7 +559,6 @@ void addGraphicsVariableInitOutputTest (tcu::TestCaseGroup* group)
 	PushConstants			noPushConstants;
 	GraphicsInterfaces		noInterfaces;
 	vector<string>			extensions;
-	vector<string>			features;
 	map<string, string>		noFragments;
 	StageToSpecConstantMap	specConstantMap;
 
@@ -573,7 +575,8 @@ void addGraphicsVariableInitOutputTest (tcu::TestCaseGroup* group)
 
 	group->addChild(outputGroup);
 
-	features.push_back("fragmentStoresAndAtomics");
+	VulkanFeatures requiredFeatures;
+	requiredFeatures.coreFeatures.fragmentStoresAndAtomics = VK_TRUE;
 	extensions.push_back("VK_KHR_storage_buffer_storage_class");
 
 	for (int paramIdx = 0; paramIdx < DE_LENGTH_OF_ARRAY(params); paramIdx++)
@@ -598,8 +601,7 @@ void addGraphicsVariableInitOutputTest (tcu::TestCaseGroup* group)
 																		   resources,
 																		   noInterfaces,
 																		   extensions,
-																		   features,
-																		   VulkanFeatures(),
+																		   requiredFeatures,
 																		   VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
 																		   QP_TEST_RESULT_FAIL,
 																		   string());

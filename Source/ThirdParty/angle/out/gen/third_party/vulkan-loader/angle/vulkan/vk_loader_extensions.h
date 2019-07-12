@@ -63,7 +63,10 @@ VKAPI_ATTR void VKAPI_CALL loader_init_device_dispatch_table(struct loader_dev_d
 
 // Init Device function pointer dispatch table with extension commands
 VKAPI_ATTR void VKAPI_CALL loader_init_device_extension_dispatch_table(struct loader_dev_dispatch_table *dev_table,
-                                                                       PFN_vkGetDeviceProcAddr gpa, VkDevice dev);
+                                                                       PFN_vkGetInstanceProcAddr gipa,
+                                                                       PFN_vkGetDeviceProcAddr gdpa,
+                                                                       VkInstance inst,
+                                                                       VkDevice dev);
 
 // Init Instance function pointer dispatch table with core commands
 VKAPI_ATTR void VKAPI_CALL loader_init_instance_core_dispatch_table(VkLayerInstanceDispatchTable *table, PFN_vkGetInstanceProcAddr gpa,
@@ -283,14 +286,6 @@ struct loader_icd_term_dispatch {
     PFN_vkGetPhysicalDeviceWaylandPresentationSupportKHR GetPhysicalDeviceWaylandPresentationSupportKHR;
 #endif // VK_USE_PLATFORM_WAYLAND_KHR
 
-    // ---- VK_KHR_mir_surface extension commands
-#ifdef VK_USE_PLATFORM_MIR_KHR
-    PFN_vkCreateMirSurfaceKHR CreateMirSurfaceKHR;
-#endif // VK_USE_PLATFORM_MIR_KHR
-#ifdef VK_USE_PLATFORM_MIR_KHR
-    PFN_vkGetPhysicalDeviceMirPresentationSupportKHR GetPhysicalDeviceMirPresentationSupportKHR;
-#endif // VK_USE_PLATFORM_MIR_KHR
-
     // ---- VK_KHR_android_surface extension commands
 #ifdef VK_USE_PLATFORM_ANDROID_KHR
     PFN_vkCreateAndroidSurfaceKHR CreateAndroidSurfaceKHR;
@@ -389,10 +384,21 @@ struct loader_icd_term_dispatch {
     // ---- VK_EXT_sample_locations extension commands
     PFN_vkGetPhysicalDeviceMultisamplePropertiesEXT GetPhysicalDeviceMultisamplePropertiesEXT;
 
+    // ---- VK_EXT_calibrated_timestamps extension commands
+    PFN_vkGetPhysicalDeviceCalibrateableTimeDomainsEXT GetPhysicalDeviceCalibrateableTimeDomainsEXT;
+
     // ---- VK_FUCHSIA_imagepipe_surface extension commands
 #ifdef VK_USE_PLATFORM_FUCHSIA
     PFN_vkCreateImagePipeSurfaceFUCHSIA CreateImagePipeSurfaceFUCHSIA;
 #endif // VK_USE_PLATFORM_FUCHSIA
+
+    // ---- VK_EXT_metal_surface extension commands
+#ifdef VK_USE_PLATFORM_METAL_EXT
+    PFN_vkCreateMetalSurfaceEXT CreateMetalSurfaceEXT;
+#endif // VK_USE_PLATFORM_METAL_EXT
+
+    // ---- VK_NV_cooperative_matrix extension commands
+    PFN_vkGetPhysicalDeviceCooperativeMatrixPropertiesNV GetPhysicalDeviceCooperativeMatrixPropertiesNV;
 };
 
 union loader_instance_extension_enables {
@@ -411,6 +417,7 @@ union loader_instance_extension_enables {
         uint8_t ext_display_surface_counter : 1;
         uint8_t ext_debug_utils : 1;
         uint8_t fuchsia_imagepipe_surface : 1;
+        uint8_t ext_metal_surface : 1;
     };
     uint64_t padding[4];
 };

@@ -67,3 +67,5 @@ virtual VkResult	getPhysicalDeviceSurfaceCapabilities2EXT			(VkPhysicalDevice ph
 virtual VkResult	createIOSSurfaceMVK									(VkInstance instance, const VkIOSSurfaceCreateInfoMVK* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkSurfaceKHR* pSurface) const;
 virtual VkResult	createMacOSSurfaceMVK								(VkInstance instance, const VkMacOSSurfaceCreateInfoMVK* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkSurfaceKHR* pSurface) const;
 virtual void		getPhysicalDeviceMultisamplePropertiesEXT			(VkPhysicalDevice physicalDevice, VkSampleCountFlagBits samples, VkMultisamplePropertiesEXT* pMultisampleProperties) const;
+virtual VkResult	getPhysicalDeviceCooperativeMatrixPropertiesNV		(VkPhysicalDevice physicalDevice, deUint32* pPropertyCount, VkCooperativeMatrixPropertiesNV* pProperties) const;
+virtual VkResult	getPhysicalDeviceCalibrateableTimeDomainsEXT		(VkPhysicalDevice physicalDevice, deUint32* pTimeDomainCount, VkTimeDomainEXT* pTimeDomains) const;

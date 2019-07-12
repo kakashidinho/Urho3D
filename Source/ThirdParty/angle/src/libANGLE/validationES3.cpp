@@ -36,7 +36,7 @@ bool ValidateFramebufferTextureMultiviewBaseANGLE(Context *context,
                                                   GLint level,
                                                   GLsizei numViews)
 {
-    if (!context->getExtensions().multiview)
+    if (!(context->getExtensions().multiview || context->getExtensions().multiview2))
     {
         context->validationError(GL_INVALID_OPERATION, kMultiviewNotAvailable);
         return false;
@@ -369,6 +369,7 @@ bool ValidateES3TexImageParametersBase(Context *context,
     switch (texType)
     {
         case TextureType::_2D:
+        case TextureType::External:
             if (static_cast<GLuint>(width) > (caps.max2DTextureSize >> level) ||
                 static_cast<GLuint>(height) > (caps.max2DTextureSize >> level))
             {
@@ -431,7 +432,7 @@ bool ValidateES3TexImageParametersBase(Context *context,
             return false;
     }
 
-    gl::Texture *texture = context->getTargetTexture(texType);
+    gl::Texture *texture = context->getTextureByType(texType);
     if (!texture)
     {
         context->validationError(GL_INVALID_OPERATION, kMissingTexture);
@@ -622,7 +623,7 @@ bool ValidateES3TexImage2DParameters(Context *context,
 }
 
 bool ValidateES3TexImage3DParameters(Context *context,
-                                     TextureType target,
+                                     TextureTarget target,
                                      GLint level,
                                      GLenum internalformat,
                                      bool isCompressed,
@@ -645,17 +646,16 @@ bool ValidateES3TexImage3DParameters(Context *context,
         return false;
     }
 
-    if (IsETC2EACFormat(format) && target != TextureType::_2DArray)
+    if (IsETC2EACFormat(format) && target != TextureTarget::_2DArray)
     {
         // ES 3.1, Section 8.7, page 169.
         context->validationError(GL_INVALID_OPERATION, kInternalFormatRequiresTexture2DArray);
         return false;
     }
 
-    return ValidateES3TexImageParametersBase(context, NonCubeTextureTypeToTarget(target), level,
-                                             internalformat, isCompressed, isSubImage, xoffset,
-                                             yoffset, zoffset, width, height, depth, border, format,
-                                             type, bufSize, pixels);
+    return ValidateES3TexImageParametersBase(context, target, level, internalformat, isCompressed,
+                                             isSubImage, xoffset, yoffset, zoffset, width, height,
+                                             depth, border, format, type, bufSize, pixels);
 }
 
 struct EffectiveInternalFormatInfo
@@ -937,7 +937,7 @@ bool ValidateES3CopyTexImageParametersBase(Context *context,
         return false;
     }
 
-    const FramebufferAttachment *source = framebuffer->getReadColorbuffer();
+    const FramebufferAttachment *source = framebuffer->getReadColorAttachment();
 
     // According to ES 3.x spec, if the internalformat of the texture
     // is RGB9_E5 and copy to such a texture, generate INVALID_OPERATION.
@@ -998,7 +998,7 @@ bool ValidateES3CopyTexImage2DParameters(Context *context,
 }
 
 bool ValidateES3CopyTexImage3DParameters(Context *context,
-                                         TextureType target,
+                                         TextureTarget target,
                                          GLint level,
                                          GLenum internalformat,
                                          bool isSubImage,
@@ -1017,9 +1017,9 @@ bool ValidateES3CopyTexImage3DParameters(Context *context,
         return false;
     }
 
-    return ValidateES3CopyTexImageParametersBase(context, NonCubeTextureTypeToTarget(target), level,
-                                                 internalformat, isSubImage, xoffset, yoffset,
-                                                 zoffset, x, y, width, height, border);
+    return ValidateES3CopyTexImageParametersBase(context, target, level, internalformat, isSubImage,
+                                                 xoffset, yoffset, zoffset, x, y, width, height,
+                                                 border);
 }
 
 bool ValidateES3TexStorageParametersBase(Context *context,
@@ -1125,7 +1125,7 @@ bool ValidateES3TexStorageParametersBase(Context *context,
             return false;
     }
 
-    gl::Texture *texture = context->getTargetTexture(target);
+    gl::Texture *texture = context->getTextureByType(target);
     if (!texture || texture->id() == 0)
     {
         context->validationError(GL_INVALID_OPERATION, kMissingTexture);
@@ -1508,7 +1508,7 @@ bool ValidateReadBuffer(Context *context, GLenum src)
 }
 
 bool ValidateCompressedTexImage3D(Context *context,
-                                  TextureType target,
+                                  TextureTarget target,
                                   GLint level,
                                   GLenum internalformat,
                                   GLsizei width,
@@ -1518,20 +1518,21 @@ bool ValidateCompressedTexImage3D(Context *context,
                                   GLsizei imageSize,
                                   const void *data)
 {
-    if (context->getClientMajorVersion() < 3)
+    if ((context->getClientMajorVersion() < 3) && !context->getExtensions().texture3DOES)
     {
         context->validationError(GL_INVALID_OPERATION, kES3Required);
         return false;
     }
 
-    if (!ValidTextureTarget(context, target))
+    if (!ValidTextureTarget(context, TextureTargetToType(target)))
     {
         context->validationError(GL_INVALID_ENUM, kInvalidTextureTarget);
         return false;
     }
 
     // Validate image size
-    if (!ValidImageSizeParameters(context, target, level, width, height, depth, false))
+    if (!ValidImageSizeParameters(context, TextureTargetToType(target), level, width, height, depth,
+                                  false))
     {
         // Error already generated.
         return false;
@@ -1558,7 +1559,7 @@ bool ValidateCompressedTexImage3D(Context *context,
     }
 
     // 3D texture target validation
-    if (target != TextureType::_3D && target != TextureType::_2DArray)
+    if (target != TextureTarget::_3D && target != TextureTarget::_2DArray)
     {
         context->validationError(GL_INVALID_ENUM, kInvalidTextureTarget);
         return false;
@@ -1576,7 +1577,7 @@ bool ValidateCompressedTexImage3D(Context *context,
 }
 
 bool ValidateCompressedTexImage3DRobustANGLE(Context *context,
-                                             TextureType target,
+                                             TextureTarget target,
                                              GLint level,
                                              GLenum internalformat,
                                              GLsizei width,
@@ -1661,9 +1662,7 @@ static bool ValidateBindBufferCommon(Context *context,
                 return false;
             }
 
-            TransformFeedback *curTransformFeedback =
-                context->getState().getCurrentTransformFeedback();
-            if (curTransformFeedback && curTransformFeedback->isActive())
+            if (context->getState().isTransformFeedbackActive())
             {
                 context->validationError(GL_INVALID_OPERATION, kTransformFeedbackTargetActive);
                 return false;
@@ -1995,7 +1994,7 @@ bool ValidateDrawBuffers(Context *context, GLsizei n, const GLenum *bufs)
 }
 
 bool ValidateCopyTexSubImage3D(Context *context,
-                               TextureType target,
+                               TextureTarget target,
                                GLint level,
                                GLint xoffset,
                                GLint yoffset,
@@ -2005,7 +2004,7 @@ bool ValidateCopyTexSubImage3D(Context *context,
                                GLsizei width,
                                GLsizei height)
 {
-    if (context->getClientMajorVersion() < 3)
+    if ((context->getClientMajorVersion() < 3) && !context->getExtensions().texture3DOES)
     {
         context->validationError(GL_INVALID_OPERATION, kES3Required);
         return false;
@@ -2167,7 +2166,7 @@ bool ValidateCopySubTexture3DANGLE(Context *context,
 }
 
 bool ValidateTexImage3D(Context *context,
-                        TextureType target,
+                        TextureTarget target,
                         GLint level,
                         GLint internalformat,
                         GLsizei width,
@@ -2178,9 +2177,9 @@ bool ValidateTexImage3D(Context *context,
                         GLenum type,
                         const void *pixels)
 {
-    if (context->getClientMajorVersion() < 3)
+    if ((context->getClientMajorVersion() < 3) && !context->getExtensions().texture3DOES)
     {
-        context->validationError(GL_INVALID_OPERATION, kES3Required);
+        context->validationError(GL_INVALID_OPERATION, kExtensionNotEnabled);
         return false;
     }
 
@@ -2190,7 +2189,7 @@ bool ValidateTexImage3D(Context *context,
 }
 
 bool ValidateTexImage3DRobustANGLE(Context *context,
-                                   TextureType target,
+                                   TextureTarget target,
                                    GLint level,
                                    GLint internalformat,
                                    GLsizei width,
@@ -2219,7 +2218,7 @@ bool ValidateTexImage3DRobustANGLE(Context *context,
 }
 
 bool ValidateTexSubImage3D(Context *context,
-                           TextureType target,
+                           TextureTarget target,
                            GLint level,
                            GLint xoffset,
                            GLint yoffset,
@@ -2231,7 +2230,7 @@ bool ValidateTexSubImage3D(Context *context,
                            GLenum type,
                            const void *pixels)
 {
-    if (context->getClientMajorVersion() < 3)
+    if ((context->getClientMajorVersion() < 3) && !context->getExtensions().texture3DOES)
     {
         context->validationError(GL_INVALID_OPERATION, kES3Required);
         return false;
@@ -2243,7 +2242,7 @@ bool ValidateTexSubImage3D(Context *context,
 }
 
 bool ValidateTexSubImage3DRobustANGLE(Context *context,
-                                      TextureType target,
+                                      TextureTarget target,
                                       GLint level,
                                       GLint xoffset,
                                       GLint yoffset,
@@ -2273,7 +2272,7 @@ bool ValidateTexSubImage3DRobustANGLE(Context *context,
 }
 
 bool ValidateCompressedTexSubImage3D(Context *context,
-                                     TextureType target,
+                                     TextureTarget target,
                                      GLint level,
                                      GLint xoffset,
                                      GLint yoffset,
@@ -2285,7 +2284,7 @@ bool ValidateCompressedTexSubImage3D(Context *context,
                                      GLsizei imageSize,
                                      const void *data)
 {
-    if (context->getClientMajorVersion() < 3)
+    if ((context->getClientMajorVersion() < 3) && !context->getExtensions().texture3DOES)
     {
         context->validationError(GL_INVALID_OPERATION, kES3Required);
         return false;
@@ -2328,7 +2327,7 @@ bool ValidateCompressedTexSubImage3D(Context *context,
 }
 
 bool ValidateCompressedTexSubImage3DRobustANGLE(Context *context,
-                                                TextureType target,
+                                                TextureTarget target,
                                                 GLint level,
                                                 GLint xoffset,
                                                 GLint yoffset,
@@ -3047,6 +3046,22 @@ bool ValidateGetSynciv(Context *context,
         return false;
     }
 
+    if (context->isContextLost())
+    {
+        context->validationError(GL_CONTEXT_LOST, kContextLost);
+
+        if (pname == GL_SYNC_STATUS)
+        {
+            // Generate an error but still return true, the context still needs to return a
+            // value in this case.
+            return true;
+        }
+        else
+        {
+            return false;
+        }
+    }
+
     Sync *syncObject = context->getSync(sync);
     if (!syncObject)
     {
@@ -3157,13 +3172,13 @@ bool ValidateMultiDrawElementsInstancedANGLE(Context *context,
     return true;
 }
 
-bool ValidateFramebufferTextureMultiviewLayeredANGLE(Context *context,
-                                                     GLenum target,
-                                                     GLenum attachment,
-                                                     GLuint texture,
-                                                     GLint level,
-                                                     GLint baseViewIndex,
-                                                     GLsizei numViews)
+bool ValidateFramebufferTextureMultiviewOVR(Context *context,
+                                            GLenum target,
+                                            GLenum attachment,
+                                            GLuint texture,
+                                            GLint level,
+                                            GLint baseViewIndex,
+                                            GLsizei numViews)
 {
     if (!ValidateFramebufferTextureMultiviewBaseANGLE(context, target, attachment, texture, level,
                                                       numViews))
@@ -3205,53 +3220,6 @@ bool ValidateFramebufferTextureMultiviewLayeredANGLE(Context *context,
 
                 break;
             }
-            default:
-                context->validationError(GL_INVALID_OPERATION, kInvalidTextureType);
-                return false;
-        }
-
-        if (!ValidateFramebufferTextureMultiviewLevelAndFormat(context, tex, level))
-        {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-bool ValidateFramebufferTextureMultiviewSideBySideANGLE(Context *context,
-                                                        GLenum target,
-                                                        GLenum attachment,
-                                                        GLuint texture,
-                                                        GLint level,
-                                                        GLsizei numViews,
-                                                        const GLint *viewportOffsets)
-{
-    if (!ValidateFramebufferTextureMultiviewBaseANGLE(context, target, attachment, texture, level,
-                                                      numViews))
-    {
-        return false;
-    }
-
-    if (texture != 0)
-    {
-        const GLsizei numViewportOffsetValues = numViews * 2;
-        for (GLsizei i = 0; i < numViewportOffsetValues; ++i)
-        {
-            if (viewportOffsets[i] < 0)
-            {
-                context->validationError(GL_INVALID_VALUE, kNegativeOffset);
-                return false;
-            }
-        }
-
-        Texture *tex = context->getTexture(texture);
-        ASSERT(tex);
-
-        switch (tex->getType())
-        {
-            case TextureType::_2D:
-                break;
             default:
                 context->validationError(GL_INVALID_OPERATION, kInvalidTextureType);
                 return false;
@@ -3492,10 +3460,7 @@ bool ValidateBindTransformFeedback(Context *context, GLenum target, GLuint id)
         {
             // Cannot bind a transform feedback object if the current one is started and not
             // paused (3.0.2 pg 85 section 2.14.1)
-            TransformFeedback *curTransformFeedback =
-                context->getState().getCurrentTransformFeedback();
-            if (curTransformFeedback && curTransformFeedback->isActive() &&
-                !curTransformFeedback->isPaused())
+            if (context->getState().isTransformFeedbackActiveUnpaused())
             {
                 context->validationError(GL_INVALID_OPERATION, kTransformFeedbackNotPaused);
                 return false;

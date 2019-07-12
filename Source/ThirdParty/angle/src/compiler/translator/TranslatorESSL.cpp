@@ -124,15 +124,13 @@ void TranslatorESSL::writeExtensionBehavior(ShCompileOptions compileOptions)
 {
     TInfoSinkBase &sink                   = getInfoSink().obj;
     const TExtensionBehavior &extBehavior = getExtensionBehavior();
-    const bool isMultiviewExtEmulated =
-        (compileOptions & (SH_INITIALIZE_BUILTINS_FOR_INSTANCED_MULTIVIEW |
-                           SH_SELECT_VIEW_IN_NV_GLSL_VERTEX_SHADER)) != 0u;
     for (TExtensionBehavior::const_iterator iter = extBehavior.begin(); iter != extBehavior.end();
          ++iter)
     {
         if (iter->second != EBhUndefined)
         {
-            const bool isMultiview = (iter->first == TExtension::OVR_multiview);
+            const bool isMultiview = (iter->first == TExtension::OVR_multiview) ||
+                                     (iter->first == TExtension::OVR_multiview2);
             if (getResources().NV_shader_framebuffer_fetch &&
                 iter->first == TExtension::EXT_shader_framebuffer_fetch)
             {
@@ -144,16 +142,9 @@ void TranslatorESSL::writeExtensionBehavior(ShCompileOptions compileOptions)
                 sink << "#extension GL_NV_draw_buffers : " << GetBehaviorString(iter->second)
                      << "\n";
             }
-            else if (isMultiview && isMultiviewExtEmulated)
+            else if (isMultiview)
             {
-                if (getShaderType() == GL_VERTEX_SHADER &&
-                    (compileOptions & SH_SELECT_VIEW_IN_NV_GLSL_VERTEX_SHADER) != 0u)
-                {
-                    // Emit the NV_viewport_array2 extension in a vertex shader if the
-                    // SH_SELECT_VIEW_IN_NV_GLSL_VERTEX_SHADER option is set and the
-                    // OVR_multiview(2) extension is requested.
-                    sink << "#extension GL_NV_viewport_array2 : require\n";
-                }
+                EmitMultiviewGLSL(*this, compileOptions, iter->second, sink);
             }
             else if (iter->first == TExtension::EXT_geometry_shader)
             {
@@ -175,6 +166,12 @@ void TranslatorESSL::writeExtensionBehavior(ShCompileOptions compileOptions)
             {
                 // Don't emit anything. This extension is emulated
                 ASSERT((compileOptions & SH_EMULATE_GL_DRAW_ID) != 0);
+                continue;
+            }
+            else if (iter->first == TExtension::ANGLE_base_vertex_base_instance)
+            {
+                // Don't emit anything. This extension is emulated
+                ASSERT((compileOptions & SH_EMULATE_GL_BASE_VERTEX_BASE_INSTANCE) != 0);
                 continue;
             }
             else

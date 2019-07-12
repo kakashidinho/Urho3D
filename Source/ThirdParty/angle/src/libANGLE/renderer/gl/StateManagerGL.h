@@ -62,6 +62,7 @@ class StateManagerGL final : angle::NonCopyable
                          size_t size);
     void activeTexture(size_t unit);
     void bindTexture(gl::TextureType type, GLuint texture);
+    void invalidateTexture(gl::TextureType type);
     void bindSampler(size_t unit, GLuint sampler);
     void bindImageTexture(size_t unit,
                           GLuint texture,
@@ -81,14 +82,9 @@ class StateManagerGL final : angle::NonCopyable
 
     void setScissorTestEnabled(bool enabled);
     void setScissor(const gl::Rectangle &scissor);
-    void setScissorIndexed(GLuint index, const gl::Rectangle &scissor);
-    void setScissorArrayv(GLuint first, const std::vector<gl::Rectangle> &viewports);
 
     void setViewport(const gl::Rectangle &viewport);
-    void setViewportArrayv(GLuint first, const std::vector<gl::Rectangle> &viewports);
     void setDepthRange(float near, float far);
-
-    void setSideBySide(bool isSideBySide);
 
     void setBlendEnabled(bool enabled);
     void setBlendColor(const gl::ColorF &blendColor);
@@ -183,10 +179,6 @@ class StateManagerGL final : angle::NonCopyable
   private:
     void setTextureCubemapSeamlessEnabled(bool enabled);
 
-    void applyViewportOffsetsAndSetScissors(const gl::Rectangle &scissor,
-                                            const gl::Framebuffer &drawFramebuffer);
-    void applyViewportOffsetsAndSetViewports(const gl::Rectangle &viewport,
-                                             const gl::Framebuffer &drawFramebuffer);
     void propagateProgramToVAO(const gl::Program *program, VertexArrayGL *vao);
 
     void updateProgramTextureBindings(const gl::Context *context);
@@ -272,9 +264,8 @@ class StateManagerGL final : angle::NonCopyable
     GLuint mRenderbuffer;
 
     bool mScissorTestEnabled;
-    std::vector<gl::Rectangle> mScissors;
-    std::vector<gl::Rectangle> mViewports;
-    std::vector<gl::Offset> mViewportOffsets;
+    gl::Rectangle mScissor;
+    gl::Rectangle mViewport;
     float mNear;
     float mFar;
 
@@ -346,7 +337,6 @@ class StateManagerGL final : angle::NonCopyable
     GLint mPathStencilRef;
     GLuint mPathStencilMask;
 
-    bool mIsSideBySideDrawFramebuffer;
     const bool mIsMultiviewEnabled;
 
     GLenum mProvokingVertex;

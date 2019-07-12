@@ -17,8 +17,10 @@
 #include "compiler/translator/OutputVulkanGLSL.h"
 #include "compiler/translator/StaticType.h"
 #include "compiler/translator/tree_ops/NameEmbeddedUniformStructs.h"
+#include "compiler/translator/tree_ops/RewriteDfdy.h"
 #include "compiler/translator/tree_ops/RewriteStructSamplers.h"
 #include "compiler/translator/tree_util/BuiltIn_autogen.h"
+#include "compiler/translator/tree_util/FindFunction.h"
 #include "compiler/translator/tree_util/FindMain.h"
 #include "compiler/translator/tree_util/IntermNode_util.h"
 #include "compiler/translator/tree_util/ReplaceVariable.h"
@@ -99,7 +101,8 @@ class DeclareDefaultUniformsTraverser : public TIntermTraverser
 
         TIntermTyped *variable = sequence.front()->getAsTyped();
         const TType &type      = variable->getType();
-        bool isUniform = (type.getQualifier() == EvqUniform) && !IsOpaqueType(type.getBasicType());
+        bool isUniform         = type.getQualifier() == EvqUniform && !type.isInterfaceBlock() &&
+                         !IsOpaqueType(type.getBasicType());
 
         if (visit == PreVisit)
         {
@@ -156,12 +159,14 @@ constexpr const char kViewport[]             = "viewport";
 constexpr const char kHalfRenderAreaHeight[] = "halfRenderAreaHeight";
 constexpr const char kViewportYScale[]       = "viewportYScale";
 constexpr const char kNegViewportYScale[]    = "negViewportYScale";
+constexpr const char kXfbActiveUnpaused[]    = "xfbActiveUnpaused";
+constexpr const char kXfbBufferOffsets[]     = "xfbBufferOffsets";
 constexpr const char kDepthRange[]           = "depthRange";
 
-constexpr size_t kNumDriverUniforms                                        = 6;
+constexpr size_t kNumDriverUniforms                                        = 7;
 constexpr std::array<const char *, kNumDriverUniforms> kDriverUniformNames = {
-    {kViewport, kHalfRenderAreaHeight, kViewportYScale, kNegViewportYScale, "padding",
-     kDepthRange}};
+    {kViewport, kHalfRenderAreaHeight, kViewportYScale, kNegViewportYScale, kXfbActiveUnpaused,
+     kXfbBufferOffsets, kDepthRange}};
 
 template <TBasicType BasicType = EbtFloat, unsigned char PrimarySize = 1>
 TIntermConstantUnion *CreateBasicConstant(float value)
@@ -311,6 +316,15 @@ void AppendVertexShaderDepthCorrectionToMain(TIntermBlock *root, TSymbolTable *s
     RunAtTheEndOfShader(root, assignment, symbolTable);
 }
 
+void AppendVertexShaderTransformFeedbackOutputToMain(TIntermBlock *root, TSymbolTable *symbolTable)
+{
+    TVariable *xfbPlaceholder = new TVariable(symbolTable, ImmutableString("@@ XFB-OUT @@"),
+                                              new TType(), SymbolType::AngleInternal);
+
+    // Append the assignment as a statement at the end of the shader.
+    RunAtTheEndOfShader(root, new TIntermSymbol(xfbPlaceholder), symbolTable);
+}
+
 // The AddDriverUniformsToShader operation adds an internal uniform block to a shader. The driver
 // block is used to implement Vulkan-specific features and workarounds. Returns the driver uniforms
 // variable.
@@ -349,7 +363,8 @@ const TVariable *AddDriverUniformsToShader(TIntermBlock *root, TSymbolTable *sym
         new TType(EbtFloat),
         new TType(EbtFloat),
         new TType(EbtFloat),
-        new TType(EbtFloat),
+        new TType(EbtUInt),
+        new TType(EbtInt, 4),
         emulatedDepthRangeType,
     }};
 
@@ -375,12 +390,13 @@ const TVariable *AddDriverUniformsToShader(TIntermBlock *root, TSymbolTable *sym
     TIntermSymbol *driverUniformsDeclarator = new TIntermSymbol(driverUniformsVar);
     driverUniformsDecl->appendDeclarator(driverUniformsDeclarator);
 
-    // Insert the declarations before Main.
+    // Insert the declarations before first function, since functions before main() may refer to
+    // these values.
     TIntermSequence *insertSequence = new TIntermSequence;
     insertSequence->push_back(driverUniformsDecl);
 
-    size_t mainIndex = FindMainIndex(root);
-    root->insertChildNodes(mainIndex, *insertSequence);
+    size_t firstFunctionIndex = FindFirstFunctionDefinitionIndex(root);
+    root->insertChildNodes(firstFunctionIndex, *insertSequence);
 
     return driverUniformsVar;
 }
@@ -667,7 +683,7 @@ void TranslatorVulkan::translate(TIntermBlock *root,
 
     if (defaultUniformCount > 0)
     {
-        sink << "\nlayout(@@ DEFAULT-UNIFORMS-SET-BINDING @@) uniform defaultUniforms\n{\n";
+        sink << "\n@@ LAYOUT-defaultUniforms(std140) @@ uniform defaultUniforms\n{\n";
 
         DeclareDefaultUniformsTraverser defaultTraverser(&sink, getHashFunction(), &getNameMap());
         root->traverse(&defaultTraverser);
@@ -753,12 +769,23 @@ void TranslatorVulkan::translate(TIntermBlock *root,
             InsertFragCoordCorrection(root, GetMainSequence(root), &getSymbolTable(),
                                       driverUniforms);
         }
+
+        {
+            TIntermBinary *viewportYScale = CreateDriverUniformRef(driverUniforms, kViewportYScale);
+            RewriteDfdy(root, getSymbolTable(), getShaderVersion(), viewportYScale);
+        }
     }
     else
     {
         ASSERT(getShaderType() == GL_VERTEX_SHADER);
 
         AddANGLEPositionVarying(root, &getSymbolTable());
+
+        // Add a macro to declare transform feedback buffers.
+        sink << "@@ XFB-DECL @@\n\n";
+
+        // Append a macro for transform feedback substitution prior to modifying depth.
+        AppendVertexShaderTransformFeedbackOutputToMain(root, &getSymbolTable());
 
         // Append depth range translation to main.
         AppendVertexShaderDepthCorrectionToMain(root, &getSymbolTable());

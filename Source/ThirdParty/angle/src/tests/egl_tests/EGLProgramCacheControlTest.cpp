@@ -31,35 +31,38 @@ class EGLProgramCacheControlTest : public ANGLETest
     }
 
   protected:
-    EGLProgramCacheControlTest() { setDeferContextInit(true); }
-
-    void SetUp() override
+    EGLProgramCacheControlTest()
     {
-        mPlatformMethods.cacheProgram = &TestCacheProgram;
+        // Test flakiness was noticed when reusing displays.
+        forceNewDisplay();
+        setDeferContextInit(true);
+        setContextProgramCacheEnabled(true);
+        gDefaultPlatformMethods.cacheProgram = TestCacheProgram;
+    }
 
-        ANGLETest::SetUp();
-
+    void testSetUp() override
+    {
         if (extensionAvailable())
         {
             EGLDisplay display = getEGLWindow()->getDisplay();
-            setContextProgramCacheEnabled(true);
             eglProgramCacheResizeANGLE(display, kEnabledCacheSize, EGL_PROGRAM_CACHE_RESIZE_ANGLE);
+            ASSERT_EGL_SUCCESS();
         }
 
-        getEGLWindow()->initializeContext();
+        ASSERT_TRUE(getEGLWindow()->initializeContext());
     }
 
-    void TearDown() override { ANGLETest::TearDown(); }
+    void testTearDown() override { gDefaultPlatformMethods.cacheProgram = DefaultCacheProgram; }
 
     bool extensionAvailable()
     {
         EGLDisplay display = getEGLWindow()->getDisplay();
-        return eglDisplayExtensionEnabled(display, kEGLExtName);
+        return IsEGLDisplayExtensionEnabled(display, kEGLExtName);
     }
 
     bool programBinaryAvailable()
     {
-        return (getClientMajorVersion() >= 3 || extensionEnabled("GL_OES_get_program_binary"));
+        return (getClientMajorVersion() >= 3 || IsGLExtensionEnabled("GL_OES_get_program_binary"));
     }
 
     ProgramKeyType mCachedKey;
@@ -212,8 +215,7 @@ TEST_P(EGLProgramCacheControlTest, SaveAndReload)
     EXPECT_EQ(mCachedBinary, binaryBuffer);
 
     // Restart EGL and GL.
-    TearDown();
-    SetUp();
+    recreateTestFixture();
 
     // Warm up the cache.
     EGLint newCacheSize = eglProgramCacheGetAttribANGLE(display, EGL_PROGRAM_CACHE_SIZE_ANGLE);

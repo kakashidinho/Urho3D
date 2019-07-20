@@ -1,7 +1,7 @@
 /*
  * MVKCommandEncoderState.h
  *
- * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,14 +18,15 @@
 
 #pragma once
 
-#include  "MVKMTLResourceBindings.h"
+#include "MVKMTLResourceBindings.h"
 #include "MVKCommandResourceFactory.h"
-#include <vector>
+#include "MVKDevice.h"
+#include "MVKVector.h"
 
 class MVKCommandEncoder;
 class MVKOcclusionQueryPool;
 
-struct MVKShaderAuxBufferBinding;
+struct MVKShaderImplicitRezBinding;
 
 
 #pragma mark -
@@ -42,6 +43,9 @@ struct MVKShaderAuxBufferBinding;
 class MVKCommandEncoderState : public MVKBaseObject {
 
 public:
+
+	/** Returns the Vulkan API opaque object controlling this object. */
+	MVKVulkanAPIObject* getVulkanAPIObject() override;
 
     /**
      * Marks the content of this instance as dirty, relative to the
@@ -65,11 +69,11 @@ public:
      * and calls the encodeImpl() function to encode the content onto the Metal encoder.
      * Subclasses must override the encodeImpl() function to do the actual work.
      */
-    void encode() {
+    void encode(uint32_t stage = 0) {
         if ( !_isDirty ) { return; }
 
         _isDirty = false;
-        encodeImpl();
+        encodeImpl(stage);
     }
 
     /**
@@ -87,7 +91,7 @@ public:
     MVKCommandEncoderState(MVKCommandEncoder* cmdEncoder) : _cmdEncoder(cmdEncoder) {}
 
 protected:
-    virtual void encodeImpl() = 0;
+    virtual void encodeImpl(uint32_t stage) = 0;
     virtual void resetImpl() = 0;
 
     MVKCommandEncoder* _cmdEncoder;
@@ -115,7 +119,7 @@ public:
         : MVKCommandEncoderState(cmdEncoder) {}
 
 protected:
-    void encodeImpl() override;
+    void encodeImpl(uint32_t stage) override;
     void resetImpl() override;
 
     MVKPipeline* _pipeline = nullptr;
@@ -135,7 +139,7 @@ public:
 	 * The isSettingDynamically indicates that the scissor is being changed dynamically,
 	 * which is only allowed if the pipeline was created as VK_DYNAMIC_STATE_SCISSOR.
 	 */
-	void setViewports(std::vector<MTLViewport> mtlViewports,
+	void setViewports(const MVKVector<MTLViewport> &mtlViewports,
 					  uint32_t firstViewport,
 					  bool isSettingDynamically);
 
@@ -144,10 +148,10 @@ public:
         : MVKCommandEncoderState(cmdEncoder) {}
 
 protected:
-    void encodeImpl() override;
+    void encodeImpl(uint32_t stage) override;
     void resetImpl() override;
 
-    std::vector<MTLViewport> _mtlViewports;
+    MVKVectorInline<MTLViewport, kMVKCachedViewportScissorCount> _mtlViewports, _mtlDynamicViewports;
 };
 
 
@@ -164,7 +168,7 @@ public:
 	 * The isSettingDynamically indicates that the scissor is being changed dynamically,
 	 * which is only allowed if the pipeline was created as VK_DYNAMIC_STATE_SCISSOR.
 	 */
-	void setScissors(std::vector<MTLScissorRect> mtlScissors,
+	void setScissors(const MVKVector<MTLScissorRect> &mtlScissors,
 					 uint32_t firstScissor,
 					 bool isSettingDynamically);
 
@@ -173,10 +177,10 @@ public:
         : MVKCommandEncoderState(cmdEncoder) {}
 
 protected:
-    void encodeImpl() override;
+    void encodeImpl(uint32_t stage) override;
     void resetImpl() override;
 
-    std::vector<MTLScissorRect> _mtlScissors;
+    MVKVectorInline<MTLScissorRect, kMVKCachedViewportScissorCount> _mtlScissors, _mtlDynamicScissors;
 };
 
 
@@ -189,7 +193,7 @@ class MVKPushConstantsCommandEncoderState : public MVKCommandEncoderState {
 public:
 
     /** Sets the specified push constants. */
-    void setPushConstants(uint32_t offset, std::vector<char>& pushConstants);
+    void setPushConstants(uint32_t offset, MVKVector<char>& pushConstants);
 
     /** Sets the index of the Metal buffer used to hold the push constants. */
     void setMTLBufferIndex(uint32_t mtlBufferIndex);
@@ -200,10 +204,11 @@ public:
         : MVKCommandEncoderState(cmdEncoder), _shaderStage(shaderStage) {}
 
 protected:
-    void encodeImpl() override;
+    void encodeImpl(uint32_t stage) override;
     void resetImpl() override;
+	bool isTessellating();
 
-    std::vector<char> _pushConstants;
+    MVKVectorInline<char, 128> _pushConstants;
     VkShaderStageFlagBits _shaderStage;
     uint32_t _mtlBufferIndex = 0;
 };
@@ -237,7 +242,7 @@ public:
         : MVKCommandEncoderState(cmdEncoder) {}
 
 protected:
-    void encodeImpl() override;
+    void encodeImpl(uint32_t stage) override;
     void resetImpl() override;
     void setStencilState(MVKMTLStencilDescriptorData& stencilInfo,
                          const VkStencilOpState& vkStencil,
@@ -266,7 +271,7 @@ public:
         : MVKCommandEncoderState(cmdEncoder) {}
 
 protected:
-    void encodeImpl() override;
+    void encodeImpl(uint32_t stage) override;
     void resetImpl() override;
 
     uint32_t _frontFaceValue = 0;
@@ -295,7 +300,7 @@ public:
         : MVKCommandEncoderState(cmdEncoder) {}
 
 protected:
-    void encodeImpl() override;
+    void encodeImpl(uint32_t stage) override;
     void resetImpl() override;
 
     float _depthBiasConstantFactor = 0;
@@ -323,7 +328,7 @@ public:
         : MVKCommandEncoderState(cmdEncoder) {}
 
 protected:
-    void encodeImpl() override;
+    void encodeImpl(uint32_t stage) override;
     void resetImpl() override;
 
     float _red = 0;
@@ -348,15 +353,15 @@ protected:
 
     // Template function that marks both the vector and all binding elements in the vector as dirty.
     template<class T>
-    void markDirty(std::vector<T>& bindings, bool& bindingsDirtyFlag) {
+    void markDirty(T& bindings, bool& bindingsDirtyFlag) {
         for (auto& b : bindings) { b.isDirty = true; }
         bindingsDirtyFlag = true;
     }
 
     // Template function that updates an existing binding or adds a new binding to a vector
     // of bindings, and marks the binding, the vector, and this instance as dirty
-    template<class T>
-    void bind(const T& b, std::vector<T>& bindings, bool& bindingsDirtyFlag) {
+    template<class T, class U>
+    void bind(const T& b, U& bindings, bool& bindingsDirtyFlag) {
 
         if ( !b.mtlResource ) { return; }
 
@@ -365,7 +370,7 @@ protected:
         bindingsDirtyFlag = true;
         db.isDirty = true;
 
-        for (auto iter = bindings.begin(), end = bindings.end(); iter != end; iter++) {
+        for (auto iter = bindings.begin(), end = bindings.end(); iter != end; ++iter) {
             if( iter->index == db.index ) {
                 *iter = db;
                 return;
@@ -374,10 +379,17 @@ protected:
         bindings.push_back(db);
     }
 
+	// For texture bindings, we also keep track of whether any bindings need a texture swizzle
+	void bind(const MVKMTLTextureBinding& tb, MVKVector<MVKMTLTextureBinding>& texBindings,
+			  bool& bindingsDirtyFlag, bool& needsSwizzleFlag) {
+		bind(tb, texBindings, bindingsDirtyFlag);
+		if (tb.swizzle != 0) { needsSwizzleFlag = true; }
+	}
+
     // Template function that executes a lambda expression on each dirty element of
     // a vector of bindings, and marks the bindings and the vector as no longer dirty.
     template<class T>
-    void encodeBinding(std::vector<T>& bindings,
+    void encodeBinding(MVKVector<T>& bindings,
                        bool& bindingsDirtyFlag,
                        std::function<void(MVKCommandEncoder* cmdEncoder, T& b)> mtlOperation) {
         if (bindingsDirtyFlag) {
@@ -391,15 +403,9 @@ protected:
         }
     }
 
-    struct AuxBuffer {
-        uint32_t swizzleConst[1];
-    };
+	void updateImplicitBuffer(MVKVector<uint32_t> &contents, uint32_t index, uint32_t value);
+	void assertMissingSwizzles(bool needsSwizzle, const char* stageName, MVKVector<MVKMTLTextureBinding>& texBindings);
 
-    // Updates the swizzle for an image in the given buffer.
-    void updateSwizzle(id<MTLBuffer> buffer, uint32_t index, uint32_t swizzle) {
-        auto* aux = (AuxBuffer*)buffer.contents;
-        aux->swizzleConst[index] = swizzle;
-    }
 };
 
 
@@ -411,23 +417,14 @@ class MVKGraphicsResourcesCommandEncoderState : public MVKResourcesCommandEncode
 
 public:
 
-    /** Binds the specified vertex buffer. */
-    void bindVertexBuffer(const MVKMTLBufferBinding& binding);
+    /** Binds the specified buffer for the specified shader stage. */
+    void bindBuffer(MVKShaderStage stage, const MVKMTLBufferBinding& binding);
 
-    /** Binds the specified fragment buffer. */
-    void bindFragmentBuffer(const MVKMTLBufferBinding& binding);
+    /** Binds the specified texture for the specified shader stage. */
+    void bindTexture(MVKShaderStage stage, const MVKMTLTextureBinding& binding);
 
-    /** Binds the specified vertex texture. */
-    void bindVertexTexture(const MVKMTLTextureBinding& binding);
-
-    /** Binds the specified fragment texture. */
-    void bindFragmentTexture(const MVKMTLTextureBinding& binding);
-
-    /** Binds the specified vertex sampler state. */
-    void bindVertexSamplerState(const MVKMTLSamplerStateBinding& binding);
-
-    /** Binds the specified fragment sampler state. */
-    void bindFragmentSamplerState(const MVKMTLSamplerStateBinding& binding);
+    /** Binds the specified sampler state for the specified shader stage. */
+    void bindSamplerState(MVKShaderStage stage, const MVKMTLSamplerStateBinding& binding);
 
     /** The type of index that will be used to render primitives. Exposed directly. */
     MVKIndexMTLBufferBinding _mtlIndexBufferBinding;
@@ -437,9 +434,27 @@ public:
         _mtlIndexBufferBinding = binding;   // No need to track dirty state
     }
 
-    /** Sets the current auxiliary buffer state. */
-    void bindAuxBuffer(id<MTLBuffer> buffer, const MVKShaderAuxBufferBinding& binding, bool needVertexAuxBuffer, bool needFragmentAuxBuffer);
+    /** Sets the current swizzle buffer state. */
+    void bindSwizzleBuffer(const MVKShaderImplicitRezBinding& binding,
+                           bool needVertexSwizzleBuffer,
+                           bool needTessCtlSwizzleBuffer,
+                           bool needTessEvalSwizzleBuffer,
+                           bool needFragmentSwizzleBuffer);
 
+    /** Sets the current buffer size buffer state. */
+    void bindBufferSizeBuffer(const MVKShaderImplicitRezBinding& binding,
+                              bool needVertexSizeBuffer,
+                              bool needTessCtlSizeBuffer,
+                              bool needTessEvalSizeBuffer,
+                              bool needFragmentSizeBuffer);
+
+    void encodeBindings(MVKShaderStage stage,
+                        const char* pStageName,
+                        bool fullImageViewSwizzle,
+                        std::function<void(MVKCommandEncoder*, MVKMTLBufferBinding&)> bindBuffer,
+                        std::function<void(MVKCommandEncoder*, MVKMTLBufferBinding&, MVKVector<uint32_t>&)> bindImplicitBuffer,
+                        std::function<void(MVKCommandEncoder*, MVKMTLTextureBinding&)> bindTexture,
+                        std::function<void(MVKCommandEncoder*, MVKMTLSamplerStateBinding&)> bindSampler);
 
 #pragma mark Construction
     
@@ -447,25 +462,27 @@ public:
     MVKGraphicsResourcesCommandEncoderState(MVKCommandEncoder* cmdEncoder) : MVKResourcesCommandEncoderState(cmdEncoder) {}
 
 protected:
-    void encodeImpl() override;
+    void encodeImpl(uint32_t stage) override;
     void resetImpl() override;
     void markDirty() override;
 
-    std::vector<MVKMTLBufferBinding> _vertexBufferBindings;
-    std::vector<MVKMTLBufferBinding> _fragmentBufferBindings;
-    std::vector<MVKMTLTextureBinding> _vertexTextureBindings;
-    std::vector<MVKMTLTextureBinding> _fragmentTextureBindings;
-    std::vector<MVKMTLSamplerStateBinding> _vertexSamplerStateBindings;
-    std::vector<MVKMTLSamplerStateBinding> _fragmentSamplerStateBindings;
-    MVKMTLBufferBinding _vertexAuxBufferBinding;
-    MVKMTLBufferBinding _fragmentAuxBufferBinding;
+    struct ShaderStage {
+        MVKVectorInline<MVKMTLBufferBinding, 8> bufferBindings;
+        MVKVectorInline<MVKMTLTextureBinding, 8> textureBindings;
+        MVKVectorInline<MVKMTLSamplerStateBinding, 8> samplerStateBindings;
+        MVKVectorInline<uint32_t, 8> swizzleConstants;
+        MVKVectorInline<uint32_t, 8> bufferSizes;
+        MVKMTLBufferBinding swizzleBufferBinding;
+        MVKMTLBufferBinding bufferSizeBufferBinding;
 
-    bool _areVertexBufferBindingsDirty = false;
-    bool _areFragmentBufferBindingsDirty = false;
-    bool _areVertexTextureBindingsDirty = false;
-    bool _areFragmentTextureBindingsDirty = false;
-    bool _areVertexSamplerStateBindingsDirty = false;
-    bool _areFragmentSamplerStateBindingsDirty = false;
+        bool areBufferBindingsDirty = false;
+        bool areTextureBindingsDirty = false;
+        bool areSamplerStateBindingsDirty = false;
+
+        bool needsSwizzle = false;
+    };
+
+    ShaderStage _shaderStages[4];
 };
 
 
@@ -486,8 +503,11 @@ public:
     /** Binds the specified sampler state. */
     void bindSamplerState(const MVKMTLSamplerStateBinding& binding);
 
-    /** Sets the current auxiliary buffer state. */
-    void bindAuxBuffer(id<MTLBuffer> buffer, const MVKShaderAuxBufferBinding& binding);
+    /** Sets the current swizzle buffer state. */
+    void bindSwizzleBuffer(const MVKShaderImplicitRezBinding& binding, bool needSwizzleBuffer);
+
+    /** Sets the current buffer size buffer state. */
+    void bindBufferSizeBuffer(const MVKShaderImplicitRezBinding& binding, bool needSizeBuffer);
 
 #pragma mark Construction
 
@@ -495,18 +515,23 @@ public:
     MVKComputeResourcesCommandEncoderState(MVKCommandEncoder* cmdEncoder) : MVKResourcesCommandEncoderState(cmdEncoder) {}
 
 protected:
-    void encodeImpl() override;
+    void encodeImpl(uint32_t) override;
     void resetImpl() override;
     void markDirty() override;
 
-    std::vector<MVKMTLBufferBinding> _bufferBindings;
-    std::vector<MVKMTLTextureBinding> _textureBindings;
-    std::vector<MVKMTLSamplerStateBinding> _samplerStateBindings;
-    MVKMTLBufferBinding _auxBufferBinding;
+    MVKVectorDefault<MVKMTLBufferBinding> _bufferBindings;
+    MVKVectorDefault<MVKMTLTextureBinding> _textureBindings;
+    MVKVectorDefault<MVKMTLSamplerStateBinding> _samplerStateBindings;
+    MVKVectorDefault<uint32_t> _swizzleConstants;
+    MVKVectorDefault<uint32_t> _bufferSizes;
+    MVKMTLBufferBinding _swizzleBufferBinding;
+    MVKMTLBufferBinding _bufferSizeBufferBinding;
 
     bool _areBufferBindingsDirty = false;
     bool _areTextureBindingsDirty = false;
     bool _areSamplerStateBindingsDirty = false;
+
+    bool _needsSwizzle = false;
 };
 
 
@@ -531,7 +556,7 @@ public:
     MVKOcclusionQueryCommandEncoderState(MVKCommandEncoder* cmdEncoder);
 
 protected:
-    void encodeImpl() override;
+    void encodeImpl(uint32_t) override;
     void resetImpl() override;
 
     id<MTLBuffer> _visibilityResultMTLBuffer = nil;

@@ -1,7 +1,7 @@
 /*
  * MoltenVKShaderConverterTool.cpp
  *
- * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,9 +18,11 @@
 
 #include "MoltenVKShaderConverterTool.h"
 #include "FileSupport.h"
-#include "DirectorySupport.h"
+#include "OSSupport.h"
 #include "GLSLToSPIRVConverter.h"
 #include "SPIRVToMSLConverter.h"
+#include "SPIRVSupport.h"
+#include "MVKOSExtensions.h"
 
 using namespace std;
 using namespace mvk;
@@ -33,10 +35,21 @@ static const char* _defaultVertexShaderExtns = "vs vsh vert vertex";
 static const char* _defaultFragShaderExtns = "fs fsh frag fragment";
 
 // The default list of compute file extensions.
-static const char* _defaultCompShaderExtns = "cp cmp comp compute kn kl krn kern kernel";
+static const char* _defaultCompShaderExtns = "cs csh cp cmp comp compute kn kl krn kern kernel";
 
 // The default list of SPIR-V file extensions.
 static const char* _defaultSPIRVShaderExtns = "spv spirv";
+
+
+uint64_t MVKPerformanceTracker::getTimestamp() { return mvkGetTimestamp(); }
+
+void MVKPerformanceTracker::accumulate(uint64_t startTime, uint64_t endTime) {
+	double currInterval = mvkGetElapsedMilliseconds(startTime, endTime);
+	minimumDuration = (minimumDuration == 0.0) ? currInterval : min(currInterval, minimumDuration);
+	maximumDuration = max(currInterval, maximumDuration);
+	double totalInterval = (averageDuration * count++) + currInterval;
+	averageDuration = totalInterval / count;
+}
 
 
 #pragma mark -
@@ -44,6 +57,8 @@ static const char* _defaultSPIRVShaderExtns = "spv spirv";
 
 
 int MoltenVKShaderConverterTool::run() {
+	if ( !_isActive ) { return EXIT_FAILURE; }
+
 	bool success = false;
 	if ( !_directoryPath.empty() ) {
 		string errMsg;
@@ -58,6 +73,8 @@ int MoltenVKShaderConverterTool::run() {
 			showUsage();
 		}
 	}
+	reportPerformance();
+
 	return success ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
@@ -67,12 +84,12 @@ bool MoltenVKShaderConverterTool::processFile(string filePath) {
 
 	string pathExtn = pathExtension(absPath);
 	if (_shouldReadGLSL && isGLSLFileExtension(pathExtn)) {
-		convertGLSL(absPath, emptyPath, emptyPath, kMVKShaderStageAuto);
+		return convertGLSL(absPath, emptyPath, emptyPath, kMVKGLSLConversionShaderStageAuto);
 	} else if (_shouldReadSPIRV && isSPIRVFileExtension(pathExtn)) {
-		convertSPIRV(absPath, emptyPath);
+		return convertSPIRV(absPath, emptyPath);
 	}
 
-	return false;
+	return true;
 }
 
 // Read GLSL code from a GLSL file, convert to SPIR-V, and optionally MSL,
@@ -80,7 +97,7 @@ bool MoltenVKShaderConverterTool::processFile(string filePath) {
 bool MoltenVKShaderConverterTool::convertGLSL(string& glslInFile,
 											string& spvOutFile,
 											string& mslOutFile,
-											MVKShaderStage shaderStage) {
+											MVKGLSLConversionShaderStage shaderStage) {
 	string path;
 	vector<char> fileContents;
 	string glslCode;
@@ -103,11 +120,11 @@ bool MoltenVKShaderConverterTool::convertGLSL(string& glslInFile,
 	}
 	glslCode.append(fileContents.begin(), fileContents.end());
 
-	if (shaderStage == kMVKShaderStageAuto) {
+	if (shaderStage == kMVKGLSLConversionShaderStageAuto) {
 		string pathExtn = pathExtension(glslInFile);
 		shaderStage = shaderStageFromFileExtension(pathExtn);
 	}
-	if (shaderStage == kMVKShaderStageAuto) {
+	if (shaderStage == kMVKGLSLConversionShaderStageAuto) {
 		errMsg = "Could not determine shader type from GLSL file: " + absolutePath(path);
 		log(errMsg.data());
 		return false;
@@ -116,7 +133,12 @@ bool MoltenVKShaderConverterTool::convertGLSL(string& glslInFile,
 	// Convert GLSL to SPIR-V
 	GLSLToSPIRVConverter glslConverter;
 	glslConverter.setGLSL(glslCode);
-	if (glslConverter.convert(shaderStage, _shouldLogConversions, _shouldLogConversions)) {
+
+	uint64_t startTime = _glslConversionPerformance.getTimestamp();
+	bool wasConverted = glslConverter.convert(shaderStage, _shouldLogConversions, _shouldLogConversions);
+	_glslConversionPerformance.accumulate(startTime);
+
+	if (wasConverted) {
 		if (_shouldLogConversions) { log(glslConverter.getResultLog().data()); }
 	} else {
 		string logMsg = "Could not convert GLSL in file: " + absolutePath(path);
@@ -183,11 +205,18 @@ bool MoltenVKShaderConverterTool::convertSPIRV(const vector<uint32_t>& spv,
 
 	// Derive the context under which conversion will occur
 	SPIRVToMSLConverterContext mslContext;
+	mslContext.options.platform = _mslPlatform;
+	mslContext.options.setMSLVersion(_mslVersionMajor, _mslVersionMinor, _mslVersionPatch);
 	mslContext.options.shouldFlipVertexY = _shouldFlipVertexY;
 
 	SPIRVToMSLConverter spvConverter;
 	spvConverter.setSPIRV(spv);
-	if (spvConverter.convert(mslContext, shouldLogSPV, _shouldLogConversions, (_shouldLogConversions && shouldLogSPV))) {
+
+	uint64_t startTime = _spvConversionPerformance.getTimestamp();
+	bool wasConverted = spvConverter.convert(mslContext, shouldLogSPV, _shouldLogConversions, (_shouldLogConversions && shouldLogSPV));
+	_spvConversionPerformance.accumulate(startTime);
+
+	if (wasConverted) {
 		if (_shouldLogConversions) { log(spvConverter.getResultLog().data()); }
 	} else {
 		string errMsg = "Could not convert SPIR-V in file: " + absolutePath(inFile);
@@ -200,25 +229,36 @@ bool MoltenVKShaderConverterTool::convertSPIRV(const vector<uint32_t>& spv,
 	string path = mslOutFile;
 	if (mslOutFile.empty()) { path = pathWithExtension(inFile, "metal", _shouldIncludeOrigPathExtn, _origPathExtnSep); }
 	const string& msl = spvConverter.getMSL();
+
+	string compileErrMsg;
+	bool wasCompiled = compile(msl, compileErrMsg, _mslVersionMajor, _mslVersionMinor, _mslVersionPatch);
+	if (compileErrMsg.size() > 0) {
+		string preamble = wasCompiled ? "is valid but the validation compilation produced warnings: " : "failed a validation compilation: ";
+		compileErrMsg = "Generated MSL " + preamble + compileErrMsg;
+		log(compileErrMsg.c_str());
+	} else {
+		log("Generated MSL was validated by a successful compilation with no warnings.");
+	}
+
 	vector<char> fileContents;
 	fileContents.insert(fileContents.end(), msl.begin(), msl.end());
-	string errMsg;
-	if (writeFile(path, fileContents, errMsg)) {
+	string writeErrMsg;
+	if (writeFile(path, fileContents, writeErrMsg)) {
 		string logMsg = "Saved MSL to file: " + lastPathComponent(path);
-		log(logMsg.data());
+		log(logMsg.c_str());
 		return true;
 	} else {
-		errMsg = "Could not write MSL file. " + errMsg;
-		log(errMsg.data());
+		writeErrMsg = "Could not write MSL file. " + writeErrMsg;
+		log(writeErrMsg.c_str());
 		return false;
 	}
 }
 
-MVKShaderStage MoltenVKShaderConverterTool::shaderStageFromFileExtension(string& pathExtension) {
-    for (auto& fx : _glslVtxFileExtns) { if (fx == pathExtension) { return kMVKShaderStageVertex; } }
-    for (auto& fx : _glslFragFileExtns) { if (fx == pathExtension) { return kMVKShaderStageFragment; } }
-    for (auto& fx : _glslCompFileExtns) { if (fx == pathExtension) { return kMVKShaderStageCompute; } }
-	return kMVKShaderStageAuto;
+MVKGLSLConversionShaderStage MoltenVKShaderConverterTool::shaderStageFromFileExtension(string& pathExtension) {
+    for (auto& fx : _glslVtxFileExtns) { if (fx == pathExtension) { return kMVKGLSLConversionShaderStageVertex; } }
+    for (auto& fx : _glslFragFileExtns) { if (fx == pathExtension) { return kMVKGLSLConversionShaderStageFragment; } }
+    for (auto& fx : _glslCompFileExtns) { if (fx == pathExtension) { return kMVKGLSLConversionShaderStageCompute; } }
+	return kMVKGLSLConversionShaderStageAuto;
 }
 
 bool MoltenVKShaderConverterTool::isGLSLFileExtension(string& pathExtension) {
@@ -269,6 +309,12 @@ void MoltenVKShaderConverterTool::showUsage() {
 	log("                       The optional path parameter specifies the path to a single");
 	log("                       file to contain the MSL code. When using the -d option,");
 	log("                       the path parameter is ignored.");
+	log("  -mv mslVersion     - MSL version to output.");
+	log("                       Must be in form n[.n][.n] (eg. 2, 2.1, or 2.1.0).");
+	log("                       Defaults to the most recent MSL version for the platform");
+	log("                       on which this tool is executed.");
+	log("  -mp mslPlatform    - MSL platform. Must be one of macos or ios.");
+	log("                       Defaults to the platform on which this tool is executed (macos).");
 	log("  -t shaderType      - Shader type: vertex or fragment. Must be one of v, f, or c.");
 	log("                       May be omitted to auto-detect.");
 	log("  -c                 - Combine the GLSL and converted Metal Shader source code");
@@ -290,7 +336,31 @@ void MoltenVKShaderConverterTool::showUsage() {
 	log("  -sx \"fileExtns\"    - List of SPIR-V shader file extensions.");
 	log("                       May be omitted for defaults (\"spv spirv\").");
 	log("  -l                 - Log the conversion results to the console (to aid debugging).");
+	log("  -p                 - Log the performance of the shader conversions.");
 	log("");
+}
+
+void MoltenVKShaderConverterTool::reportPerformance() {
+	if ( !_shouldReportPerformance ) { return; }
+
+	if (_shouldReadGLSL) { reportPerformance(_glslConversionPerformance, "GLSL to SPIR-V"); }
+	reportPerformance(_spvConversionPerformance, "SPIR-V to MSL");
+}
+
+void MoltenVKShaderConverterTool::reportPerformance(MVKPerformanceTracker& shaderCompilationEvent, string eventDescription) {
+	string logMsg;
+	logMsg += "Performance to convert ";
+	logMsg += eventDescription;
+	logMsg += " count: ";
+	logMsg += to_string(shaderCompilationEvent.count);
+	logMsg += ", min: ";
+	logMsg += to_string(shaderCompilationEvent.minimumDuration);
+	logMsg += " ms, max: ";
+	logMsg += to_string(shaderCompilationEvent.maximumDuration);
+	logMsg += " ms, avg: ";
+	logMsg += to_string(shaderCompilationEvent.averageDuration);
+	logMsg += " ms.\n";
+	log(logMsg.c_str());
 }
 
 
@@ -302,8 +372,7 @@ MoltenVKShaderConverterTool::MoltenVKShaderConverterTool(int argc, const char* a
     extractTokens(_defaultCompShaderExtns, _glslCompFileExtns);
 	extractTokens(_defaultSPIRVShaderExtns, _spvFileExtns);
 	_origPathExtnSep = "_";
-	_shaderStage = kMVKShaderStageAuto;
-	_isActive = false;
+	_shaderStage = kMVKGLSLConversionShaderStageAuto;
 	_shouldUseDirectoryRecursion = false;
 	_shouldReadGLSL = false;
 	_shouldReadSPIRV = false;
@@ -313,6 +382,12 @@ MoltenVKShaderConverterTool::MoltenVKShaderConverterTool(int argc, const char* a
     _shouldFlipVertexY = true;
 	_shouldIncludeOrigPathExtn = true;
 	_shouldLogConversions = false;
+	_shouldReportPerformance = false;
+
+	_mslVersionMajor = 2;
+	_mslVersionMinor = 1;
+	_mslVersionPatch = 0;
+	_mslPlatform = SPIRVToMSLConverterOptions::getNativePlatform();
 
 	_isActive = parseArgs(argc, argv);
 	if ( !_isActive ) { showUsage(); }
@@ -366,6 +441,39 @@ bool MoltenVKShaderConverterTool::parseArgs(int argc, const char* argv[]) {
 			continue;
 		}
 
+		if (equal(arg, "-mv", true)) {
+			int optIdx = argIdx;
+			string mslVerStr;
+			argIdx = optionalParam(mslVerStr, argIdx, argc, argv);
+			if (argIdx == optIdx || mslVerStr.length() == 0) { return false; }
+			vector<uint32_t> mslVerTokens;
+			extractTokens(mslVerStr, mslVerTokens);
+			auto tknCnt = mslVerTokens.size();
+			_mslVersionMajor = (tknCnt > 0) ? mslVerTokens[0] : 0;
+			_mslVersionMinor = (tknCnt > 1) ? mslVerTokens[1] : 0;
+			_mslVersionPatch = (tknCnt > 2) ? mslVerTokens[2] : 0;
+			continue;
+		}
+
+		if (equal(arg, "-mp", true)) {
+			int optIdx = argIdx;
+			string shdrTypeStr;
+			argIdx = optionalParam(shdrTypeStr, argIdx, argc, argv);
+			if (argIdx == optIdx || shdrTypeStr.length() == 0) { return false; }
+
+			switch (shdrTypeStr.front()) {
+				case 'm':
+					_mslPlatform = SPIRVToMSLConverterOptions::macOS;
+					break;
+				case 'i':
+					_mslPlatform = SPIRVToMSLConverterOptions::iOS;
+					break;
+				default:
+					return false;
+			}
+			continue;
+		}
+
 		if (equal(arg, "-t", true)) {
 			int optIdx = argIdx;
 			string shdrTypeStr;
@@ -374,16 +482,16 @@ bool MoltenVKShaderConverterTool::parseArgs(int argc, const char* argv[]) {
 
 			switch (shdrTypeStr.front()) {
 				case 'v':
-					_shaderStage = kMVKShaderStageVertex;
+					_shaderStage = kMVKGLSLConversionShaderStageVertex;
 					break;
 				case 'f':
-					_shaderStage = kMVKShaderStageFragment;
+					_shaderStage = kMVKGLSLConversionShaderStageFragment;
 					break;
 				case 'c':
-					_shaderStage = kMVKShaderStageCompute;
+					_shaderStage = kMVKGLSLConversionShaderStageCompute;
 					break;
 				default:
-					break;
+					return false;
 			}
 			continue;
 		}
@@ -451,6 +559,11 @@ bool MoltenVKShaderConverterTool::parseArgs(int argc, const char* argv[]) {
 			continue;
 		}
 
+		if(equal(arg, "-p", true)) {
+			_shouldReportPerformance = true;
+			continue;
+		}
+
 	}
 
 	return true;
@@ -509,6 +622,14 @@ Container& split(Container& result,
 
 void mvk::extractTokens(string str, vector<string>& tokens) {
 	split(tokens, str, " \t\n\f", false);
+}
+
+void mvk::extractTokens(string str, vector<uint32_t>& tokens) {
+	vector<string> stringTokens;
+	split(stringTokens, str, ".", false);
+	for (auto& st : stringTokens) {
+		tokens.push_back((uint32_t)strtol(st.c_str(), nullptr, 0));
+	}
 }
 
 // Compares the specified characters ignoring case.

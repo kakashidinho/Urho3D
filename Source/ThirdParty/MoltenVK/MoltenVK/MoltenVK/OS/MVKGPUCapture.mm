@@ -1,7 +1,7 @@
 /*
  * MVKGPUCapture.mm
  *
- * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@
 #include "MVKGPUCapture.h"
 #include "MVKQueue.h"
 #include "MVKOSExtensions.h"
+#include "MVKEnvironment.h"
 
 
 #pragma mark -
@@ -55,11 +56,11 @@ void MVKGPUCaptureScope::makeDefault() {
 	}
 }
 
-MVKGPUCaptureScope::MVKGPUCaptureScope(MVKQueue* mvkQueue, const char* purpose) : MVKBaseDeviceObject(mvkQueue->getDevice()) {
-	_mtlQueue = [mvkQueue->getMTLCommandQueue() retain];	// retained
+MVKGPUCaptureScope::MVKGPUCaptureScope(MVKQueue* mvkQueue, const char* purpose) : _queue(mvkQueue) {
+	_mtlQueue = [_queue->getMTLCommandQueue() retain];	// retained
 	if (mvkOSVersion() >= kMinOSVersionMTLCaptureScope) {
 		_mtlCaptureScope = [[MTLCaptureManager sharedCaptureManager] newCaptureScopeWithCommandQueue: _mtlQueue];	// retained
-		_mtlCaptureScope.label = @((mvkQueue->getName() + "-" + purpose).c_str());
+		_mtlCaptureScope.label = @((_queue->getName() + "-" + purpose).c_str());
 	}
 }
 

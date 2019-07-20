@@ -1,7 +1,7 @@
 /*
  * MVKCmdQueries.mm
  *
- * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,6 +37,7 @@ MVKCmdQuery::MVKCmdQuery(MVKCommandTypePool<MVKCommand>* pool) : MVKCommand::MVK
 #pragma mark MVKCmdBeginQuery
 
 void MVKCmdBeginQuery::added(MVKCommandBuffer* cmdBuffer) {
+	MVKCommand::added(cmdBuffer);
     _queryPool->beginQueryAddedTo(_query, cmdBuffer);
 };
 
@@ -117,12 +118,13 @@ void MVKCmdCopyQueryPoolResults::setContent(VkQueryPool queryPool,
 }
 
 void MVKCmdCopyQueryPoolResults::encode(MVKCommandEncoder* cmdEncoder) {
-    [cmdEncoder->_mtlCmdBuffer addCompletedHandler: ^(id<MTLCommandBuffer> mtlCmdBuff) {
-        // This can block, so it must not run on the Metal completion queue.
-        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-            _queryPool->copyQueryPoolResults(_query, _queryCount, _destBuffer, _destOffset, _destStride, _flags);
-        });
-    }];
+    // What happens now depends on whether or not I was added before or after the query ended.
+    if (!_queryPool->areQueriesDeviceAvailable(_query, _queryCount) && mvkIsAnyFlagEnabled(_flags, VK_QUERY_RESULT_WAIT_BIT)) {
+        // Defer this until the queries will be done.
+        _queryPool->deferCopyResults(_query, _queryCount, _destBuffer, _destOffset, _destStride, _flags);
+    } else {
+        _queryPool->encodeCopyResults(cmdEncoder, _query, _queryCount, _destBuffer, _destOffset, _destStride, _flags);
+    }
 }
 
 MVKCmdCopyQueryPoolResults::MVKCmdCopyQueryPoolResults(MVKCommandTypePool<MVKCmdCopyQueryPoolResults>* pool)

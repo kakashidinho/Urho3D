@@ -1,7 +1,7 @@
 /*
  * MVKSwapchain.mm
  *
- * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,14 +24,24 @@
 #include "MVKWatermark.h"
 #include "MVKWatermarkTextureContent.h"
 #include "MVKWatermarkShaderSource.h"
-#include "mvk_datatypes.h"
+#include "mvk_datatypes.hpp"
 #include "MVKLogging.h"
 #import "CAMetalLayer+MoltenVK.h"
+#import "MVKBlockObserver.h"
 
 using namespace std;
 
 
 #pragma mark MVKSwapchain
+
+void MVKSwapchain::propogateDebugName() {
+	if (_debugName) {
+		size_t imgCnt = _surfaceImages.size();
+		for (size_t imgIdx = 0; imgIdx < imgCnt; imgIdx++) {
+			_surfaceImages[imgIdx]->setDebugName([NSString stringWithFormat: @"%@(%lu)", _debugName, imgIdx].UTF8String);
+		}
+	}
+}
 
 uint32_t MVKSwapchain::getImageCount() { return (uint32_t)_surfaceImages.size(); }
 
@@ -49,7 +59,7 @@ VkResult MVKSwapchain::getImages(uint32_t* pCount, VkImage* pSwapchainImages) {
 	}
 
 	// Determine how many images we'll return, and return that number
-	VkResult result = (*pCount <= imgCnt) ? VK_SUCCESS : VK_INCOMPLETE;
+	VkResult result = (*pCount >= imgCnt) ? VK_SUCCESS : VK_INCOMPLETE;
 	*pCount = min(*pCount, imgCnt);
 
 	// Now populate the images
@@ -63,7 +73,11 @@ VkResult MVKSwapchain::getImages(uint32_t* pCount, VkImage* pSwapchainImages) {
 VkResult MVKSwapchain::acquireNextImageKHR(uint64_t timeout,
                                            VkSemaphore semaphore,
                                            VkFence fence,
+										   uint32_t deviceMask,
                                            uint32_t* pImageIndex) {
+
+    if ( getIsSurfaceLost() ) { return VK_ERROR_SURFACE_LOST_KHR; }
+
     // Find the image that has the smallest availability measure
     uint32_t minWaitIndex = 0;
     MVKSwapchainImageAvailability minAvailability = { .acquisitionID = kMVKUndefinedLargeUInt64,
@@ -172,46 +186,72 @@ id<CAMetalDrawable> MVKSwapchain::getNextCAMetalDrawable() {
 #pragma mark Construction
 
 MVKSwapchain::MVKSwapchain(MVKDevice* device,
-						   const VkSwapchainCreateInfoKHR* pCreateInfo) : MVKBaseDeviceObject(device) {
+						   const VkSwapchainCreateInfoKHR* pCreateInfo) : MVKVulkanAPIDeviceObject(device), _surfaceLost(false) {
 	_currentAcquisitionID = 0;
+	_layerObserver = nil;
 
 	// If applicable, release any surfaces (not currently being displayed) from the old swapchain.
 	MVKSwapchain* oldSwapchain = (MVKSwapchain*)pCreateInfo->oldSwapchain;
 	if (oldSwapchain) { oldSwapchain->releaseUndisplayedSurfaces(); }
 
-	initCAMetalLayer(pCreateInfo);
-    initSurfaceImages(pCreateInfo);
+	uint32_t imgCnt = mvkClamp(pCreateInfo->minImageCount,
+							   _device->_pMetalFeatures->minSwapchainImageCount,
+							   _device->_pMetalFeatures->maxSwapchainImageCount);
+	initCAMetalLayer(pCreateInfo, imgCnt);
+    initSurfaceImages(pCreateInfo, imgCnt);		// After initCAMetalLayer()
     initFrameIntervalTracking();
 
     _licenseWatermark = NULL;
 }
 
 // Initializes the CAMetalLayer underlying the surface of this swapchain.
-void MVKSwapchain::initCAMetalLayer(const VkSwapchainCreateInfoKHR* pCreateInfo) {
+void MVKSwapchain::initCAMetalLayer(const VkSwapchainCreateInfoKHR* pCreateInfo, uint32_t imgCnt) {
 
 	MVKSurface* mvkSrfc = (MVKSurface*)pCreateInfo->surface;
+	if ( !mvkSrfc->getCAMetalLayer() ) {
+		setConfigurationResult(mvkSrfc->getConfigurationResult());
+		_surfaceLost = true;
+		return;
+	}
+
 	_mtlLayer = mvkSrfc->getCAMetalLayer();
 	_mtlLayer.device = getMTLDevice();
-	_mtlLayer.pixelFormat = mtlPixelFormatFromVkFormat(pCreateInfo->imageFormat);
+	_mtlLayer.pixelFormat = getMTLPixelFormatFromVkFormat(pCreateInfo->imageFormat);
+	_mtlLayer.maximumDrawableCountMVK = imgCnt;
 	_mtlLayer.displaySyncEnabledMVK = (pCreateInfo->presentMode != VK_PRESENT_MODE_IMMEDIATE_KHR);
 	_mtlLayer.magnificationFilter = _device->_pMVKConfig->swapchainMagFilterUseNearest ? kCAFilterNearest : kCAFilterLinear;
 	_mtlLayer.framebufferOnly = !mvkIsAnyFlagEnabled(pCreateInfo->imageUsage, (VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
 																			   VK_IMAGE_USAGE_TRANSFER_DST_BIT |
 																			   VK_IMAGE_USAGE_SAMPLED_BIT |
 																			   VK_IMAGE_USAGE_STORAGE_BIT));
+	_mtlLayerOrigDrawSize = _mtlLayer.updatedDrawableSizeMVK;
 
 	// TODO: set additional CAMetalLayer properties before extracting drawables:
 	//	- presentsWithTransaction
-	//  - maximumDrawableCount (maybe for MAILBOX?)
 	//	- drawsAsynchronously
 	//  - colorspace (macOS only) Vulkan only supports sRGB colorspace for now.
 	//  - wantsExtendedDynamicRangeContent (macOS only)
+
+	if ( [_mtlLayer.delegate isKindOfClass: [PLATFORM_VIEW_CLASS class]] ) {
+		// Sometimes, the owning view can replace its CAMetalLayer. In that case, the client
+		// needs to recreate the swapchain, or no content will be displayed.
+		_layerObserver = [MVKBlockObserver observerWithBlock: ^(NSString* path, id, NSDictionary*, void*) {
+			if ( ![path isEqualToString: @"layer"] ) { return; }
+			this->_surfaceLost = true;
+			[this->_layerObserver release];
+			this->_layerObserver = nil;
+		} forObject: _mtlLayer.delegate atKeyPath: @"layer"];
+	}
 }
 
 // Initializes the array of images used for the surface of this swapchain.
-void MVKSwapchain::initSurfaceImages(const VkSwapchainCreateInfoKHR* pCreateInfo) {
+// The CAMetalLayer should already be initialized when this is called.
+void MVKSwapchain::initSurfaceImages(const VkSwapchainCreateInfoKHR* pCreateInfo, uint32_t imgCnt) {
 
-    _mtlLayerOrigDrawSize = _mtlLayer.updatedDrawableSizeMVK;
+    if ( getIsSurfaceLost() ) {
+        return;
+    }
+
     VkExtent2D imgExtent = mvkVkExtent2DFromCGSize(_mtlLayerOrigDrawSize);
 
     VkImageCreateInfo imgInfo = {
@@ -229,17 +269,12 @@ void MVKSwapchain::initSurfaceImages(const VkSwapchainCreateInfoKHR* pCreateInfo
     };
 
 	if (mvkAreFlagsEnabled(pCreateInfo->flags, VK_SWAPCHAIN_CREATE_MUTABLE_FORMAT_BIT_KHR)) {
-		mvkEnableFlag(imgInfo.flags, VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT|VK_IMAGE_CREATE_EXTENDED_USAGE_BIT);
+		mvkEnableFlag(imgInfo.flags, VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT | VK_IMAGE_CREATE_EXTENDED_USAGE_BIT);
 	}
 
-	VkSurfaceCapabilitiesKHR srfcProps;
-	MVKSurface* mvkSrfc = (MVKSurface*)pCreateInfo->surface;
-	_device->getPhysicalDevice()->getSurfaceCapabilities(mvkSrfc, &srfcProps);
-
-	uint32_t imgCnt = srfcProps.maxImageCount;
 	_surfaceImages.reserve(imgCnt);
     for (uint32_t imgIdx = 0; imgIdx < imgCnt; imgIdx++) {
-        _surfaceImages.push_back(_device->createSwapchainImage(&imgInfo, this, NULL));
+        _surfaceImages.push_back(_device->createSwapchainImage(&imgInfo, this, imgIdx, NULL));
     }
 
     MVKLogInfo("Created %d swapchain images with initial size (%d, %d).", imgCnt, imgExtent.width, imgExtent.height);
@@ -263,5 +298,6 @@ MVKSwapchain::~MVKSwapchain() {
 	for (auto& img : _surfaceImages) { _device->destroySwapchainImage(img, NULL); }
 
     if (_licenseWatermark) { _licenseWatermark->destroy(); }
+    [this->_layerObserver release];
 }
 

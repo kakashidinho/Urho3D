@@ -1,7 +1,7 @@
 /*
  * MVKFramebuffer.mm
  *
- * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,11 +24,11 @@
 #pragma mark Construction
 
 MVKFramebuffer::MVKFramebuffer(MVKDevice* device,
-							   const VkFramebufferCreateInfo* pCreateInfo) : MVKBaseDeviceObject(device) {
+							   const VkFramebufferCreateInfo* pCreateInfo) : MVKVulkanAPIDeviceObject(device) {
     _extent = { .width = pCreateInfo->width, .height = pCreateInfo->height };
 	_layerCount = pCreateInfo->layers;
 
-	// Add clear values
+	// Add attachments
 	_attachments.reserve(pCreateInfo->attachmentCount);
 	for (uint32_t i = 0; i < pCreateInfo->attachmentCount; i++) {
 		_attachments.push_back((MVKImageView*)pCreateInfo->pAttachments[i]);

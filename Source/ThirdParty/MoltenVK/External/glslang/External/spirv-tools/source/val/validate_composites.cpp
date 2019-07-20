@@ -18,6 +18,7 @@
 
 #include "source/diagnostic.h"
 #include "source/opcode.h"
+#include "source/spirv_target_env.h"
 #include "source/val/instruction.h"
 #include "source/val/validation_state.h"
 
@@ -115,6 +116,10 @@ spv_result_t GetExtractInsertValueType(ValidationState_t& _,
                  << num_struct_members - 1 << ".";
         }
         *member_type = type_inst->word(component_index + 2);
+        break;
+      }
+      case SpvOpTypeCooperativeMatrixNV: {
+        *member_type = type_inst->word(2);
         break;
       }
       default:
@@ -314,6 +319,26 @@ spv_result_t ValidateCompositeConstruct(ValidationState_t& _,
 
       break;
     }
+    case SpvOpTypeCooperativeMatrixNV: {
+      const auto result_type_inst = _.FindDef(result_type);
+      assert(result_type_inst);
+      const auto component_type_id =
+          result_type_inst->GetOperandAs<uint32_t>(1);
+
+      if (3 != num_operands) {
+        return _.diag(SPV_ERROR_INVALID_DATA, inst)
+               << "Expected single constituent";
+      }
+
+      const uint32_t operand_type_id = _.GetOperandTypeId(inst, 2);
+
+      if (operand_type_id != component_type_id) {
+        return _.diag(SPV_ERROR_INVALID_DATA, inst)
+               << "Expected Constituent type to be equal to the component type";
+      }
+
+      break;
+    }
     default: {
       return _.diag(SPV_ERROR_INVALID_DATA, inst)
              << "Expected Result Type to be a composite type";
@@ -464,10 +489,12 @@ spv_result_t ValidateVectorShuffle(ValidationState_t& _,
   }
 
   // All Component literals must either be FFFFFFFF or in [0, N - 1].
+  // For WebGPU specifically, Component literals cannot be FFFFFFFF.
   auto vector1ComponentCount = vector1Type->GetOperandAs<uint32_t>(2);
   auto vector2ComponentCount = vector2Type->GetOperandAs<uint32_t>(2);
   auto N = vector1ComponentCount + vector2ComponentCount;
   auto firstLiteralIndex = 4;
+  const auto is_webgpu_env = spvIsWebGPUEnv(_.context()->target_env);
   for (size_t i = firstLiteralIndex; i < inst->operands().size(); ++i) {
     auto literal = inst->GetOperandAs<uint32_t>(i);
     if (literal != 0xFFFFFFFF && literal >= N) {
@@ -475,6 +502,30 @@ spv_result_t ValidateVectorShuffle(ValidationState_t& _,
              << "Component index " << literal << " is out of bounds for "
              << "combined (Vector1 + Vector2) size of " << N << ".";
     }
+
+    if (is_webgpu_env && literal == 0xFFFFFFFF) {
+      return _.diag(SPV_ERROR_INVALID_ID, inst)
+             << "Component literal at operand " << i - firstLiteralIndex
+             << " cannot be 0xFFFFFFFF in WebGPU execution environment.";
+    }
+  }
+
+  return SPV_SUCCESS;
+}
+
+spv_result_t ValidateCopyLogical(ValidationState_t& _,
+                                 const Instruction* inst) {
+  const auto result_type = _.FindDef(inst->type_id());
+  const auto source = _.FindDef(inst->GetOperandAs<uint32_t>(2u));
+  const auto source_type = _.FindDef(source->type_id());
+  if (!source_type || !result_type || source_type == result_type) {
+    return _.diag(SPV_ERROR_INVALID_ID, inst)
+           << "Result Type must not equal the Operand type";
+  }
+
+  if (!_.LogicallyMatch(source_type, result_type, false)) {
+    return _.diag(SPV_ERROR_INVALID_ID, inst)
+           << "Result Type does not logically match the Operand type";
   }
 
   return SPV_SUCCESS;
@@ -501,6 +552,8 @@ spv_result_t CompositesPass(ValidationState_t& _, const Instruction* inst) {
       return ValidateCopyObject(_, inst);
     case SpvOpTranspose:
       return ValidateTranspose(_, inst);
+    case SpvOpCopyLogical:
+      return ValidateCopyLogical(_, inst);
     default:
       break;
   }

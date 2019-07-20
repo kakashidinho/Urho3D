@@ -6,7 +6,7 @@
 
 #MoltenVK Demo Projects
 
-Copyright (c) 2014-2018 [The Brenwill Workshop Ltd.](http://www.brenwill.com)
+Copyright (c) 2014-2019 [The Brenwill Workshop Ltd.](http://www.brenwill.com)
 
 *This document is written in [Markdown](http://en.wikipedia.org/wiki/Markdown) format.
 For best results, use a Markdown reader.*
@@ -108,12 +108,6 @@ keyboard to zoom the camera in and out of the scene. Zooming out will show more 
 The demo allows some customization, by modifying the arguments passed to the demo at startup.
 To customize, modify the arguments created in the `DemoViewController viewDidLoad` method
 found in the `iOS/DemoViewController.mm` or `macOS/DemoViewController.mm` file.
-
-This demo illustrates the use of the **MoltenVK** API `vkGetMoltenVKDeviceConfigurationMVK()` 
-and `vkSetMoltenVKDeviceConfigurationMVK()` functions to enable **MoltenVK** debugging, including
-logging the conversion of shaders from *SPIR-V* to *Metal Shading Language*. See the use of these
-functions in the `Hologram/Hologram.cpp` file. To see the effect, modify the `Hologram-iOS` or 
-`Hologram-macOS` *Scheme* from within *Xcode* to use the **Debug** *Build Configuration* setting.
 
 The `Hologram` demo is a simple example of installing **MoltenVK** as a *static library*.
 

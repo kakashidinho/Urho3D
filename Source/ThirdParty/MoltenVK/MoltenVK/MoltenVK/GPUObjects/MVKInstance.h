@@ -1,7 +1,7 @@
 /*
  * MVKInstance.h
  *
- * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,27 +18,58 @@
 
 #pragma once
 
+#include "MVKEnvironment.h"
 #include "MVKLayers.h"
-#include "MVKSurface.h"
-#include "MVKBaseObject.h"
+#include "MVKVulkanAPIObject.h"
 #include "vk_mvk_moltenvk.h"
 #include <vector>
 #include <unordered_map>
 #include <string>
+#include <mutex>
 
 class MVKPhysicalDevice;
+class MVKDevice;
+class MVKSurface;
+class MVKDebugReportCallback;
+class MVKDebugUtilsMessenger;
+
+
+/** Tracks info about entry point function pointer addresses. */
+typedef struct {
+	PFN_vkVoidFunction functionPointer;
+	const char* ext1Name;
+	const char* ext2Name;
+	bool isDevice;
+
+	bool isCore() { return !ext1Name && !ext2Name; }
+	bool isEnabled(const MVKExtensionList& extList) {
+		return isCore() || extList.isEnabled(ext1Name) || extList.isEnabled(ext2Name);
+	}
+} MVKEntryPoint;
 
 
 #pragma mark -
 #pragma mark MVKInstance
 
 /** Represents a Vulkan instance. */
-class MVKInstance : public MVKDispatchableObject {
+class MVKInstance : public MVKDispatchableVulkanAPIObject {
 
 public:
 
-	/** Returns the function pointer corresponding to the specified named entry point. */
-	inline PFN_vkVoidFunction getProcAddr(const char* pName) { return _procAddrMap[pName]; }
+	/** Returns the Vulkan type of this object. */
+	VkObjectType getVkObjectType() override { return VK_OBJECT_TYPE_INSTANCE; }
+
+	/** Returns the debug report object type of this object. */
+	VkDebugReportObjectTypeEXT getVkDebugReportObjectType() override { return VK_DEBUG_REPORT_OBJECT_TYPE_INSTANCE_EXT; }
+
+	/** Returns a pointer to the Vulkan instance. */
+	MVKInstance* getInstance() override { return this; }
+
+	/** Returns a pointer to the layer manager. */
+	inline MVKLayerManager* getLayerManager() { return MVKLayerManager::globalManager(); }
+
+	/** Returns the function pointer corresponding to the named entry point, or NULL if it doesn't exist. */
+	PFN_vkVoidFunction getProcAddr(const char* pName);
 
 	/**
 	 * If pPhysicalDevices is null, the value of pCount is updated with the number of 
@@ -57,13 +88,41 @@ public:
 	/** Returns the driver layer. */
 	MVKLayer* getDriverLayer() { return MVKLayerManager::globalManager()->getDriverLayer(); }
 
-	/** Creates and returns a new object. */
 	MVKSurface* createSurface(const Vk_PLATFORM_SurfaceCreateInfoMVK* pCreateInfo,
 							  const VkAllocationCallbacks* pAllocator);
 
-	/** Destroys the specified object. */
 	void destroySurface(MVKSurface* mvkSrfc,
 						const VkAllocationCallbacks* pAllocator);
+
+	MVKDebugReportCallback* createDebugReportCallback(const VkDebugReportCallbackCreateInfoEXT* pCreateInfo,
+													  const VkAllocationCallbacks* pAllocator);
+
+	void destroyDebugReportCallback(MVKDebugReportCallback* mvkDRCB,
+									const VkAllocationCallbacks* pAllocator);
+
+	void debugReportMessage(VkDebugReportFlagsEXT flags,
+							VkDebugReportObjectTypeEXT objectType,
+							uint64_t object,
+							size_t location,
+							int32_t messageCode,
+							const char* pLayerPrefix,
+							const char* pMessage);
+
+
+	MVKDebugUtilsMessenger* createDebugUtilsMessenger(const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,
+													  const VkAllocationCallbacks* pAllocator);
+
+	void destroyDebugUtilsMessenger(MVKDebugUtilsMessenger* mvkDUM,
+									const VkAllocationCallbacks* pAllocator);
+
+	void debugUtilsMessage(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+						   VkDebugUtilsMessageTypeFlagsEXT messageTypes,
+						   const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData);
+
+	void debugReportMessage(MVKVulkanAPIObject* mvkAPIObj, int aslLvl, const char* pMessage);
+
+	/** Returns whether debug callbacks are being used. */
+	bool hasDebugCallbacks() { return _hasDebugReportCallbacks || _hasDebugUtilsMessengers; }
 
 	/** Returns the MoltenVK configuration settings. */
 	const MVKConfiguration* getMoltenVKConfiguration() { return &_mvkConfig; }
@@ -97,7 +156,14 @@ public:
     }
 
 protected:
+	friend MVKDevice;
+
+	void propogateDebugName() override {}
 	void initProcAddrs();
+	void initDebugCallbacks(const VkInstanceCreateInfo* pCreateInfo);
+	VkDebugReportFlagsEXT getVkDebugReportFlagsFromASLLevel(int aslLvl);
+	VkDebugUtilsMessageSeverityFlagBitsEXT getVkDebugUtilsMessageSeverityFlagBitsFromASLLevel(int aslLvl);
+	MVKEntryPoint* getEntryPoint(const char* pName);
 	void initConfig();
     void logVersions();
 	VkResult verifyLayers(uint32_t count, const char* const* names);
@@ -105,6 +171,89 @@ protected:
 	MVKConfiguration _mvkConfig;
 	VkApplicationInfo _appInfo;
 	std::vector<MVKPhysicalDevice*> _physicalDevices;
-	std::unordered_map<std::string, PFN_vkVoidFunction> _procAddrMap;
+	std::unordered_map<std::string, MVKEntryPoint> _entryPoints;
+	std::vector<MVKDebugReportCallback*> _debugReportCallbacks;
+	std::vector<MVKDebugUtilsMessenger*> _debugUtilMessengers;
+	std::mutex _dcbLock;
+	bool _hasDebugReportCallbacks;
+	bool _hasDebugUtilsMessengers;
+	bool _useCreationCallbacks;
+	const char* _debugReportCallbackLayerPrefix;
+};
+
+
+#pragma mark -
+#pragma mark MVKDebugReportCallback
+
+/** Represents a Vulkan Debug Report callback. */
+class MVKDebugReportCallback : public MVKVulkanAPIObject {
+
+public:
+
+	/** Returns the Vulkan type of this object. */
+	VkObjectType getVkObjectType() override { return VK_OBJECT_TYPE_DEBUG_REPORT_CALLBACK_EXT; }
+
+	/** Returns the debug report object type of this object. */
+	VkDebugReportObjectTypeEXT getVkDebugReportObjectType() override { return VK_DEBUG_REPORT_OBJECT_TYPE_DEBUG_REPORT_EXT; }
+
+	/** Returns a pointer to the Vulkan instance. */
+	MVKInstance* getInstance() override { return _mvkInstance; }
+
+	MVKDebugReportCallback(MVKInstance* mvkInstance,
+						   const VkDebugReportCallbackCreateInfoEXT* pCreateInfo,
+						   bool isCreationCallback) :
+	_mvkInstance(mvkInstance),
+	_info(*pCreateInfo),
+	_isCreationCallback(isCreationCallback) {
+
+		_info.pNext = nullptr;
+	}
+
+protected:
+	friend MVKInstance;
+	
+	void propogateDebugName() override {}
+
+	MVKInstance* _mvkInstance;
+	VkDebugReportCallbackCreateInfoEXT _info;
+	bool _isCreationCallback;
+};
+
+
+#pragma mark -
+#pragma mark MVKDebugUtilsMessenger
+
+/** Represents a Vulkan Debug Utils callback. */
+class MVKDebugUtilsMessenger : public MVKVulkanAPIObject {
+
+public:
+
+	/** Returns the Vulkan type of this object. */
+	VkObjectType getVkObjectType() override { return VK_OBJECT_TYPE_DEBUG_UTILS_MESSENGER_EXT; }
+
+	/** Returns the debug report object type of this object. */
+	VkDebugReportObjectTypeEXT getVkDebugReportObjectType() override { return VK_DEBUG_REPORT_OBJECT_TYPE_UNKNOWN_EXT; }
+
+	/** Returns a pointer to the Vulkan instance. */
+	MVKInstance* getInstance() override { return _mvkInstance; }
+
+	MVKDebugUtilsMessenger(MVKInstance* mvkInstance,
+						   const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,
+						   bool isCreationCallback) :
+	_mvkInstance(mvkInstance),
+	_info(*pCreateInfo),
+	_isCreationCallback(isCreationCallback) {
+
+		_info.pNext = nullptr;
+	}
+
+protected:
+	friend MVKInstance;
+
+	void propogateDebugName() override {}
+
+	MVKInstance* _mvkInstance;
+	VkDebugUtilsMessengerCreateInfoEXT _info;
+	bool _isCreationCallback;
 };
 

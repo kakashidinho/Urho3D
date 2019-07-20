@@ -1,7 +1,7 @@
 /*
  * mvk_datatypes.h
  *
- * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -54,6 +54,7 @@ typedef enum {
     kMVKFormatColorInt32,       /**< A signed 32-bit integer color. */
     kMVKFormatColorUInt32,		/**< An unsigned 32-bit integer color. */
     kMVKFormatDepthStencil,     /**< A depth and stencil value. */
+    kMVKFormatCompressed,       /**< A block-compressed color. */
 } MVKFormatType;
 
 /** Returns whether the VkFormat is supported by this implementation. */
@@ -203,6 +204,9 @@ bool mvkMTLPixelFormatIsDepthFormat(MTLPixelFormat mtlFormat);
 /** Returns whether the specified Metal MTLPixelFormat can be used as a stencil format. */
 bool mvkMTLPixelFormatIsStencilFormat(MTLPixelFormat mtlFormat);
 
+/** Returns whether the specified Metal MTLPixelFormat is a PVRTC format. */
+bool mvkMTLPixelFormatIsPVRTCFormat(MTLPixelFormat mtlFormat);
+
 /** Returns the Metal texture type from the specified Vulkan image properties. */
 MTLTextureType mvkMTLTextureTypeFromVkImageType(VkImageType vkImageType,
 												uint32_t arraySize,
@@ -295,6 +299,14 @@ VkExtent3D mvkMipmapBaseSizeFromLevelSize3D(VkExtent3D levelSize, uint32_t level
  */
 MTLSamplerAddressMode mvkMTLSamplerAddressModeFromVkSamplerAddressMode(VkSamplerAddressMode vkMode);
 
+#ifdef __MAC_OS_X_VERSION_MAX_ALLOWED
+/**
+ * Returns the Metal MTLSamplerBorderColor corresponding to the specified Vulkan VkBorderColor,
+ * or returns MTLSamplerBorderColorTransparentBlack if no corresponding MTLSamplerBorderColor exists.
+ */
+MTLSamplerBorderColor mvkMTLSamplerBorderColorFromVkBorderColor(VkBorderColor vkColor);
+#endif
+
 /**
  * Returns the Metal MTLSamplerMinMagFilter corresponding to the specified Vulkan VkFilter,
  * or returns MTLSamplerMinMagFilterNearest if no corresponding MTLSamplerMinMagFilter exists.
@@ -310,6 +322,16 @@ MTLSamplerMipFilter mvkMTLSamplerMipFilterFromVkSamplerMipmapMode(VkSamplerMipma
 
 #pragma mark -
 #pragma mark Render pipeline
+
+/** Identifies a particular shading stage in a pipeline. */
+typedef enum {
+	kMVKShaderStageVertex = 0,
+	kMVKShaderStageTessCtl,
+	kMVKShaderStageTessEval,
+	kMVKShaderStageFragment,
+	kMVKShaderStageCompute,
+	kMVKShaderStageMax
+} MVKShaderStage;
 
 /** Returns the Metal MTLColorWriteMask corresponding to the specified Vulkan VkColorComponentFlags. */
 MTLColorWriteMask mvkMTLColorWriteMaskFromVkChannelFlags(VkColorComponentFlags vkWriteFlags);
@@ -342,7 +364,7 @@ MTLTriangleFillMode mvkMTLTriangleFillModeFromVkPolygonMode(VkPolygonMode vkFill
 MTLLoadAction mvkMTLLoadActionFromVkAttachmentLoadOp(VkAttachmentLoadOp vkLoadOp);
 
 /** Returns the Metal MTLStoreAction corresponding to the specified Vulkan VkAttachmentStoreOp. */
-MTLStoreAction mvkMTLStoreActionFromVkAttachmentStoreOp(VkAttachmentStoreOp vkStoreOp);
+MTLStoreAction mvkMTLStoreActionFromVkAttachmentStoreOp(VkAttachmentStoreOp vkStoreOp, bool hasResolveAttachment = false);
 
 /** Returns the Metal MTLViewport corresponding to the specified Vulkan VkViewport. */
 MTLViewport mvkMTLViewportFromVkViewport(VkViewport vkViewport);
@@ -368,6 +390,26 @@ MTLIndexType mvkMTLIndexTypeFromVkIndexType(VkIndexType vkIdxType);
 /** Returns the size, in bytes, of a vertex index of the specified type. */
 size_t mvkMTLIndexTypeSizeInBytes(MTLIndexType mtlIdxType);
 
+/** Returns the MoltenVK MVKShaderStage corresponding to the specified Vulkan VkShaderStageFlagBits. */
+MVKShaderStage mvkShaderStageFromVkShaderStageFlagBits(VkShaderStageFlagBits vkStage);
+
+/** Returns the Vulkan VkShaderStageFlagBits corresponding to the specified MoltenVK MVKShaderStage. */
+VkShaderStageFlagBits mvkVkShaderStageFlagBitsFromMVKShaderStage(MVKShaderStage mvkStage);
+
+/** Returns the Metal MTLWinding corresponding to the specified SPIR-V spv::ExecutionMode. */
+MTLWinding mvkMTLWindingFromSpvExecutionMode(uint32_t spvMode);
+
+/** Returns the Metal MTLTessellationPartitionMode corresponding to the specified SPIR-V spv::ExecutionMode. */
+MTLTessellationPartitionMode mvkMTLTessellationPartitionModeFromSpvExecutionMode(uint32_t spvMode);
+
+/**
+ * Returns the combination of Metal MTLRenderStage bits corresponding to the specified Vulkan VkPiplineStageFlags,
+ * taking into consideration whether the barrier is to be placed before or after the specified pipeline stages.
+ */
+MTLRenderStages mvkMTLRenderStagesFromVkPipelineStageFlags(VkPipelineStageFlags vkStages, bool placeBarrierBefore);
+
+/** Returns the combination of Metal MTLBarrierScope bits corresponding to the specified Vulkan VkAccessFlags. */
+MTLBarrierScope mvkMTLBarrierScopeFromVkAccessFlags(VkAccessFlags vkAccess);
 
 #pragma mark -
 #pragma mark Geometry conversions

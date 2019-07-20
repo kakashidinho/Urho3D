@@ -1,7 +1,7 @@
 /*
  * GLSLToSPIRVConverter.cpp
  *
- * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,10 +19,9 @@
 #include "GLSLToSPIRVConverter.h"
 #include "MVKCommonEnvironment.h"
 #include "SPIRVToMSLConverter.h"
+#include "SPIRVSupport.h"
 #include "MVKStrings.h"
-#include "GlslangToSpv.h"
-#include "../glslang/SPIRV/disassemble.h"
-#include "doc.h"
+#include <glslang/SPIRV/GlslangToSpv.h>
 #include <sstream>
 
 using namespace std;
@@ -36,13 +35,9 @@ using namespace mvk;
 void configureGLSLCompilerResources(TBuiltInResource* glslCompilerResources);
 
 /** Returns the GLSL compiler language type corresponding to the specified MoltenVK shader stage. */
-EShLanguage eshLanguageFromMVKShaderStage(const MVKShaderStage mvkShaderStage);
+EShLanguage eshLanguageFromMVKGLSLConversionShaderStage(const MVKGLSLConversionShaderStage mvkShaderStage);
 
-MVK_PUBLIC_SYMBOL void GLSLToSPIRVConverter::setGLSL(const string& glslSrc) { _glsl = glslSrc; }
-
-MVK_PUBLIC_SYMBOL const string& GLSLToSPIRVConverter::getGLSL() { return _glsl; }
-
-MVK_PUBLIC_SYMBOL bool GLSLToSPIRVConverter::convert(MVKShaderStage shaderStage,
+MVK_PUBLIC_SYMBOL bool GLSLToSPIRVConverter::convert(MVKGLSLConversionShaderStage shaderStage,
 													 bool shouldLogGLSL,
 													 bool shouldLogSPIRV) {
 	_wasConverted = true;
@@ -53,7 +48,7 @@ MVK_PUBLIC_SYMBOL bool GLSLToSPIRVConverter::convert(MVKShaderStage shaderStage,
 
 	EShMessages messages = (EShMessages)(EShMsgDefault | EShMsgSpvRules | EShMsgVulkanRules);
 
-	EShLanguage stage = eshLanguageFromMVKShaderStage(shaderStage);
+	EShLanguage stage = eshLanguageFromMVKGLSLConversionShaderStage(shaderStage);
 	TBuiltInResource glslCompilerResources;
 	configureGLSLCompilerResources(&glslCompilerResources);
 	const char *glslStrings[1];
@@ -89,12 +84,6 @@ MVK_PUBLIC_SYMBOL bool GLSLToSPIRVConverter::convert(MVKShaderStage shaderStage,
 
 	return _wasConverted;
 }
-
-MVK_PUBLIC_SYMBOL const vector<uint32_t>& GLSLToSPIRVConverter::getSPIRV() { return _spirv; }
-
-MVK_PUBLIC_SYMBOL bool GLSLToSPIRVConverter::getWasConverted() { return _wasConverted; }
-
-MVK_PUBLIC_SYMBOL const string& GLSLToSPIRVConverter::getResultLog() { return _resultLog; }
 
 /** Appends the message text to the result log. */
 void GLSLToSPIRVConverter::logMsg(const char* logMsg) {
@@ -239,15 +228,15 @@ void configureGLSLCompilerResources(TBuiltInResource* glslCompilerResources) {
 	glslCompilerResources->limits.generalConstantMatrixVectorIndexing = 1;
 }
 
-EShLanguage eshLanguageFromMVKShaderStage(const MVKShaderStage mvkShaderStage) {
+EShLanguage eshLanguageFromMVKGLSLConversionShaderStage(const MVKGLSLConversionShaderStage mvkShaderStage) {
 	switch (mvkShaderStage) {
-		case kMVKShaderStageVertex:			return EShLangVertex;
-		case kMVKShaderStageTessControl:	return EShLangTessControl;
-		case kMVKShaderStageTessEval:		return EShLangTessEvaluation;
-		case kMVKShaderStageGeometry:		return EShLangGeometry;
-		case kMVKShaderStageFragment:		return EShLangFragment;
-		case kMVKShaderStageCompute:		return EShLangCompute;
-		default:							return EShLangVertex;
+		case kMVKGLSLConversionShaderStageVertex:		return EShLangVertex;
+		case kMVKGLSLConversionShaderStageTessControl:	return EShLangTessControl;
+		case kMVKGLSLConversionShaderStageTessEval:		return EShLangTessEvaluation;
+		case kMVKGLSLConversionShaderStageGeometry:		return EShLangGeometry;
+		case kMVKGLSLConversionShaderStageFragment:		return EShLangFragment;
+		case kMVKGLSLConversionShaderStageCompute:		return EShLangCompute;
+		default:										return EShLangVertex;
 	}
 }
 

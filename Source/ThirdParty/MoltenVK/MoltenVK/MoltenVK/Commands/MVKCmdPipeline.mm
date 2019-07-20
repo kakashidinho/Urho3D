@@ -1,7 +1,7 @@
 /*
  * MVKCmdPipeline.mm
  *
- * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,8 @@
 #include "MVKBuffer.h"
 #include "MVKPipeline.h"
 #include "MVKFoundation.h"
-#include "mvk_datatypes.h"
+#include "MVKEnvironment.h"
+#include "mvk_datatypes.hpp"
 
 
 #pragma mark -
@@ -64,9 +65,38 @@ void MVKCmdPipelineBarrier::setContent(VkPipelineStageFlags srcStageMask,
 void MVKCmdPipelineBarrier::encode(MVKCommandEncoder* cmdEncoder) {
 
 #if MVK_MACOS
-    // Calls below invoke MTLBlitCommandEncoder so must apply this first
-	if ( !(_memoryBarriers.empty() && _imageMemoryBarriers.empty()) ) {
-		[cmdEncoder->_mtlRenderEncoder textureBarrier];
+    // Calls below invoke MTLBlitCommandEncoder so must apply this first.
+	// Check if pipeline barriers are available and we are in a renderpass.
+	if (getDevice()->_pMetalFeatures->memoryBarriers && cmdEncoder->_mtlRenderEncoder) {
+		MTLRenderStages srcStages = mvkMTLRenderStagesFromVkPipelineStageFlags(_srcStageMask, false);
+		MTLRenderStages dstStages = mvkMTLRenderStagesFromVkPipelineStageFlags(_dstStageMask, true);
+		for (auto& mb : _memoryBarriers) {
+			MTLBarrierScope scope = mvkMTLBarrierScopeFromVkAccessFlags(mb.dstAccessMask);
+			scope |= mvkMTLBarrierScopeFromVkAccessFlags(mb.srcAccessMask);
+			[cmdEncoder->_mtlRenderEncoder memoryBarrierWithScope: scope
+													  afterStages: srcStages
+													 beforeStages: dstStages];
+		}
+		std::vector<id<MTLResource>> resources;
+		resources.reserve(_bufferMemoryBarriers.size() + _imageMemoryBarriers.size());
+		for (auto& mb : _bufferMemoryBarriers) {
+			auto* mvkBuff = (MVKBuffer*)mb.buffer;
+			resources.push_back(mvkBuff->getMTLBuffer());
+		}
+		for (auto& mb : _imageMemoryBarriers) {
+			auto* mvkImg = (MVKImage*)mb.image;
+			resources.push_back(mvkImg->getMTLTexture());
+		}
+		if ( !resources.empty() ) {
+			[cmdEncoder->_mtlRenderEncoder memoryBarrierWithResources: resources.data()
+																count: resources.size()
+														  afterStages: srcStages
+														 beforeStages: dstStages];
+		}
+	} else {
+		if ( !(_memoryBarriers.empty() && _imageMemoryBarriers.empty()) ) {
+			[cmdEncoder->_mtlRenderEncoder textureBarrier];
+		}
 	}
 #endif
 
@@ -108,6 +138,13 @@ void MVKCmdBindPipeline::encode(MVKCommandEncoder* cmdEncoder) {
 
 MVKCmdBindPipeline::MVKCmdBindPipeline(MVKCommandTypePool<MVKCmdBindPipeline>* pool)
 	: MVKCommand::MVKCommand((MVKCommandTypePool<MVKCommand>*)pool) {}
+
+bool MVKCmdBindPipeline::isTessellationPipeline() {
+	if (_bindPoint == VK_PIPELINE_BIND_POINT_GRAPHICS)
+		return ((MVKGraphicsPipeline*)_pipeline)->isTessellationPipeline();
+	else
+		return false;
+}
 
 
 #pragma mark -
@@ -160,18 +197,21 @@ void MVKCmdPushConstants::setContent(VkPipelineLayout layout,
 	_offset = offset;
 
 	_pushConstants.resize(size);
-	copy_n((char*)pValues, size, _pushConstants.begin());
+  std::copy_n((char*)pValues, size, _pushConstants.begin());
 }
 
 void MVKCmdPushConstants::encode(MVKCommandEncoder* cmdEncoder) {
-    if (mvkAreFlagsEnabled(_stageFlags, VK_SHADER_STAGE_VERTEX_BIT)) {
-        cmdEncoder->getPushConstants(VK_SHADER_STAGE_VERTEX_BIT)->setPushConstants(_offset, _pushConstants);
-    }
-    if (mvkAreFlagsEnabled(_stageFlags, VK_SHADER_STAGE_FRAGMENT_BIT)) {
-        cmdEncoder->getPushConstants(VK_SHADER_STAGE_FRAGMENT_BIT)->setPushConstants(_offset, _pushConstants);
-    }
-    if (mvkAreFlagsEnabled(_stageFlags, VK_SHADER_STAGE_COMPUTE_BIT)) {
-        cmdEncoder->getPushConstants(VK_SHADER_STAGE_COMPUTE_BIT)->setPushConstants(_offset, _pushConstants);
+    VkShaderStageFlagBits stages[] = {
+        VK_SHADER_STAGE_VERTEX_BIT,
+        VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT,
+        VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT,
+        VK_SHADER_STAGE_FRAGMENT_BIT,
+        VK_SHADER_STAGE_COMPUTE_BIT
+    };
+    for (auto stage : stages) {
+        if (mvkAreFlagsEnabled(_stageFlags, stage)) {
+            cmdEncoder->getPushConstants(stage)->setPushConstants(_offset, _pushConstants);
+        }
     }
 }
 
@@ -324,6 +364,7 @@ void mvkCmdBindPipeline(MVKCommandBuffer* cmdBuff,
 						VkPipeline pipeline) {
 	MVKCmdBindPipeline* cmd = cmdBuff->_commandPool->_cmdBindPipelinePool.acquireObject();
 	cmd->setContent(pipelineBindPoint, pipeline);
+	cmdBuff->recordBindPipeline(cmd);
 	cmdBuff->addCommand(cmd);
 }
 

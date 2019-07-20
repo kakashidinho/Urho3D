@@ -1,7 +1,7 @@
 /*
  * MVKCommand.mm
  *
- * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,7 +27,13 @@
 //	Opt 1: Leave arrays & rezs allocated in command, per current practice
 //  Opt 2: Allocate arrays & rezs from pools in Command pool, and return in returnToPool
 
-void MVKCommand::returnToPool() { _pool->returnObject(this); }
+void MVKCommand::returnToPool() {
+	clearConfigurationResult();
+	_commandBuffer = nullptr;
+	_pool->returnObject(this);
+}
+
+MVKVulkanAPIObject* MVKCommand::getVulkanAPIObject() { return _commandBuffer ? _commandBuffer->getVulkanAPIObject() : getCommandPool()->getVulkanAPIObject(); };
 
 MVKCommandPool* MVKCommand::getCommandPool() { return _pool->getCommandPool(); }
 
@@ -36,4 +42,23 @@ MVKCommandEncodingPool* MVKCommand::getCommandEncodingPool() { return getCommand
 MVKDevice* MVKCommand::getDevice() { return getCommandPool()->getDevice(); }
 
 id<MTLDevice> MVKCommand::getMTLDevice() { return getCommandPool()->getMTLDevice(); }
+
+
+#pragma mark -
+#pragma mark MVKCommandTypePool
+
+MVKVulkanAPIObject* mvkCommandTypePoolGetVulkanAPIObject(MVKCommandPool* cmdPool) { return cmdPool->getVulkanAPIObject(); }
+
+
+#pragma mark -
+#pragma mark MVKLoadStoreOverrideMixin
+
+void MVKLoadStoreOverrideMixin::setLoadOverride(bool loadOverride) {
+	_loadOverride = loadOverride;
+}
+
+void MVKLoadStoreOverrideMixin::setStoreOverride(bool storeOverride) {
+	_storeOverride = storeOverride;
+}
+
 

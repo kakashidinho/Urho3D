@@ -1,7 +1,7 @@
 /*
  * MVKMTLResourceBindings.h
  *
- * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,6 +40,7 @@ typedef struct {
     union { id<MTLBuffer> mtlBuffer = nil; id<MTLBuffer> mtlResource; }; // aliases
     NSUInteger offset = 0;
     uint32_t index = 0;
+    uint32_t size = 0;
     bool isDirty = true;
 } MVKMTLBufferBinding;
 

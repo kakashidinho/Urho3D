@@ -1,7 +1,7 @@
 /*
  * MVKCmdRenderPass.h
  *
- * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,11 +19,11 @@
 #pragma once
 
 #include "MVKCommand.h"
+#include "MVKVector.h"
 #include <vector>
 
 #import <Metal/Metal.h>
 
-class MVKCommandBuffer;
 class MVKRenderPass;
 class MVKFramebuffer;
 
@@ -32,7 +32,7 @@ class MVKFramebuffer;
 #pragma mark MVKCmdBeginRenderPass
 
 /** Vulkan command to begin a render pass. */
-class MVKCmdBeginRenderPass : public MVKCommand {
+class MVKCmdBeginRenderPass : public MVKCommand, public MVKLoadStoreOverrideMixin {
 
 public:
 	void setContent(const VkRenderPassBeginInfo* pRenderPassBegin,
@@ -47,7 +47,7 @@ private:
 	VkSubpassContents _contents;
 	MVKRenderPass* _renderPass;
 	MVKFramebuffer* _framebuffer;
-	std::vector<VkClearValue> _clearValues;
+	MVKVectorInline<VkClearValue, 8> _clearValues;
 };
 
 
@@ -114,7 +114,7 @@ public:
 
 private:
 	uint32_t _firstViewport;
-	std::vector<MTLViewport> _mtlViewports;
+	MVKVectorInline<MTLViewport, kMVKCachedViewportScissorCount> _mtlViewports;
 };
 
 
@@ -133,7 +133,7 @@ public:
 
 private:
 	uint32_t _firstScissor;
-	std::vector<MTLScissorRect> _mtlScissors;
+	MVKVectorInline<MTLScissorRect, kMVKCachedViewportScissorCount> _mtlScissors;
 };
 
 

@@ -1,7 +1,7 @@
 /*
  * MVKCommandPool.h
  *
- * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,6 @@
 
 #include "MVKDevice.h"
 #include "MVKCommandBuffer.h"
-#include "MVKCommandResourceFactory.h"
 #include "MVKCommandEncodingPool.h"
 #include "MVKCommand.h"
 #include "MVKCmdPipeline.h"
@@ -29,6 +28,7 @@
 #include "MVKCmdDraw.h"
 #include "MVKCmdTransfer.h"
 #include "MVKCmdQueries.h"
+#include "MVKCmdDebug.h"
 #include "MVKMTLBufferAllocation.h"
 #include <unordered_set>
 
@@ -49,9 +49,15 @@
  * of this pool should be done during the setContent() function of each MVKCommand, and NOT 
  * during the execution of the command via the MVKCommand::encode() member function.
  */
-class MVKCommandPool : public MVKBaseDeviceObject {
+class MVKCommandPool : public MVKVulkanAPIDeviceObject {
 
 public:
+
+	/** Returns the Vulkan type of this object. */
+	VkObjectType getVkObjectType() override { return VK_OBJECT_TYPE_COMMAND_POOL; }
+
+	/** Returns the debug report object type of this object. */
+	VkDebugReportObjectTypeEXT getVkDebugReportObjectType() override { return VK_DEBUG_REPORT_OBJECT_TYPE_COMMAND_POOL_EXT; }
 
 #pragma mark Command type pools
 
@@ -137,6 +143,12 @@ public:
 
     MVKCommandTypePool<MVKCmdPushDescriptorSetWithTemplate> _cmdPushSetWithTemplatePool;
 
+	MVKCommandTypePool<MVKCmdDebugMarkerBegin> _cmdDebugMarkerBeginPool;
+
+	MVKCommandTypePool<MVKCmdDebugMarkerEnd> _cmdDebugMarkerEndPool;
+
+	MVKCommandTypePool<MVKCmdDebugMarkerInsert> _cmdDebugMarkerInsertPool;
+
 
 #pragma mark Command resources
 
@@ -171,6 +183,7 @@ public:
 	~MVKCommandPool() override;
 
 protected:
+	void propogateDebugName() override {}
 	MVKDeviceObjectPool<MVKCommandBuffer> _commandBufferPool;
 	std::unordered_set<MVKCommandBuffer*> _allocatedCommandBuffers;
 	MVKCommandEncodingPool _commandEncodingPool;

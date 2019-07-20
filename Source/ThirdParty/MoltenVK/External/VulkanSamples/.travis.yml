@@ -34,9 +34,21 @@ cache: ccache
 # The default action for Travis-CI is to continue running even if a command fails.
 # See https://github.com/travis-ci/travis-ci/issues/1066.
 # Use the YAML block scalar header (|) to allow easier multiline script coding.
+# Install the desired CMake before running update_deps.py
 
 before_install:
   - set -e
+  - CMAKE_VERSION=3.10.2
+  - |
+    if [[ "${TRAVIS_OS_NAME}" == "linux" ]]; then
+      CMAKE_URL="https://cmake.org/files/v${CMAKE_VERSION%.*}/cmake-${CMAKE_VERSION}-Linux-x86_64.tar.gz"
+      echo CMAKE_URL=${CMAKE_URL}
+      mkdir cmake-${CMAKE_VERSION} && travis_retry wget --no-check-certificate -O - ${CMAKE_URL} | tar --strip-components=1 -xz -C cmake-${CMAKE_VERSION}
+      export PATH=${PWD}/cmake-${CMAKE_VERSION}/bin:${PATH}
+    else
+      brew install cmake || brew upgrade cmake
+    fi
+    cmake --version
   - |
     if [[ "$TRAVIS_EVENT_TYPE" == "cron" ]]; then
         # Add an option to update dependencies from master
@@ -83,6 +95,7 @@ script:
       ../../../ndk-build NDK_PROJECT_PATH=. APP_BUILD_SCRIPT=Android.mk APP_STL:=c++_static APP_ABI=$ANDROID_ABI NDK_TOOLCHAIN_VERSION:=clang libshaderc_combined -j16
       popd
       cd API-Samples
+      cmake --version
       cmake -DANDROID=ON -DABI_NAME=$ANDROID_ABI
       cd android
       ./gradlew build
@@ -111,7 +124,6 @@ script:
 notifications:
   email:
     recipients:
-      - karl@lunarg.com
       - cnorthrop@google.com
       - tobine@google.com
       - chrisforbes@google.com

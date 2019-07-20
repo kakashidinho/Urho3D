@@ -1,7 +1,7 @@
 /*
  * SPIRVToMSLConverter.h
  *
- * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@
 #ifndef __SPIRVToMSLConverter_h_
 #define __SPIRVToMSLConverter_h_ 1
 
-#include "spirv.hpp"
+#include <SPIRV-Cross/spirv.hpp>
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -30,19 +30,46 @@ namespace mvk {
 #pragma mark -
 #pragma mark SPIRVToMSLConverterContext
 
-	/** Options for converting SPIR-V to Metal Shading Language */
+	/**
+	 * Options for converting SPIR-V to Metal Shading Language
+	 *
+	 * THIS STRUCT IS STREAMED OUT AS PART OF THE PIEPLINE CACHE.
+	 * CHANGES TO THIS STRUCT SHOULD BE CAPTURED IN THE STREAMING LOGIC OF THE PIPELINE CACHE.
+	 */
 	typedef struct SPIRVToMSLConverterOptions {
+
+		enum Platform {
+			iOS = 0,
+			macOS = 1
+		};
+
 		std::string entryPointName;
 		spv::ExecutionModel entryPointStage = spv::ExecutionModelMax;
+		spv::ExecutionMode tessPatchKind = spv::ExecutionModeMax;
 
-        uint32_t mslVersion = makeMSLVersion(2);
+        uint32_t mslVersion = makeMSLVersion(2, 1);
+		Platform platform = getNativePlatform();
 		uint32_t texelBufferTextureWidth = 4096;
-		uint32_t auxBufferIndex = 0;
+		uint32_t swizzleBufferIndex = 0;
+		uint32_t indirectParamsBufferIndex = 0;
+		uint32_t outputBufferIndex = 0;
+		uint32_t patchOutputBufferIndex = 0;
+		uint32_t tessLevelBufferIndex = 0;
+		uint32_t bufferSizeBufferIndex = 0;
+		uint32_t inputThreadgroupMemIndex = 0;
+		uint32_t numTessControlPoints = 0;
 		bool shouldFlipVertexY = true;
 		bool isRenderingPoints = false;
+		bool shouldSwizzleTextureSamples = false;
+		bool shouldCaptureOutput = false;
+		bool tessDomainOriginInLowerLeft = false;
 
 		bool isRasterizationDisabled = false;
-		bool needsAuxBuffer = false;
+		bool needsSwizzleBuffer = false;
+		bool needsOutputBuffer = false;
+		bool needsPatchOutputBuffer = false;
+		bool needsBufferSizeBuffer = false;
+		bool needsInputThreadgroupMem = false;
 
         /** 
          * Returns whether the specified options match this one.
@@ -66,6 +93,10 @@ namespace mvk {
             return (major * 10000) + (minor * 100) + patch;
         }
 
+		static std::string printMSLVersion(uint32_t mslVersion, bool includePatch = false);
+
+		static Platform getNativePlatform();
+
     } SPIRVToMSLConverterOptions;
 
 	/**
@@ -83,6 +114,9 @@ namespace mvk {
 	 * Defines MSL characteristics of a vertex attribute at a particular location.
 	 * The isUsedByShader flag is set to true during conversion of SPIR-V to MSL
 	 * if the shader makes use of this vertex attribute.
+	 *
+	 * THIS STRUCT IS STREAMED OUT AS PART OF THE PIEPLINE CACHE.
+	 * CHANGES TO THIS STRUCT SHOULD BE CAPTURED IN THE STREAMING LOGIC OF THE PIPELINE CACHE.
 	 */
 	typedef struct MSLVertexAttribute {
 		uint32_t location = 0;
@@ -90,6 +124,7 @@ namespace mvk {
         uint32_t mslOffset = 0;
         uint32_t mslStride = 0;
 		MSLVertexFormat format = MSLVertexFormat::Other;
+		spv::BuiltIn builtin = spv::BuiltInMax;
         bool isPerInstance = false;
 
 		bool isUsedByShader = false;
@@ -108,6 +143,9 @@ namespace mvk {
 	 * descriptor used in a particular shading stage. Generally, only one of the buffer, texture,
 	 * or sampler elements will be populated. The isUsedByShader flag is set to true during
 	 * compilation of SPIR-V to MSL if the shader makes use of this vertex attribute.
+	 *
+	 * THIS STRUCT IS STREAMED OUT AS PART OF THE PIEPLINE CACHE.
+	 * CHANGES TO THIS STRUCT SHOULD BE CAPTURED IN THE STREAMING LOGIC OF THE PIPELINE CACHE.
 	 */
 	typedef struct MSLResourceBinding {
 		spv::ExecutionModel stage;
@@ -128,17 +166,28 @@ namespace mvk {
 
     } MSLResourceBinding;
 
-	/** Context passed to the SPIRVToMSLConverter to map SPIR-V descriptors to Metal resource indices. */
+	/**
+	 * Context passed to the SPIRVToMSLConverter to map SPIR-V descriptors to Metal resource indices.
+	 *
+	 * THIS STRUCT IS STREAMED OUT AS PART OF THE PIEPLINE CACHE.
+	 * CHANGES TO THIS STRUCT SHOULD BE CAPTURED IN THE STREAMING LOGIC OF THE PIPELINE CACHE.
+	 */
 	typedef struct SPIRVToMSLConverterContext {
 		SPIRVToMSLConverterOptions options;
 		std::vector<MSLVertexAttribute> vertexAttributes;
 		std::vector<MSLResourceBinding> resourceBindings;
+
+		/** Returns whether the pipeline stage being converted supports vertex attributes. */
+		bool stageSupportsVertexAttributes() const;
 
         /** Returns whether the vertex attribute at the specified location is used by the shader. */
         bool isVertexAttributeLocationUsed(uint32_t location) const;
 
         /** Returns whether the vertex buffer at the specified Metal binding index is used by the shader. */
         bool isVertexBufferUsed(uint32_t mslBuffer) const;
+
+		/** Marks all vertex attributes and resources as being used by the shader. */
+		void markAllAttributesAndResourcesUsed();
 
         /**
          * Returns whether this context matches the other context. It does if the respective 
@@ -157,6 +206,9 @@ namespace mvk {
      * Describes one dimension of the workgroup size of a SPIR-V entry point, including whether
 	 * it is specialized, and if so, the value of the corresponding specialization ID, which
 	 * is used to map to a value which will be provided when the MSL is compiled into a pipeline.
+	 *
+	 * THIS STRUCT IS STREAMED OUT AS PART OF THE PIEPLINE CACHE.
+	 * CHANGES TO THIS STRUCT SHOULD BE CAPTURED IN THE STREAMING LOGIC OF THE PIPELINE CACHE.
      */
 	typedef struct {
 		uint32_t size = 1;
@@ -168,6 +220,9 @@ namespace mvk {
      * Describes a SPIRV entry point, including the Metal function name (which may be
      * different than the Vulkan entry point name if the original name was illegal in Metal),
      * and the size of each workgroup, if the shader is a compute shader.
+	 *
+	 * THIS STRUCT IS STREAMED OUT AS PART OF THE PIEPLINE CACHE.
+	 * CHANGES TO THIS STRUCT SHOULD BE CAPTURED IN THE STREAMING LOGIC OF THE PIPELINE CACHE.
      */
 	typedef struct {
 		std::string mtlFunctionName = "main0";
@@ -194,7 +249,7 @@ namespace mvk {
 	public:
 
 		/** Sets the SPIRV code. */
-		void setSPIRV(const std::vector<uint32_t>& spirv);
+		void setSPIRV(const std::vector<uint32_t>& spirv) { _spirv = spirv; }
 
 		/**
 		 * Sets the SPIRV code from the specified array of values.
@@ -203,7 +258,10 @@ namespace mvk {
 		void setSPIRV(const uint32_t* spirvCode, size_t length);
 
 		/** Returns a reference to the SPIRV code, set by one of the setSPIRV() functions. */
-		const std::vector<uint32_t>& getSPIRV();
+		const std::vector<uint32_t>& getSPIRV() { return _spirv; }
+
+		/** Returns whether the SPIR-V code has been set. */
+		bool hasSPIRV() { return !_spirv.empty(); }
 
 		/**
 		 * Converts SPIR-V code, set using setSPIRV() to MSL code, which can be retrieved using getMSL().
@@ -218,6 +276,13 @@ namespace mvk {
                      bool shouldLogGLSL = false);
 
 		/**
+		 * Returns whether the most recent conversion was successful.
+		 *
+		 * The initial value of this property is NO. It is set to YES upon successful conversion.
+		 */
+		bool wasConverted() { return _wasConverted; }
+
+		/**
 		 * Returns the Metal Shading Language source code most recently converted
          * by the convert() function, or set directly using the setMSL() function.
 		 */
@@ -226,13 +291,13 @@ namespace mvk {
         /** Returns information about the shader entry point. */
         const SPIRVEntryPoint& getEntryPoint() { return _entryPoint; }
 
-		/**
-		 * Returns whether the most recent conversion was successful.
-		 *
-		 * The initial value of this property is NO. It is set to YES upon successful conversion.
-		 */
-		bool getWasConverted() { return _wasConverted; }
-
+        /** Sets the number of threads in a single compute kernel workgroup, per dimension. */
+        void setWorkgroupSize(uint32_t x, uint32_t y, uint32_t z) {
+            _entryPoint.workgroupSize.width.size = x;
+            _entryPoint.workgroupSize.height.size = y;
+            _entryPoint.workgroupSize.depth.size = z;
+        }
+        
 		/**
 		 * Returns a human-readable log of the most recent conversion activity.
 		 * This may be empty if the conversion was successful.
@@ -259,31 +324,6 @@ namespace mvk {
 		SPIRVEntryPoint _entryPoint;
 		bool _wasConverted = false;
 	};
-
-
-#pragma mark Support functions
-
-	/** Appends the SPIR-V in human-readable form to the specified log string. */
-	void logSPIRV(std::vector<uint32_t>& spirv, std::string& spvLog);
-
-	/** Converts the SPIR-V code to an array of bytes (suitable for writing to a file). */
-	void spirvToBytes(const std::vector<uint32_t>& spv, std::vector<char>& bytes);
-
-	/** Converts an array of bytes (as read from a file) to SPIR-V code. */
-	void bytesToSPIRV(const std::vector<char>& bytes, std::vector<uint32_t>& spv);
-
-	/**
-	 * Ensures that the specified SPIR-V code has the correct endianness for this system,
-	 * and converts it in place if necessary. This can be used after loading SPIR-V code
-	 * from a file that may have been encoded on a system with the opposite endianness.
-	 *
-	 * This function tests for the SPIR-V magic number (in both endian states) to determine
-	 * whether conversion is required. It will not convert arrays of uint32_t values that
-	 * are not SPIR-V code.
-	 *
-	 * Returns whether the endianness was changed.
-	 */
-	bool ensureSPIRVEndianness(std::vector<uint32_t>& spv);
 
 }
 #endif

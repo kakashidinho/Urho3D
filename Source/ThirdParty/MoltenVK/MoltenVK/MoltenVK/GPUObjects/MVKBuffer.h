@@ -1,7 +1,7 @@
 /*
  * MVKBuffer.h
  *
- * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,6 +31,12 @@ class MVKBuffer : public MVKResource {
 
 public:
 
+	/** Returns the Vulkan type of this object. */
+	VkObjectType getVkObjectType() override { return VK_OBJECT_TYPE_BUFFER; }
+
+	/** Returns the debug report object type of this object. */
+	VkDebugReportObjectTypeEXT getVkDebugReportObjectType() override { return VK_DEBUG_REPORT_OBJECT_TYPE_BUFFER_EXT; }
+
 #pragma mark Resource memory
 
 	/** Returns the memory requirements of this resource by populating the specified structure. */
@@ -56,6 +62,9 @@ public:
                                   MVKCommandEncoder* cmdEncoder,
                                   MVKCommandUse cmdUse);
 
+    /** Returns the intended usage of this buffer. */
+    VkBufferUsageFlags getUsage() const { return _usage; }
+
 
 #pragma mark Metal
 
@@ -75,18 +84,27 @@ public:
 protected:
 	using MVKResource::needsHostReadSync;
 
+	void propogateDebugName() override;
 	bool needsHostReadSync(VkPipelineStageFlags srcStageMask,
 						   VkPipelineStageFlags dstStageMask,
 						   VkBufferMemoryBarrier* pBufferMemoryBarrier);
+
+	VkBufferUsageFlags _usage;
 };
 
 
 #pragma mark MVKBufferView
 
 /** Represents a Vulkan buffer view. */
-class MVKBufferView : public MVKRefCountedDeviceObject {
+class MVKBufferView : public MVKVulkanAPIDeviceObject {
 
 public:
+
+	/** Returns the Vulkan type of this object. */
+	VkObjectType getVkObjectType() override { return VK_OBJECT_TYPE_BUFFER_VIEW; }
+
+	/** Returns the debug report object type of this object. */
+	VkDebugReportObjectTypeEXT getVkDebugReportObjectType() override { return VK_DEBUG_REPORT_OBJECT_TYPE_BUFFER_VIEW_EXT; }
 
 #pragma mark Metal
 
@@ -101,6 +119,8 @@ public:
     ~MVKBufferView() override;
 
 protected:
+	void propogateDebugName() override;
+
     MVKBuffer* _buffer;
 	id<MTLTexture> _mtlTexture;
 	MTLPixelFormat _mtlPixelFormat;

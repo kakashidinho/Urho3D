@@ -23,6 +23,9 @@ to work on an issue that is assigned, simply coordinate with the current assigne
   creating a branch with your commits, and then [submitting a pull request](https://help.github.com/articles/using-pull-requests/).
 * Please read and adhere to the style and process [guidelines ](#coding-conventions-and-formatting) enumerated below.
 * Please base your fixes on the master branch.  SDK branches are generally not updated except for critical fixes needed to repair an SDK release.
+* The resulting Pull Request will be assigned to a repository maintainer. It is the maintainer's responsibility to ensure the Pull Request
+  passes the Google/LunarG internal CI processes. Once the Pull Request has been approved and is passing internal CI, a repository maintainer
+  will merge the PR.
 
 
 #### **Coding Conventions and Formatting**
@@ -72,7 +75,9 @@ that to be accepted into the repository, the pull request must [pass all tests](
 >        vkcube --validate
 * In the `vulkaninfo` directory, run:
 >        vulkaninfo
-
+* If you are adding or changing JSON output, please read
+  [Validating vulkaninfo JSON output](https://github.com/KhronosGroup/Vulkan-Tools/blob/master/vulkaninfo/json_validation_process.md).
+  **Note:** When adding new output to vulkaninfo, do NOT add JSON output unless the formmatting is defined by a schema.
 * Run tests that explicitly exercise your changes.
 * Feel free to subject your code changes to other tests as well!
 

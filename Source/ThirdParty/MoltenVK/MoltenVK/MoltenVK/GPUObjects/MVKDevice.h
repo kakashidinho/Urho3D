@@ -1,7 +1,7 @@
 /*
  * MVKDevice.h
  *
- * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,9 +19,10 @@
 #pragma once
 
 #include "MVKFoundation.h"
-#include "MVKBaseObject.h"
+#include "MVKVulkanAPIObject.h"
 #include "MVKLayers.h"
 #include "MVKObjectPool.h"
+#include "mvk_datatypes.hpp"
 #include "vk_mvk_moltenvk.h"
 #include <vector>
 #include <string>
@@ -65,14 +66,27 @@ class MVKCommandResourceFactory;
 /** The buffer index to use for vertex content. */
 const static uint32_t kMVKVertexContentBufferIndex = 0;
 
+// Parameters to define the sizing of inline collections
+const static uint32_t kMVKCachedViewportScissorCount = 16;
+const static uint32_t kMVKCachedColorAttachmentCount = 8;
+
 
 #pragma mark -
 #pragma mark MVKPhysicalDevice
 
 /** Represents a Vulkan physical GPU device. */
-class MVKPhysicalDevice : public MVKDispatchableObject {
+class MVKPhysicalDevice : public MVKDispatchableVulkanAPIObject {
 
 public:
+
+	/** Returns the Vulkan type of this object. */
+	VkObjectType getVkObjectType() override { return VK_OBJECT_TYPE_PHYSICAL_DEVICE; }
+
+	/** Returns the debug report object type of this object. */
+	VkDebugReportObjectTypeEXT getVkDebugReportObjectType() override { return VK_DEBUG_REPORT_OBJECT_TYPE_PHYSICAL_DEVICE_EXT; }
+
+	/** Returns a pointer to the Vulkan instance. */
+	MVKInstance* getInstance() override { return _mvkInstance; }
 
 	/** Populates the specified structure with the features of this device. */
 	void getFeatures(VkPhysicalDeviceFeatures* features);
@@ -85,6 +99,9 @@ public:
 
 	/** Populates the specified structure with the properties of this device. */
 	void getProperties(VkPhysicalDeviceProperties2* properties);
+
+	/** Returns the name of this device. */
+	inline const char* getName() { return _properties.deviceName; }
 
 	/** Returns whether the specified format is supported on this device. */
 	bool getFormatIsSupported(VkFormat format);
@@ -125,8 +142,7 @@ public:
 	VkResult getSurfaceCapabilities(MVKSurface* surface, VkSurfaceCapabilitiesKHR* pSurfaceCapabilities);
 
 	/**
-	 * Returns the pixel formats supported by the surface described by the specified
-	 * surface description.
+	 * Returns the pixel formats supported by the surface.
 	 *
 	 * If pSurfaceFormats is null, the value of pCount is updated with the number of
 	 * pixel formats supported by the surface.
@@ -141,8 +157,22 @@ public:
 	VkResult getSurfaceFormats(MVKSurface* surface, uint32_t* pCount, VkSurfaceFormatKHR* pSurfaceFormats);
 
 	/**
-	 * Returns the presentation modes supported by the surface described by the specified
-	 * surface description.
+	 * Returns the pixel formats supported by the surface.
+	 *
+	 * If pSurfaceFormats is null, the value of pCount is updated with the number of
+	 * pixel formats supported by the surface.
+	 *
+	 * If pSurfaceFormats is not null, then pCount formats are copied into the array.
+	 * If the number of available formats is less than pCount, the value of pCount is
+	 * updated to indicate the number of formats actually returned in the array.
+	 *
+	 * Returns VK_SUCCESS if successful. Returns VK_INCOMPLETE if the number of supported
+	 * formats is larger than pCount. Returns other values if an error occurs.
+	 */
+	VkResult getSurfaceFormats(MVKSurface* surface, uint32_t* pCount, VkSurfaceFormat2KHR* pSurfaceFormats);
+
+	/**
+	 * Returns the presentation modes supported by the surface.
 	 *
 	 * If pPresentModes is null, the value of pCount is updated with the number of
 	 * presentation modes supported by the surface.
@@ -156,42 +186,52 @@ public:
 	 */
 	VkResult getSurfacePresentModes(MVKSurface* surface, uint32_t* pCount, VkPresentModeKHR* pPresentModes);
 
+	/**
+	 * Returns the rectangles that will be used on the surface by this physical device
+	 * when the surface is presented.
+	 *
+	 * If pRects is null, the value of pRectCount is updated with the number of
+	 * rectangles used the surface by this physical device.
+	 *
+	 * If pRects is not null, then pCount rectangles are copied into the array.
+	 * If the number of rectangles is less than pCount, the value of pCount is updated
+	 * to indicate the number of rectangles actually returned in the array.
+	 *
+	 * Returns VK_SUCCESS if successful. Returns VK_INCOMPLETE if the number of rectangles
+	 * is larger than pCount. Returns other values if an error occurs.
+	 */
+	VkResult getPresentRectangles(MVKSurface* surface, uint32_t* pRectCount, VkRect2D* pRects);
+
 
 #pragma mark Queues
 
 	/**
-	 * If properties is null, the value of pCount is updated with the number of
+	 * If pQueueFamilyProperties is null, the value of pCount is updated with the number of
 	 * queue families supported by this instance.
 	 *
-	 * If properties is not null, then pCount queue family properties are copied into the 
-	 * array. If the number of available queue families is less than pCount, the value of 
+	 * If pQueueFamilyProperties is not null, then pCount queue family properties are copied into
+	 * the array. If the number of available queue families is less than pCount, the value of
 	 * pCount is updated to indicate the number of queue families actually returned in the array.
 	 *
 	 * Returns VK_SUCCESS if successful. Returns VK_INCOMPLETE if the number of queue families
 	 * available in this instance is larger than the specified pCount. Returns other values if
 	 * an error occurs.
 	 */
-	VkResult getQueueFamilyProperties(uint32_t* pCount, VkQueueFamilyProperties* properties);
+	VkResult getQueueFamilyProperties(uint32_t* pCount, VkQueueFamilyProperties* pQueueFamilyProperties);
 
 	/**
-	 * If properties is null, the value of pCount is updated with the number of
+	 * If pQueueFamilyProperties is null, the value of pCount is updated with the number of
 	 * queue families supported by this instance.
 	 *
-	 * If properties is not null, then pCount queue family properties are copied into the 
-	 * array. If the number of available queue families is less than pCount, the value of 
+	 * If pQueueFamilyProperties is not null, then pCount queue family properties are copied into
+	 * the array. If the number of available queue families is less than pCount, the value of 
 	 * pCount is updated to indicate the number of queue families actually returned in the array.
 	 *
 	 * Returns VK_SUCCESS if successful. Returns VK_INCOMPLETE if the number of queue families
 	 * available in this instance is larger than the specified pCount. Returns other values if
 	 * an error occurs.
 	 */
-	VkResult getQueueFamilyProperties(uint32_t* pCount, VkQueueFamilyProperties2KHR* properties);
-
-	/** Returns a pointer to the Vulkan instance. */
-	inline MVKInstance* getInstance() { return _mvkInstance; }
-
-	/** Returns a pointer to the layer manager. */
-	inline MVKLayerManager* getLayerManager() { return MVKLayerManager::globalManager(); }
+	VkResult getQueueFamilyProperties(uint32_t* pCount, VkQueueFamilyProperties2KHR* pQueueFamilyProperties);
 
 
 #pragma mark Memory models
@@ -203,7 +243,7 @@ public:
 	VkResult getPhysicalDeviceMemoryProperties(VkPhysicalDeviceMemoryProperties* pMemoryProperties);
 
 	/** Populates the specified memory properties with the memory characteristics of this device. */
-	VkResult getPhysicalDeviceMemoryProperties(VkPhysicalDeviceMemoryProperties2KHR* pMemoryProperties);
+	VkResult getPhysicalDeviceMemoryProperties(VkPhysicalDeviceMemoryProperties2* pMemoryProperties);
 
 	/**
 	 * Returns a bit mask of all memory type indices. 
@@ -243,7 +283,9 @@ public:
 
 	/** Returns the underlying Metal device. */
 	inline id<MTLDevice> getMTLDevice() { return _mtlDevice; }
-
+    
+    /*** Replaces the underlying Metal device .*/
+    inline void replaceMTLDevice(id<MTLDevice> mtlDevice) { [_mtlDevice autorelease]; _mtlDevice = [mtlDevice retain]; }
 
 #pragma mark Construction
 
@@ -270,14 +312,17 @@ public:
 protected:
 	friend class MVKDevice;
 
+	void propogateDebugName() override {}
 	MTLFeatureSet getMaximalMTLFeatureSet();
     void initMetalFeatures();
 	void initFeatures();
 	void initProperties();
 	void initMemoryProperties();
-	void initQueueFamilies();
+	std::vector<MVKQueueFamily*>& getQueueFamilies();
 	void initPipelineCacheUUID();
 	MTLFeatureSet getHighestMTLFeatureSet();
+	uint64_t getSpirvCrossRevision();
+	bool getImageViewIsSupported(const VkPhysicalDeviceImageFormatInfo2KHR *pImageFormatInfo);
 	void logGPUInfo();
 
 	id<MTLDevice> _mtlDevice;
@@ -299,15 +344,24 @@ protected:
 #pragma mark MVKDevice
 
 /** Represents a Vulkan logical GPU device, associated with a physical device. */
-class MVKDevice : public MVKDispatchableObject {
+class MVKDevice : public MVKDispatchableVulkanAPIObject {
 
 public:
 
+	/** Returns the Vulkan type of this object. */
+	VkObjectType getVkObjectType() override { return VK_OBJECT_TYPE_DEVICE; }
+
+	/** Returns the debug report object type of this object. */
+	VkDebugReportObjectTypeEXT getVkDebugReportObjectType() override { return VK_DEBUG_REPORT_OBJECT_TYPE_DEVICE_EXT; }
+
 	/** Returns a pointer to the Vulkan instance. */
-	inline MVKInstance* getInstance() { return _physicalDevice->_mvkInstance; }
+	MVKInstance* getInstance() override { return _physicalDevice->getInstance(); }
 
 	/** Returns the physical device underlying this logical device. */
 	inline MVKPhysicalDevice* getPhysicalDevice() { return _physicalDevice; }
+
+	/** Returns the name of this device. */
+	inline const char* getName() { return _pProperties->deviceName; }
 
     /** Returns the common resource factory for creating command resources. */
     inline MVKCommandResourceFactory* getCommandResourceFactory() { return _commandResourceFactory; }
@@ -324,6 +378,12 @@ public:
 	/** Returns whether or not the given descriptor set layout is supported. */
 	void getDescriptorSetLayoutSupport(const VkDescriptorSetLayoutCreateInfo* pCreateInfo,
 									   VkDescriptorSetLayoutSupport* pSupport);
+
+	/** Populates the device group presentation capabilities. */
+	VkResult getDeviceGroupPresentCapabilities(VkDeviceGroupPresentCapabilitiesKHR* pDeviceGroupPresentCapabilities);
+
+	/** Populates the device group surface presentation modes. */
+	VkResult getDeviceGroupSurfacePresentModes(MVKSurface* surface, VkDeviceGroupPresentModeFlagsKHR* pModes);
 
 
 #pragma mark Object lifecycle
@@ -354,6 +414,7 @@ public:
 
 	MVKSwapchainImage* createSwapchainImage(const VkImageCreateInfo* pCreateInfo,
 											MVKSwapchain* swapchain,
+											uint32_t swapchainIndex,
 											const VkAllocationCallbacks* pAllocator);
 	void destroySwapchainImage(MVKSwapchainImage* mvkImg,
 							   const VkAllocationCallbacks* pAllocator);
@@ -486,7 +547,7 @@ public:
 	inline id<MTLDevice> getMTLDevice() { return _physicalDevice->getMTLDevice(); }
 
 	/** Returns standard compilation options to be used when compiling MSL shaders. */
-	inline MTLCompileOptions* getMTLCompileOptions() { return [[MTLCompileOptions new] autorelease]; }
+	MTLCompileOptions* getMTLCompileOptions();
 
 	/** Returns the Metal vertex buffer index to use for the specified vertex attribute binding number.  */
 	uint32_t getMetalBufferIndexForVertexAttributeBinding(uint32_t binding);
@@ -506,7 +567,10 @@ public:
 	 *
 	 * All other pixel formats are returned unchanged.
 	 */
-	MTLPixelFormat mtlPixelFormatFromVkFormat(VkFormat vkFormat);
+	MTLPixelFormat getMTLPixelFormatFromVkFormat(VkFormat vkFormat, MVKBaseObject* mvkObj);
+
+	/** Returns the memory alignment required for the format when used in a texel buffer. */
+	VkDeviceSize getVkFormatTexelBufferAlignment(VkFormat format, MVKBaseObject* mvkObj);
 
     /** 
      * Returns the MTLBuffer used to hold occlusion query results, 
@@ -532,8 +596,18 @@ public:
 	/** Pointer to the MoltenVK configuration settings. */
 	const MVKConfiguration* _pMVKConfig;
 
-	/** Pointer to the feature set of the underlying physical device. */
-	const VkPhysicalDeviceFeatures* _pFeatures;
+	/** Device features available and enabled. */
+	const VkPhysicalDeviceFeatures _enabledFeatures;
+	const VkPhysicalDevice16BitStorageFeatures _enabledStorage16Features;
+	const VkPhysicalDevice8BitStorageFeaturesKHR _enabledStorage8Features;
+	const VkPhysicalDeviceFloat16Int8FeaturesKHR _enabledF16I8Features;
+	const VkPhysicalDeviceVariablePointerFeatures _enabledVarPtrFeatures;
+	const VkPhysicalDeviceHostQueryResetFeaturesEXT _enabledHostQryResetFeatures;
+	const VkPhysicalDeviceVertexAttributeDivisorFeaturesEXT _enabledVtxAttrDivFeatures;
+	const VkPhysicalDevicePortabilitySubsetFeaturesEXTX _enabledPortabilityFeatures;
+
+	/** The list of Vulkan extensions, indicating whether each has been enabled by the app for this device. */
+	const MVKExtensionList _enabledExtensions;
 
 	/** Pointer to the Metal-specific features of the underlying physical device. */
 	const MVKPhysicalDeviceMetalFeatures* _pMetalFeatures;
@@ -543,9 +617,6 @@ public:
 
 	/** Pointer to the memory properties of the underlying physical device. */
 	const VkPhysicalDeviceMemoryProperties* _pMemoryProperties;
-
-	/** The list of Vulkan extensions, indicating whether each has been enabled by the app for this device. */
-	const MVKExtensionList _enabledExtensions;
 
     /** Performance statistics. */
     MVKPerformanceStatistics _performanceStatistics;
@@ -573,10 +644,15 @@ public:
     }
 
 protected:
+	void propogateDebugName() override  {}
 	MVKResource* addResource(MVKResource* rez);
 	MVKResource* removeResource(MVKResource* rez);
     void initPerformanceTracking();
+	void initPhysicalDevice(MVKPhysicalDevice* physicalDevice);
 	void initQueues(const VkDeviceCreateInfo* pCreateInfo);
+	void enableFeatures(const VkDeviceCreateInfo* pCreateInfo);
+	void enableFeatures(const VkBool32* pEnable, const VkBool32* pRequested, const VkBool32* pAvailable, uint32_t count);
+	void enableExtensions(const VkDeviceCreateInfo* pCreateInfo);
     const char* getActivityPerformanceDescription(MVKPerformanceTracker& shaderCompilationEvent);
 	uint64_t getPerformanceTimestampImpl();
 	void addActivityPerformanceImpl(MVKPerformanceTracker& shaderCompilationEvent,
@@ -595,10 +671,17 @@ protected:
 
 
 #pragma mark -
-#pragma mark MVKBaseDeviceObject
+#pragma mark MVKDeviceTrackingMixin
 
-/** Represents an object that is spawned from a Vulkan device, and tracks that device. */
-class MVKBaseDeviceObject : public MVKConfigurableObject {
+/**
+ * This mixin class adds the ability for an object to track the device that created it.
+ * Implementation supports an instance where the device is null.
+ *
+ * As a mixin, this class should only be used as a component of multiple inheritance.
+ * Any class that inherits from this class should also inherit from MVKBaseObject.
+ * This requirement is to avoid the diamond problem of multiple inheritance.
+ */
+class MVKDeviceTrackingMixin {
 
 public:
 
@@ -606,98 +689,64 @@ public:
 	inline MVKDevice* getDevice() { return _device; }
 
 	/** Returns the underlying Metal device. */
-	inline id<MTLDevice> getMTLDevice() { return _device->getMTLDevice(); }
+	inline id<MTLDevice> getMTLDevice() { return _device ? _device->getMTLDevice() : nil; }
 
 	/**
 	 * Returns the Metal MTLPixelFormat corresponding to the specified Vulkan VkFormat,
 	 * or returns MTLPixelFormatInvalid if no corresponding MTLPixelFormat exists.
 	 *
-	 * This function delegates to the MVKDevice::mtlPixelFormatFromVkFormat() function.
+	 * This function delegates to the MVKDevice::getMTLPixelFormatFromVkFormat() function.
 	 * See the notes for that function for more information about how MTLPixelFormats
 	 * are managed for each platform device.
 	 */
-    inline MTLPixelFormat mtlPixelFormatFromVkFormat(VkFormat vkFormat) {
-        return _device->mtlPixelFormatFromVkFormat(vkFormat);
-    }
+	inline MTLPixelFormat getMTLPixelFormatFromVkFormat(VkFormat vkFormat) {
+		return _device ? _device->getMTLPixelFormatFromVkFormat(vkFormat, getBaseObject())
+					   : mvkMTLPixelFormatFromVkFormatInObj(vkFormat, getBaseObject());
+	}
 
 	/** Constructs an instance for the specified device. */
-    MVKBaseDeviceObject(MVKDevice* device) : _device(device) {}
+    MVKDeviceTrackingMixin(MVKDevice* device) : _device(device) {}
+
+	virtual ~MVKDeviceTrackingMixin() {}
 
 protected:
+	virtual MVKBaseObject* getBaseObject() = 0;
 	MVKDevice* _device;
 };
 
 
 #pragma mark -
-#pragma mark MVKDispatchableDeviceObject
+#pragma mark MVKBaseDeviceObject
 
-/** Represents a dispatchable object that is spawned from a Vulkan device, and tracks that device. */
-class MVKDispatchableDeviceObject : public MVKDispatchableObject {
+/** Represents an object that is spawned from a Vulkan device, and tracks that device. */
+class MVKBaseDeviceObject : public MVKBaseObject, public MVKDeviceTrackingMixin {
 
 public:
 
-    /** Returns the device for which this object was created. */
-    inline MVKDevice* getDevice() { return _device; }
-
-    /** Returns the underlying Metal device. */
-    inline id<MTLDevice> getMTLDevice() { return _device->getMTLDevice(); }
-
-    /** Constructs an instance for the specified device. */
-    MVKDispatchableDeviceObject(MVKDevice* device) : _device(device) {}
+	/** Constructs an instance for the specified device. */
+	MVKBaseDeviceObject(MVKDevice* device) : MVKDeviceTrackingMixin(device) {}
 
 protected:
-    MVKDevice* _device;
+	MVKBaseObject* getBaseObject() override { return this; };
 };
 
 
 #pragma mark -
-#pragma mark MVKRefCountedDeviceObject
+#pragma mark MVKVulkanAPIDeviceObject
 
-/**
- * Represents a device-spawned object that supports basic reference counting.
- *
- * An object of this type will automatically be deleted iff it has been destroyed
- * by the client, and all references have been released. An object of this type is
- * therefore allowed to live past its destruction by the client, until it is no
- * longer referenced by other objects.
- */
-class MVKRefCountedDeviceObject : public MVKBaseDeviceObject {
+/** Abstract class that represents an opaque Vulkan API handle object spawned from a Vulkan device. */
+class MVKVulkanAPIDeviceObject : public MVKVulkanAPIObject, public MVKDeviceTrackingMixin {
 
 public:
 
-    /**
-	 * Called when this instance has been retained as a reference by another object,
-	 * indicating that this instance will not be deleted until that reference is released.
-	 */
-    void retain();
+	/** Returns a pointer to the Vulkan instance. */
+	MVKInstance* getInstance() override { return _device ? _device->getInstance() : nullptr; }
 
-    /**
-	 * Called when this instance has been released as a reference from another object.
-	 * Once all references have been released, this object is free to be deleted.
-	 * If the destroy() function has already been called on this instance by the time
-	 * this function is called, this instance will be deleted.
-	 */
-    void release();
+	/** Constructs an instance for the specified device. */
+	MVKVulkanAPIDeviceObject(MVKDevice* device) : MVKDeviceTrackingMixin(device) {}
 
-	/**
-	 * Marks this instance as destroyed. If all previous references to this instance
-	 * have been released, this instance will be deleted, otherwise deletion of this
-	 * instance will automatically be deferred until all references have been released.
-	 */
-    void destroy() override;
-
-#pragma mark Construction
-
-	MVKRefCountedDeviceObject(MVKDevice* device) : MVKBaseDeviceObject(device) {}
-
-private:
-
-    bool decrementRetainCount();
-    bool markDestroyed();
-
-	std::mutex _refLock;
-    unsigned _refCount = 0;
-    bool _isDestroyed = false;
+protected:
+	MVKBaseObject* getBaseObject() override { return this; };
 };
 
 
@@ -709,6 +758,10 @@ template <class T>
 class MVKDeviceObjectPool : public MVKObjectPool<T> {
 
 public:
+
+
+	/** Returns the Vulkan API opaque object controlling this object. */
+	MVKVulkanAPIObject* getVulkanAPIObject() override { return _device; };
 
 	/** Returns a new instance. */
 	T* newObject() override { return new T(_device); }
@@ -724,3 +777,21 @@ protected:
 };
 
 
+#pragma mark -
+#pragma mark Support functions
+
+/** Returns an approximation of how much memory, in bytes, the device can use with good performance. */
+uint64_t mvkRecommendedMaxWorkingSetSize(id<MTLDevice> mtlDevice);
+
+/** Populate the propertes with info about the GPU represented by the MTLDevice. */
+void mvkPopulateGPUInfo(VkPhysicalDeviceProperties& devProps, id<MTLDevice> mtlDevice);
+
+/** Returns the registry ID of the specified device, or zero if the device does not have a registry ID. */
+uint64_t mvkGetRegistryID(id<MTLDevice> mtlDevice);
+
+/**
+ * If the MTLDevice defines a texture memory alignment for the format, it is retrieved from
+ * the MTLDevice and returned, or returns zero if the MTLDevice does not define an alignment.
+ * The format must support linear texture memory (must not be depth, stencil, or compressed).
+ */
+VkDeviceSize mvkMTLPixelFormatLinearTextureAlignment(MTLPixelFormat mtlPixelFormat, id<MTLDevice> mtlDevice);

@@ -1,7 +1,7 @@
 /*
  * MVKShaderModule.mm
  *
- * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@
 #include "MVKShaderModule.h"
 #include "MVKPipeline.h"
 #include "MVKFoundation.h"
+#include "MVKLogging.h"
 #include "vk_mvk_moltenvk.h"
 #include <string>
 
@@ -45,23 +46,21 @@ static uint32_t getWorkgroupDimensionSize(const SPIRVWorkgroupSizeDimension& wgD
 	return wgDim.size;
 }
 
-MVKMTLFunction MVKShaderLibrary::getMTLFunction(const VkSpecializationInfo* pSpecializationInfo) {
+MVKMTLFunction MVKShaderLibrary::getMTLFunction(const VkSpecializationInfo* pSpecializationInfo, MVKShaderModule* shaderModule) {
 
     if ( !_mtlLibrary ) { return MVKMTLFunctionNull; }
 
-    // Ensure the function name is compatible with Metal (Metal does not allow main()
-    // as a function name), and retrieve the unspecialized Metal function with that name.
     NSString* mtlFuncName = @(_entryPoint.mtlFunctionName.c_str());
-
-    uint64_t startTime = _device->getPerformanceTimestamp();
+	MVKDevice* mvkDev = _owner->getDevice();
+    uint64_t startTime = mvkDev->getPerformanceTimestamp();
     id<MTLFunction> mtlFunc = [[_mtlLibrary newFunctionWithName: mtlFuncName] autorelease];
-    _device->addActivityPerformance(_device->_performanceStatistics.shaderCompilation.functionRetrieval, startTime);
+    mvkDev->addActivityPerformance(mvkDev->_performanceStatistics.shaderCompilation.functionRetrieval, startTime);
 
     if (mtlFunc) {
         // If the Metal device supports shader specialization, and the Metal function expects to be
         // specialized, populate Metal function constant values from the Vulkan specialization info,
         // and compiled a specialized Metal function, otherwise simply use the unspecialized Metal function.
-        if (_device->_pMetalFeatures->shaderSpecialization) {
+        if (mvkDev->_pMetalFeatures->shaderSpecialization) {
             NSArray<MTLFunctionConstant*>* mtlFCs = mtlFunc.functionConstantsDictionary.allValues;
             if (mtlFCs.count) {
                 // The Metal shader contains function constants and expects to be specialized
@@ -83,15 +82,19 @@ MVKMTLFunction MVKShaderLibrary::getMTLFunction(const VkSpecializationInfo* pSpe
                 }
 
                 // Compile the specialized Metal function, and use it instead of the unspecialized Metal function.
-				MVKFunctionSpecializer* fs = new MVKFunctionSpecializer(_device);
+				MVKFunctionSpecializer* fs = new MVKFunctionSpecializer(_owner);
 				mtlFunc = [fs->newMTLFunction(_mtlLibrary, mtlFuncName, mtlFCVals) autorelease];
-				setConfigurationResult(fs->getConfigurationResult());
 				fs->destroy();
             }
         }
     } else {
-        mvkNotifyErrorWithText(VK_ERROR_INITIALIZATION_FAILED, "Shader module does not contain an entry point named '%s'.", mtlFuncName.UTF8String);
+        reportError(VK_ERROR_INVALID_SHADER_NV, "Shader module does not contain an entry point named '%s'.", mtlFuncName.UTF8String);
     }
+
+	// Set the debug name. First try name of shader module, otherwise try name of owner.
+	NSString* dbName = shaderModule-> getDebugName();
+	if ( !dbName ) { dbName = _owner-> getDebugName(); }
+	setLabelIfNotNil(mtlFunc, dbName);
 
 	return { mtlFunc, MTLSizeMake(getWorkgroupDimensionSize(_entryPoint.workgroupSize.width, pSpecializationInfo),
 								  getWorkgroupDimensionSize(_entryPoint.workgroupSize.height, pSpecializationInfo),
@@ -106,34 +109,34 @@ MTLFunctionConstant* MVKShaderLibrary::getFunctionConstant(NSArray<MTLFunctionCo
     return nil;
 }
 
-MVKShaderLibrary::MVKShaderLibrary(MVKDevice* device, const string& mslSourceCode, const SPIRVEntryPoint& entryPoint) : MVKBaseDeviceObject(device) {
-	MVKShaderLibraryCompiler* slc = new MVKShaderLibraryCompiler(_device);
+MVKShaderLibrary::MVKShaderLibrary(MVKVulkanAPIDeviceObject* owner, const string& mslSourceCode, const SPIRVEntryPoint& entryPoint) : _owner(owner) {
+	MVKShaderLibraryCompiler* slc = new MVKShaderLibraryCompiler(_owner);
 	_mtlLibrary = slc->newMTLLibrary(@(mslSourceCode.c_str()));	// retained
-	setConfigurationResult(slc->getConfigurationResult());
 	slc->destroy();
 
 	_entryPoint = entryPoint;
 	_msl = mslSourceCode;
 }
 
-MVKShaderLibrary::MVKShaderLibrary(MVKDevice* device,
+MVKShaderLibrary::MVKShaderLibrary(MVKVulkanAPIDeviceObject* owner,
                                    const void* mslCompiledCodeData,
-                                   size_t mslCompiledCodeLength) : MVKBaseDeviceObject(device) {
-    uint64_t startTime = _device->getPerformanceTimestamp();
+                                   size_t mslCompiledCodeLength) : _owner(owner) {
+	MVKDevice* mvkDev = _owner->getDevice();
+    uint64_t startTime = mvkDev->getPerformanceTimestamp();
     @autoreleasepool {
         dispatch_data_t shdrData = dispatch_data_create(mslCompiledCodeData,
                                                         mslCompiledCodeLength,
                                                         NULL,
                                                         DISPATCH_DATA_DESTRUCTOR_DEFAULT);
         NSError* err = nil;
-        _mtlLibrary = [getMTLDevice() newLibraryWithData: shdrData error: &err];    // retained
+        _mtlLibrary = [mvkDev->getMTLDevice() newLibraryWithData: shdrData error: &err];    // retained
         handleCompilationError(err, "Compiled shader module creation");
         [shdrData release];
     }
-    _device->addActivityPerformance(_device->_performanceStatistics.shaderCompilation.mslLoad, startTime);
+    mvkDev->addActivityPerformance(mvkDev->_performanceStatistics.shaderCompilation.mslLoad, startTime);
 }
 
-MVKShaderLibrary::MVKShaderLibrary(MVKShaderLibrary& other) : MVKBaseDeviceObject(other._device) {
+MVKShaderLibrary::MVKShaderLibrary(MVKShaderLibrary& other) : _owner(other._owner) {
 	_mtlLibrary = [other._mtlLibrary retain];
 	_entryPoint = other._entryPoint;
 	_msl = other._msl;
@@ -146,14 +149,19 @@ void MVKShaderLibrary::handleCompilationError(NSError* err, const char* opDesc) 
     if ( !err ) return;
 
     if (_mtlLibrary) {
-        MVKLogInfo("%s succeeded with warnings (code %li):\n\n%s", opDesc, (long)err.code,
-                   err.localizedDescription.UTF8String);
+        MVKLogInfo("%s succeeded with warnings (Error code %li):\n%s", opDesc, (long)err.code, err.localizedDescription.UTF8String);
     } else {
-        setConfigurationResult(mvkNotifyErrorWithText(VK_ERROR_INITIALIZATION_FAILED,
-                                                      "%s failed (code %li):\n\n%s",
-                                                      opDesc, (long)err.code,
-                                                      err.localizedDescription.UTF8String));
+		_owner->setConfigurationResult(reportError(VK_ERROR_INVALID_SHADER_NV,
+												   "%s failed (Error code %li):\n%s",
+												   opDesc, (long)err.code,
+												   err.localizedDescription.UTF8String));
     }
+}
+
+void MVKShaderLibrary::setWorkgroupSize(uint32_t x, uint32_t y, uint32_t z) {
+    _entryPoint.workgroupSize.width.size = x;
+    _entryPoint.workgroupSize.height.size = y;
+    _entryPoint.workgroupSize.depth.size = z;
 }
 
 MVKShaderLibrary::~MVKShaderLibrary() {
@@ -197,7 +205,7 @@ MVKShaderLibrary* MVKShaderLibraryCache::findShaderLibrary(SPIRVToMSLConverterCo
 MVKShaderLibrary* MVKShaderLibraryCache::addShaderLibrary(SPIRVToMSLConverterContext* pContext,
 														  const string& mslSourceCode,
 														  const SPIRVEntryPoint& entryPoint) {
-	MVKShaderLibrary* shLib = new MVKShaderLibrary(_device, mslSourceCode, entryPoint);
+	MVKShaderLibrary* shLib = new MVKShaderLibrary(_owner, mslSourceCode, entryPoint);
 	_shaderLibraries.emplace_back(*pContext, shLib);
 	return shLib;
 }
@@ -224,6 +232,7 @@ MVKMTLFunction MVKShaderModule::getMTLFunction(SPIRVToMSLConverterContext* pCont
 											   const VkSpecializationInfo* pSpecializationInfo,
 											   MVKPipelineCache* pipelineCache) {
 	lock_guard<mutex> lock(_accessLock);
+	
 	MVKShaderLibrary* mvkLib = _defaultLibrary;
 	if ( !mvkLib ) {
 		uint64_t startTime = _device->getPerformanceTimestamp();
@@ -233,39 +242,75 @@ MVKMTLFunction MVKShaderModule::getMTLFunction(SPIRVToMSLConverterContext* pCont
 			mvkLib = _shaderLibraryCache.getShaderLibrary(pContext, this);
 		}
 		_device->addActivityPerformance(_device->_performanceStatistics.shaderCompilation.shaderLibraryFromCache, startTime);
+	} else {
+		pContext->markAllAttributesAndResourcesUsed();
 	}
-	return mvkLib ? mvkLib->getMTLFunction(pSpecializationInfo) : MVKMTLFunctionNull;
+
+	return mvkLib ? mvkLib->getMTLFunction(pSpecializationInfo, this) : MVKMTLFunctionNull;
 }
 
 bool MVKShaderModule::convert(SPIRVToMSLConverterContext* pContext) {
 	bool shouldLogCode = _device->_pMVKConfig->debugMode;
+	bool shouldLogEstimatedGLSL = shouldLogCode;
+
+	// If the SPIR-V converter does not have any code, but the GLSL converter does,
+	// convert the GLSL code to SPIR-V and set it into the SPIR-V conveter.
+	if ( !_spvConverter.hasSPIRV() && _glslConverter.hasGLSL() ) {
+
+		uint64_t startTime = _device->getPerformanceTimestamp();
+		bool wasConverted = _glslConverter.convert(getMVKGLSLConversionShaderStage(pContext), shouldLogCode, false);
+		_device->addActivityPerformance(_device->_performanceStatistics.shaderCompilation.glslToSPRIV, startTime);
+
+		if (wasConverted) {
+			if (shouldLogCode) { MVKLogInfo("%s", _glslConverter.getResultLog().c_str()); }
+			_spvConverter.setSPIRV(_glslConverter.getSPIRV());
+		} else {
+			reportError(VK_ERROR_INVALID_SHADER_NV, "Unable to convert GLSL to SPIR-V:\n%s", _glslConverter.getResultLog().c_str());
+		}
+		shouldLogEstimatedGLSL = false;
+	}
 
 	uint64_t startTime = _device->getPerformanceTimestamp();
-	bool wasConverted = _converter.convert(*pContext, shouldLogCode, shouldLogCode, shouldLogCode);
+	bool wasConverted = _spvConverter.convert(*pContext, shouldLogCode, shouldLogCode, shouldLogEstimatedGLSL);
 	_device->addActivityPerformance(_device->_performanceStatistics.shaderCompilation.spirvToMSL, startTime);
 
 	if (wasConverted) {
-		if (shouldLogCode) { MVKLogInfo("%s", _converter.getResultLog().data()); }
+		if (shouldLogCode) { MVKLogInfo("%s", _spvConverter.getResultLog().c_str()); }
 	} else {
-		mvkNotifyErrorWithText(VK_ERROR_FORMAT_NOT_SUPPORTED, "Unable to convert SPIR-V to MSL:\n%s", _converter.getResultLog().data());
+		reportError(VK_ERROR_INVALID_SHADER_NV, "Unable to convert SPIR-V to MSL:\n%s", _spvConverter.getResultLog().c_str());
 	}
 	return wasConverted;
 }
 
+// Returns the MVKGLSLConversionShaderStage corresponding to the shader stage in the SPIR-V converter context.
+MVKGLSLConversionShaderStage MVKShaderModule::getMVKGLSLConversionShaderStage(SPIRVToMSLConverterContext* pContext) {
+	switch (pContext->options.entryPointStage) {
+		case spv::ExecutionModelVertex:						return kMVKGLSLConversionShaderStageVertex;
+		case spv::ExecutionModelTessellationControl:		return kMVKGLSLConversionShaderStageTessControl;
+		case spv::ExecutionModelTessellationEvaluation:		return kMVKGLSLConversionShaderStageTessEval;
+		case spv::ExecutionModelGeometry:					return kMVKGLSLConversionShaderStageGeometry;
+		case spv::ExecutionModelFragment:					return kMVKGLSLConversionShaderStageFragment;
+		case spv::ExecutionModelGLCompute:					return kMVKGLSLConversionShaderStageCompute;
+		case spv::ExecutionModelKernel:						return kMVKGLSLConversionShaderStageCompute;
+
+		default:
+			MVKAssert(false, "Bad shader stage provided for GLSL to SPIR-V conversion.");
+			return kMVKGLSLConversionShaderStageAuto;
+	}
+}
 
 #pragma mark Construction
 
 MVKShaderModule::MVKShaderModule(MVKDevice* device,
-								 const VkShaderModuleCreateInfo* pCreateInfo) : MVKBaseDeviceObject(device), _shaderLibraryCache(device) {
+								 const VkShaderModuleCreateInfo* pCreateInfo) : MVKVulkanAPIDeviceObject(device), _shaderLibraryCache(this) {
 
 	_defaultLibrary = nullptr;
-
 
 	size_t codeSize = pCreateInfo->codeSize;
 
     // Ensure something is there.
     if ( (pCreateInfo->pCode == VK_NULL_HANDLE) || (codeSize < 4) ) {
-		setConfigurationResult(mvkNotifyErrorWithText(VK_INCOMPLETE, "Shader module contains no SPIR-V code."));
+		setConfigurationResult(reportError(VK_ERROR_INVALID_SHADER_NV, "vkCreateShaderModule(): Shader module contains no shader code."));
 		return;
 	}
 
@@ -274,48 +319,59 @@ MVKShaderModule::MVKShaderModule(MVKDevice* device,
 	// Retrieve the magic number to determine what type of shader code has been loaded.
 	uint32_t magicNum = *pCreateInfo->pCode;
 	switch (magicNum) {
-		case kMVKMagicNumberSPIRVCode: {                        // SPIR-V code
-			size_t spvCount = (pCreateInfo->codeSize + 3) >> 2; // Round up if byte length not exactly on uint32_t boundary
+		case kMVKMagicNumberSPIRVCode: {					// SPIR-V code
+			size_t spvCount = (codeSize + 3) >> 2;			// Round up if byte length not exactly on uint32_t boundary
 
 			uint64_t startTime = _device->getPerformanceTimestamp();
 			codeHash = mvkHash(pCreateInfo->pCode, spvCount);
 			_device->addActivityPerformance(_device->_performanceStatistics.shaderCompilation.hashShaderCode, startTime);
 
-			_converter.setSPIRV(pCreateInfo->pCode, spvCount);
+			_spvConverter.setSPIRV(pCreateInfo->pCode, spvCount);
 
 			break;
 		}
-		case kMVKMagicNumberMSLSourceCode: {                    // MSL source code
+		case kMVKMagicNumberMSLSourceCode: {				// MSL source code
 			size_t hdrSize = sizeof(MVKMSLSPIRVHeader);
 			char* pMSLCode = (char*)(uintptr_t(pCreateInfo->pCode) + hdrSize);
-			size_t mslCodeLen = pCreateInfo->codeSize - hdrSize;
+			size_t mslCodeLen = codeSize - hdrSize;
 
 			uint64_t startTime = _device->getPerformanceTimestamp();
 			codeHash = mvkHash(&magicNum);
 			codeHash = mvkHash(pMSLCode, mslCodeLen, codeHash);
 			_device->addActivityPerformance(_device->_performanceStatistics.shaderCompilation.hashShaderCode, startTime);
 
-			_converter.setMSL(pMSLCode, nullptr);
-			_defaultLibrary = new MVKShaderLibrary(_device, _converter.getMSL().c_str(), _converter.getEntryPoint());
+			_spvConverter.setMSL(pMSLCode, nullptr);
+			_defaultLibrary = new MVKShaderLibrary(this, _spvConverter.getMSL().c_str(), _spvConverter.getEntryPoint());
 
 			break;
 		}
-		case kMVKMagicNumberMSLCompiledCode: {                  // MSL compiled binary code
+		case kMVKMagicNumberMSLCompiledCode: {				// MSL compiled binary code
 			size_t hdrSize = sizeof(MVKMSLSPIRVHeader);
 			char* pMSLCode = (char*)(uintptr_t(pCreateInfo->pCode) + hdrSize);
-			size_t mslCodeLen = pCreateInfo->codeSize - hdrSize;
+			size_t mslCodeLen = codeSize - hdrSize;
 
 			uint64_t startTime = _device->getPerformanceTimestamp();
 			codeHash = mvkHash(&magicNum);
 			codeHash = mvkHash(pMSLCode, mslCodeLen, codeHash);
 			_device->addActivityPerformance(_device->_performanceStatistics.shaderCompilation.hashShaderCode, startTime);
 
-			_defaultLibrary = new MVKShaderLibrary(_device, (void*)(pMSLCode), mslCodeLen);
+			_defaultLibrary = new MVKShaderLibrary(this, (void*)(pMSLCode), mslCodeLen);
 
 			break;
 		}
-		default:
-			setConfigurationResult(mvkNotifyErrorWithText(VK_ERROR_FORMAT_NOT_SUPPORTED, "SPIR-V contains invalid magic number %x.", magicNum));
+		default:											// Could be GLSL source code
+			if (_device->_enabledExtensions.vk_NV_glsl_shader.enabled) {
+				const char* pGLSL = (char*)pCreateInfo->pCode;
+				size_t glslLen = codeSize - 1;
+
+				uint64_t startTime = _device->getPerformanceTimestamp();
+				codeHash = mvkHash(pGLSL, codeSize);
+				_device->addActivityPerformance(_device->_performanceStatistics.shaderCompilation.hashShaderCode, startTime);
+
+				_glslConverter.setGLSL(pGLSL, glslLen);
+			} else {
+				setConfigurationResult(reportError(VK_ERROR_INVALID_SHADER_NV, "vkCreateShaderModule(): The SPIR-V contains an invalid magic number %x.", magicNum));
+			}
 			break;
 	}
 
@@ -326,6 +382,11 @@ MVKShaderModule::~MVKShaderModule() {
 	if (_defaultLibrary) { _defaultLibrary->destroy(); }
 }
 
+void MVKShaderModule::setWorkgroupSize(uint32_t x, uint32_t y, uint32_t z) {
+    _spvConverter.setWorkgroupSize(x, y, z);
+    if(_defaultLibrary) { _defaultLibrary->setWorkgroupSize(x, y, z); }
+}
+
 
 #pragma mark -
 #pragma mark MVKShaderLibraryCompiler
@@ -334,12 +395,12 @@ id<MTLLibrary> MVKShaderLibraryCompiler::newMTLLibrary(NSString* mslSourceCode) 
 	unique_lock<mutex> lock(_completionLock);
 
 	compile(lock, ^{
-		[getMTLDevice() newLibraryWithSource: mslSourceCode
-									 options: getDevice()->getMTLCompileOptions()
-						   completionHandler: ^(id<MTLLibrary> mtlLib, NSError* error) {
-							   bool isLate = compileComplete(mtlLib, error);
-							   if (isLate) { destroy(); }
-						   }];
+		[_owner->getMTLDevice() newLibraryWithSource: mslSourceCode
+											 options: _owner->getDevice()->getMTLCompileOptions()
+								   completionHandler: ^(id<MTLLibrary> mtlLib, NSError* error) {
+									   bool isLate = compileComplete(mtlLib, error);
+									   if (isLate) { destroy(); }
+								   }];
 	});
 
 	return [_mtlLibrary retain];
@@ -347,7 +408,7 @@ id<MTLLibrary> MVKShaderLibraryCompiler::newMTLLibrary(NSString* mslSourceCode) 
 
 void MVKShaderLibraryCompiler::handleError() {
 	if (_mtlLibrary) {
-		MVKLogInfo("%s compilation succeeded with warnings (code %li):\n\n%s", _compilerType.c_str(),
+		MVKLogInfo("%s compilation succeeded with warnings (Error code %li):\n%s", _compilerType.c_str(),
 				   (long)_compileError.code, _compileError.localizedDescription.UTF8String);
 	} else {
 		MVKMetalCompiler::handleError();

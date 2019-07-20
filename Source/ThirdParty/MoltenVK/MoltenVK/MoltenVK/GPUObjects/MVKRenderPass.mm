@@ -1,7 +1,7 @@
 /*
  * MVKRenderPass.mm
  *
- * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,13 +20,15 @@
 #include "MVKFramebuffer.h"
 #include "MVKCommandBuffer.h"
 #include "MVKFoundation.h"
-#include "mvk_datatypes.h"
+#include "mvk_datatypes.hpp"
 
 using namespace std;
 
 
 #pragma mark -
 #pragma mark MVKRenderSubpass
+
+MVKVulkanAPIObject* MVKRenderSubpass::getVulkanAPIObject() { return _renderPass->getVulkanAPIObject(); };
 
 VkFormat MVKRenderSubpass::getColorAttachmentFormat(uint32_t colorAttIdx) {
 	if (colorAttIdx < _colorAttachments.size()) {
@@ -67,13 +69,17 @@ VkSampleCountFlagBits MVKRenderSubpass::getSampleCount() {
 
 void MVKRenderSubpass::populateMTLRenderPassDescriptor(MTLRenderPassDescriptor* mtlRPDesc,
 													   MVKFramebuffer* framebuffer,
-													   vector<VkClearValue>& clearValues,
-													   bool isRenderingEntireAttachment) {
+													   MVKVector<VkClearValue>& clearValues,
+													   bool isRenderingEntireAttachment,
+													   bool loadOverride,
+													   bool storeOverride) {
 	// Populate the Metal color attachments
 	uint32_t caCnt = getColorAttachmentCount();
+	uint32_t caUsedCnt = 0;
 	for (uint32_t caIdx = 0; caIdx < caCnt; caIdx++) {
 		uint32_t clrRPAttIdx = _colorAttachments[caIdx].attachment;
         if (clrRPAttIdx != VK_ATTACHMENT_UNUSED) {
+			++caUsedCnt;
             MTLRenderPassColorAttachmentDescriptor* mtlColorAttDesc = mtlRPDesc.colorAttachments[caIdx];
 
             // If it exists, configure the resolve attachment first,
@@ -89,12 +95,11 @@ void MVKRenderSubpass::populateMTLRenderPassDescriptor(MTLRenderPassDescriptor* 
 			framebuffer->getAttachment(clrRPAttIdx)->populateMTLRenderPassAttachmentDescriptor(mtlColorAttDesc);
 			if (clrMVKRPAtt->populateMTLRenderPassAttachmentDescriptor(mtlColorAttDesc, this,
                                                                        isRenderingEntireAttachment,
-                                                                       hasResolveAttachment, false)) {
+                                                                       hasResolveAttachment, false,
+                                                                       loadOverride,
+                                                                       storeOverride)) {
 				mtlColorAttDesc.clearColor = mvkMTLClearColorFromVkClearValue(clearValues[clrRPAttIdx], clrMVKRPAtt->getFormat());
 			}
-
-		} else {
-			caCnt--;
 		}
 	}
 
@@ -110,8 +115,10 @@ void MVKRenderSubpass::populateMTLRenderPassDescriptor(MTLRenderPassDescriptor* 
 			dsImage->populateMTLRenderPassAttachmentDescriptor(mtlDepthAttDesc);
 			if (dsMVKRPAtt->populateMTLRenderPassAttachmentDescriptor(mtlDepthAttDesc, this,
                                                                       isRenderingEntireAttachment,
-                                                                      false, false)) {
-				mtlDepthAttDesc.clearDepth = mvkMTLClearDepthFromVkClearValue(clearValues[dsRPAttIdx]);
+                                                                      false, false,
+                                                                      loadOverride,
+                                                                      storeOverride)) {
+                mtlDepthAttDesc.clearDepth = mvkMTLClearDepthFromVkClearValue(clearValues[dsRPAttIdx]);
 			}
 		}
 		if (mvkMTLPixelFormatIsStencilFormat(mtlDSFormat)) {
@@ -119,14 +126,16 @@ void MVKRenderSubpass::populateMTLRenderPassDescriptor(MTLRenderPassDescriptor* 
 			dsImage->populateMTLRenderPassAttachmentDescriptor(mtlStencilAttDesc);
 			if (dsMVKRPAtt->populateMTLRenderPassAttachmentDescriptor(mtlStencilAttDesc, this,
                                                                       isRenderingEntireAttachment,
-                                                                      false, true)) {
+                                                                      false, true,
+                                                                      loadOverride,
+                                                                      storeOverride)) {
 				mtlStencilAttDesc.clearStencil = mvkMTLClearStencilFromVkClearValue(clearValues[dsRPAttIdx]);
 			}
 		}
 	}
 
 	_mtlDummyTex = nil;
-	if (caCnt == 0 && dsRPAttIdx == VK_ATTACHMENT_UNUSED) {
+	if (caUsedCnt == 0 && dsRPAttIdx == VK_ATTACHMENT_UNUSED) {
 		// Add a dummy attachment so this passes validation.
 		VkExtent2D fbExtent = framebuffer->getExtent2D();
 		MTLTextureDescriptor* mtlTexDesc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat: MTLPixelFormatR8Unorm width: fbExtent.width height: fbExtent.height mipmapped: NO];
@@ -157,7 +166,7 @@ void MVKRenderSubpass::populateMTLRenderPassDescriptor(MTLRenderPassDescriptor* 
 }
 
 void MVKRenderSubpass::populateClearAttachments(vector<VkClearAttachment>& clearAtts,
-												vector<VkClearValue>& clearValues) {
+												MVKVector<VkClearValue>& clearValues) {
 	VkClearAttachment cAtt;
 
 	uint32_t attIdx;
@@ -178,7 +187,7 @@ void MVKRenderSubpass::populateClearAttachments(vector<VkClearAttachment>& clear
 		cAtt.colorAttachment = 0;
 		cAtt.clearValue = clearValues[attIdx];
 
-		MTLPixelFormat mtlDSFmt = _renderPass->mtlPixelFormatFromVkFormat(getDepthStencilFormat());
+		MTLPixelFormat mtlDSFmt = _renderPass->getMTLPixelFormatFromVkFormat(getDepthStencilFormat());
 		if (mvkMTLPixelFormatIsDepthFormat(mtlDSFmt)) { cAtt.aspectMask |= VK_IMAGE_ASPECT_DEPTH_BIT; }
 		if (mvkMTLPixelFormatIsStencilFormat(mtlDSFmt)) { cAtt.aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT; }
 		if (cAtt.aspectMask) { clearAtts.push_back(cAtt); }
@@ -206,7 +215,7 @@ bool MVKRenderSubpass::isUsingAttachmentAt(uint32_t rpAttIdx) {
 }
 
 MVKRenderSubpass::MVKRenderSubpass(MVKRenderPass* renderPass,
-								   const VkSubpassDescription* pCreateInfo) : MVKBaseObject() {
+								   const VkSubpassDescription* pCreateInfo) {
 	_renderPass = renderPass;
 	_subpassIndex = (uint32_t)_renderPass->_subpasses.size();
 
@@ -244,6 +253,8 @@ MVKRenderSubpass::MVKRenderSubpass(MVKRenderPass* renderPass,
 #pragma mark -
 #pragma mark MVKRenderPassAttachment
 
+MVKVulkanAPIObject* MVKRenderPassAttachment::getVulkanAPIObject() { return _renderPass->getVulkanAPIObject(); };
+
 VkFormat MVKRenderPassAttachment::getFormat() { return _info.format; }
 
 VkSampleCountFlagBits MVKRenderPassAttachment::getSampleCount() { return _info.samples; }
@@ -252,16 +263,20 @@ bool MVKRenderPassAttachment::populateMTLRenderPassAttachmentDescriptor(MTLRende
                                                                         MVKRenderSubpass* subpass,
                                                                         bool isRenderingEntireAttachment,
                                                                         bool hasResolveAttachment,
-                                                                        bool isStencil) {
+                                                                        bool isStencil,
+                                                                        bool loadOverride,
+                                                                        bool storeOverride) {
 
     bool willClear = false;		// Assume the attachment won't be cleared
 
     // Only allow clearing of entire attachment if we're actually rendering to the entire
     // attachment AND we're in the first subpass.
-    if ( isRenderingEntireAttachment && (subpass->_subpassIndex == _firstUseSubpassIdx) ) {
+    if ( loadOverride ) {
+        mtlAttDesc.loadAction = MTLLoadActionLoad;
+    } else if ( isRenderingEntireAttachment && (subpass->_subpassIndex == _firstUseSubpassIdx) ) {
         VkAttachmentLoadOp loadOp = isStencil ? _info.stencilLoadOp : _info.loadOp;
         mtlAttDesc.loadAction = mvkMTLLoadActionFromVkAttachmentLoadOp(loadOp);
-        willClear = (_info.loadOp == VK_ATTACHMENT_LOAD_OP_CLEAR);
+        willClear = (loadOp == VK_ATTACHMENT_LOAD_OP_CLEAR);
     } else {
         mtlAttDesc.loadAction = MTLLoadActionLoad;
     }
@@ -269,13 +284,15 @@ bool MVKRenderPassAttachment::populateMTLRenderPassAttachmentDescriptor(MTLRende
     // If a resolve attachment exists, this attachment must resolve once complete.
     // Otherwise only allow the attachment to be discarded if we're actually rendering
     // to the entire attachment and we're in the last subpass.
-    if (hasResolveAttachment) {
+    if (hasResolveAttachment && !_renderPass->getDevice()->getPhysicalDevice()->getMetalFeatures()->combinedStoreResolveAction) {
         mtlAttDesc.storeAction = MTLStoreActionMultisampleResolve;
+    } else if ( storeOverride ) {
+        mtlAttDesc.storeAction = MTLStoreActionStore;
     } else if ( isRenderingEntireAttachment && (subpass->_subpassIndex == _lastUseSubpassIdx) ) {
         VkAttachmentStoreOp storeOp = isStencil ? _info.stencilStoreOp : _info.storeOp;
-        mtlAttDesc.storeAction = mvkMTLStoreActionFromVkAttachmentStoreOp(storeOp);
+        mtlAttDesc.storeAction = mvkMTLStoreActionFromVkAttachmentStoreOp(storeOp, hasResolveAttachment);
     } else {
-        mtlAttDesc.storeAction = MTLStoreActionStore;
+        mtlAttDesc.storeAction = hasResolveAttachment ? MTLStoreActionStoreAndMultisampleResolve : MTLStoreActionStore;
     }
     return willClear;
 }
@@ -289,7 +306,7 @@ bool MVKRenderPassAttachment::shouldUseClearAttachment(MVKRenderSubpass* subpass
 }
 
 MVKRenderPassAttachment::MVKRenderPassAttachment(MVKRenderPass* renderPass,
-												 const VkAttachmentDescription* pCreateInfo) : MVKBaseObject() {
+												 const VkAttachmentDescription* pCreateInfo) {
 	_renderPass = renderPass;
 	_attachmentIndex = uint32_t(_renderPass->_attachments.size());
 
@@ -316,7 +333,7 @@ VkExtent2D MVKRenderPass::getRenderAreaGranularity() { return { 1, 1 }; }
 MVKRenderSubpass* MVKRenderPass::getSubpass(uint32_t subpassIndex) { return &_subpasses[subpassIndex]; }
 
 MVKRenderPass::MVKRenderPass(MVKDevice* device,
-							 const VkRenderPassCreateInfo* pCreateInfo) : MVKBaseDeviceObject(device) {
+							 const VkRenderPassCreateInfo* pCreateInfo) : MVKVulkanAPIDeviceObject(device) {
 
     // Add subpasses and dependencies first
 	_subpasses.reserve(pCreateInfo->subpassCount);

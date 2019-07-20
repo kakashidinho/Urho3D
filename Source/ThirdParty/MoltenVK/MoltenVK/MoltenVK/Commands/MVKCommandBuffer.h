@@ -1,7 +1,7 @@
 /*
  * MVKCommandBuffer.h
  *
- * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@
 #include "MVKCommandEncoderState.h"
 #include "MVKMTLBufferAllocation.h"
 #include "MVKCmdPipeline.h"
+#include "MVKVector.h"
 #include <vector>
 #include <unordered_map>
 
@@ -38,6 +39,9 @@ class MVKQueryPool;
 class MVKPipeline;
 class MVKGraphicsPipeline;
 class MVKComputePipeline;
+class MVKCmdBeginRenderPass;
+class MVKCmdEndRenderPass;
+class MVKLoadStoreOverrideMixin;
 
 typedef uint64_t MVKMTLCommandBufferID;
 
@@ -46,9 +50,18 @@ typedef uint64_t MVKMTLCommandBufferID;
 #pragma mark MVKCommandBuffer
 
 /** Represents a Vulkan command pool. */
-class MVKCommandBuffer : public MVKDispatchableDeviceObject {
+class MVKCommandBuffer : public MVKDispatchableVulkanAPIObject, public MVKDeviceTrackingMixin {
 
 public:
+
+	/** Returns the Vulkan type of this object. */
+	VkObjectType getVkObjectType() override { return VK_OBJECT_TYPE_COMMAND_BUFFER; }
+
+	/** Returns the debug report object type of this object. */
+	VkDebugReportObjectTypeEXT getVkDebugReportObjectType() override { return VK_DEBUG_REPORT_OBJECT_TYPE_COMMAND_BUFFER_EXT; }
+
+	/** Returns a pointer to the Vulkan instance. */
+	MVKInstance* getInstance() override { return _device->getInstance(); }
 
 	/** Prepares this instance to receive commands. */
 	VkResult begin(const VkCommandBufferBeginInfo* pBeginInfo);
@@ -67,12 +80,6 @@ public:
 
 	/** Submit the commands in this buffer as part of the queue submission. */
 	void submit(MVKQueueCommandBufferSubmission* cmdBuffSubmit);
-
-	/*** If no error has occured yet, records the specified result. */
-    inline void recordResult(VkResult vkResult) { if (_recordingResult == VK_SUCCESS) { _recordingResult = vkResult; } }
-
-    /** Returns the first abnormal VkResult that occured during command recording. */
-    inline VkResult getRecordingResult() { return _recordingResult; }
 
     /** Returns whether this command buffer can be submitted to a queue more than once. */
     inline bool getIsReusable() { return _isReusable; }
@@ -97,9 +104,32 @@ public:
 	MVKCommandBuffer* _next;
 
 
+#pragma mark Constituent render pass management
+    /** Preps metadata for recording render pass */
+	void recordBeginRenderPass(MVKCmdBeginRenderPass* mvkBeginRenderPass);
+	
+	/** Finishes metadata for recording render pass */
+	void recordEndRenderPass(MVKCmdEndRenderPass* mvkEndRenderPass);
+	
+	/** Update the last recorded pipeline if it will end and start a new Metal render pass (ie, in tessellation) */
+	void recordBindPipeline(MVKCmdBindPipeline* mvkBindPipeline);
+	
+	/** Update the last recorded drawcall to determine load/store actions */
+	void recordDraw(MVKLoadStoreOverrideMixin* mvkDraw);
+	
+	/** The most recent recorded begin renderpass */
+	MVKCmdBeginRenderPass* _lastBeginRenderPass;
+	
+	/** The most recent recorded multi-pass (ie, tessellation) pipeline */
+	MVKCmdBindPipeline* _lastTessellationPipeline;
+	
+	/** The most recent recorded multi-pass (ie, tessellation) draw */
+	MVKLoadStoreOverrideMixin* _lastTessellationDraw;
+
+
 #pragma mark Construction
 
-	MVKCommandBuffer(MVKDevice* device) : MVKDispatchableDeviceObject(device) {}
+	MVKCommandBuffer(MVKDevice* device) : MVKDeviceTrackingMixin(device) {}
 
 	~MVKCommandBuffer() override;
 
@@ -121,6 +151,8 @@ protected:
 	friend class MVKCommandEncoder;
 	friend class MVKCommandPool;
 
+	MVKBaseObject* getBaseObject() override { return this; };
+	void propogateDebugName() override {}
 	void init(const VkCommandBufferAllocateInfo* pAllocateInfo);
 	bool canExecute();
 	bool canPrefill();
@@ -131,7 +163,6 @@ protected:
 	MVKCommand* _tail = nullptr;
 	uint32_t _commandCount;
 	std::atomic_flag _isExecutingNonConcurrently;
-	VkResult _recordingResult;
 	VkCommandBufferInheritanceInfo _secondaryInheritanceInfo;
 	id<MTLCommandBuffer> _prefilledMTLCmdBuffer = nil;
 	bool _isSecondary;
@@ -154,7 +185,7 @@ protected:
 // + vkCmdBindDescriptorSets() : _graphicsResourcesState & _computeResourcesState
 // + vkCmdBindVertexBuffers() : _graphicsResourcesState
 // + vkCmdBindIndexBuffer() : _graphicsResourcesState
-// + vkCmdPushConstants() : _vertexPushConstants & _fragmentPushConstants & _computePushConstants
+// + vkCmdPushConstants() : _vertexPushConstants & _tessCtlPushConstants & _tessEvalPushConstants & _fragmentPushConstants & _computePushConstants
 // + vkCmdSetViewport() : _viewportState
 // + vkCmdSetDepthBias() : _depthBiasState
 // + vkCmdSetScissor() : _scissorState
@@ -185,9 +216,9 @@ protected:
 // + setTriangleFillMode : _graphicsPipelineState
 // + setViewport : _viewportState
 // + setVisibilityResultMode : _occlusionQueryState
-// + setVertexBuffer : _graphicsResourcesState & _vertexPushConstants
+// + setVertexBuffer : _graphicsResourcesState & _vertexPushConstants & _tessEvalPushConstants
 // + setVertexBuffers (unused) : _graphicsResourcesState
-// + setVertexBytes : _vertexPushConstants
+// + setVertexBytes : _vertexPushConstants & _tessEvalPushConstants
 // + setVertexBufferOffset (unused) : _graphicsResourcesState
 // + setVertexTexture : _graphicsResourcesState
 // + setVertexTextures (unused) : _graphicsResourcesState
@@ -203,15 +234,15 @@ protected:
 // + setFragmentSamplerStates : (unused) : _graphicsResourcesState
 
 // The above list of Vulkan commands covers the following corresponding MTLComputeCommandEncoder state:
-// + setComputePipelineState : _computePipelineState
-// + setBuffer : _computeResourcesState & _computePushConstants
-// + setBuffers (unused) : _computeResourcesState
-// + setBytes : _computePushConstants
-// + setBufferOffset (unused) : _computeResourcesState
-// + setTexture : _computeResourcesState
-// + setTextures (unused) : _computeResourcesState
-// + setSamplerState : _computeResourcesState
-// + setSamplerStates : (unused) : _computeResourcesState
+// + setComputePipelineState : _computePipelineState & _graphicsPipelineState
+// + setBuffer : _computeResourcesState & _computePushConstants & _graphicsResourcesState & _tessCtlPushConstants
+// + setBuffers (unused) : _computeResourcesState & _graphicsResourcesState
+// + setBytes : _computePushConstants & _tessCtlPushConstants
+// + setBufferOffset (unused) : _computeResourcesState & _graphicsResourcesState
+// + setTexture : _computeResourcesState & _graphicsResourcesState
+// + setTextures (unused) : _computeResourcesState & _graphicsResourcesState
+// + setSamplerState : _computeResourcesState & _graphicsResourcesState
+// + setSamplerStates : (unused) : _computeResourcesState & _graphicsResourcesState
 
 
 /*** Holds a collection of active queries for each query pool. */
@@ -228,6 +259,9 @@ class MVKCommandEncoder : public MVKBaseDeviceObject {
 
 public:
 
+	/** Returns the Vulkan API opaque object controlling this object. */
+	MVKVulkanAPIObject* getVulkanAPIObject() override { return _cmdBuffer->getVulkanAPIObject(); };
+
 	/** Encode commands from the command buffer onto the Metal command buffer. */
 	void encode(id<MTLCommandBuffer> mtlCmdBuff);
 
@@ -239,10 +273,15 @@ public:
 						 MVKRenderPass* renderPass,
 						 MVKFramebuffer* framebuffer,
 						 VkRect2D& renderArea,
-						 std::vector<VkClearValue>* clearValues);
+						 MVKVector<VkClearValue>* clearValues,
+						 bool loadOverride = false,
+						 bool storeOverride = false);
 
 	/** Begins the next render subpass. */
 	void beginNextSubpass(VkSubpassContents renderpassContents);
+
+	/** Begins a Metal render pass for the current render subpass. */
+	void beginMetalRenderPass(bool loadOverride = false, bool storeOverride = false);
 
 	/** Returns the render subpass that is currently active. */
 	MVKRenderSubpass* getSubpass();
@@ -260,10 +299,13 @@ public:
 	MTLScissorRect clipToRenderArea(MTLScissorRect mtlScissor);
 
 	/** Called by each graphics draw command to establish any outstanding state just prior to performing the draw. */
-	void finalizeDrawState();
+	void finalizeDrawState(MVKGraphicsStage stage);
 
     /** Called by each compute dispatch command to establish any outstanding state just prior to performing the dispatch. */
     void finalizeDispatchState();
+
+	/** Ends the current renderpass. */
+	void endRenderpass();
 
 	/** 
 	 * Ends all encoding operations on the current Metal command encoder.
@@ -277,7 +319,7 @@ public:
 	void endMetalRenderEncoding();
 
 	/** 
-	 * The current Metal compute encoder for the specified use,
+	 * Returns trhe current Metal compute encoder for the specified use,
 	 * which determines the label assigned to the returned encoder.
 	 *
 	 * If the current encoder is not a compute encoder, this function ends current before 
@@ -286,13 +328,19 @@ public:
 	id<MTLComputeCommandEncoder> getMTLComputeEncoder(MVKCommandUse cmdUse);
 
 	/**
-	 * The current Metal BLIT encoder for the specified use,
+	 * Returns the current Metal BLIT encoder for the specified use,
      * which determines the label assigned to the returned encoder.
 	 *
 	 * If the current encoder is not a BLIT encoder, this function ends 
      * the current encoder before beginning BLIT encoding.
 	 */
 	id<MTLBlitCommandEncoder> getMTLBlitEncoder(MVKCommandUse cmdUse);
+
+	/**
+	 * Returns the current Metal encoder, which may be any of the Metal render,
+	 * comupte, or Blit encoders, or nil if no encoding is currently occurring.
+	 */
+	id<MTLCommandEncoder> getMTLEncoder();
 
 	/** Returns the push constants associated with the specified shader stage. */
 	MVKPushConstantsCommandEncoderState* getPushConstants(VkShaderStageFlagBits shaderStage);
@@ -305,6 +353,9 @@ public:
 
     /** Copy bytes into the Metal encoder at a Metal compute buffer index. */
     void setComputeBytes(id<MTLComputeCommandEncoder> mtlEncoder, const void* bytes, NSUInteger length, uint32_t mtlBuffIndex);
+
+    /** Get a temporary MTLBuffer that will be returned to a pool after the command buffer is finished. */
+    const MVKMTLBufferAllocation* getTempMTLBuffer(NSUInteger length);
 
     /** Returns the command encoding pool. */
     MVKCommandEncodingPool* getCommandEncodingPool();
@@ -319,7 +370,6 @@ public:
 
     /** Marks a timestamp for the specified query. */
     void markTimestamp(MVKQueryPool* pQueryPool, uint32_t query);
-
 
 #pragma mark Dynamic encoding state accessed directly
 
@@ -383,6 +433,9 @@ public:
     /** The size of the threadgroup for the compute shader. */
     MTLSize _mtlThreadgroupSize;
 
+	/** Indicates whether the current render subpass is rendering to an array (layered) framebuffer. */
+	bool _isUsingLayeredRendering;
+
 
 #pragma mark Construction
 
@@ -391,8 +444,7 @@ public:
 protected:
     void addActivatedQuery(MVKQueryPool* pQueryPool, uint32_t query);
     void finishQueries();
-	void setSubpass(VkSubpassContents subpassContents, uint32_t subpassIndex);
-    void beginMetalRenderPass();
+	void setSubpass(VkSubpassContents subpassContents, uint32_t subpassIndex, bool loadOverride = false, bool storeOverride = false);
 	void clearRenderArea();
     const MVKMTLBufferAllocation* copyToTempMTLBufferAllocation(const void* bytes, NSUInteger length);
     NSString* getMTLRenderCommandEncoderName();
@@ -402,12 +454,14 @@ protected:
 	uint32_t _renderSubpassIndex;
 	VkRect2D _renderArea;
     MVKActivatedQueries* _pActivatedQueries;
-	std::vector<VkClearValue> _clearValues;
+	MVKVectorInline<VkClearValue, 8> _clearValues;
 	id<MTLComputeCommandEncoder> _mtlComputeEncoder;
 	MVKCommandUse _mtlComputeEncoderUse;
 	id<MTLBlitCommandEncoder> _mtlBlitEncoder;
     MVKCommandUse _mtlBlitEncoderUse;
 	MVKPushConstantsCommandEncoderState _vertexPushConstants;
+	MVKPushConstantsCommandEncoderState _tessCtlPushConstants;
+	MVKPushConstantsCommandEncoderState _tessEvalPushConstants;
 	MVKPushConstantsCommandEncoderState _fragmentPushConstants;
 	MVKPushConstantsCommandEncoderState _computePushConstants;
     MVKOcclusionQueryCommandEncoderState _occlusionQueryState;
@@ -418,9 +472,6 @@ protected:
 
 #pragma mark -
 #pragma mark Support functions
-
-/** Returns a name, suitable for use as a MTLCommandBuffer label, based on the MVKCommandUse. */
-NSString* mvkMTLCommandBufferLabel(MVKCommandUse cmdUse);
 
 /** Returns a name, suitable for use as a MTLRenderCommandEncoder label, based on the MVKCommandUse. */
 NSString* mvkMTLRenderCommandEncoderLabel(MVKCommandUse cmdUse);

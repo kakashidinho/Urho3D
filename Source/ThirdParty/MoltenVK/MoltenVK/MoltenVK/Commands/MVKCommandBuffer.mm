@@ -1,7 +1,7 @@
 /*
  * MVKCommandBuffer.mm
  *
- * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,7 +24,9 @@
 #include "MVKFramebuffer.h"
 #include "MVKQueryPool.h"
 #include "MVKFoundation.h"
+#include "MVKLogging.h"
 #include "MTLRenderPassDescriptor+MoltenVK.h"
+#include "MVKCmdDraw.h"
 
 using namespace std;
 
@@ -36,7 +38,7 @@ VkResult MVKCommandBuffer::begin(const VkCommandBufferBeginInfo* pBeginInfo) {
 
 	reset(0);
 
-	_recordingResult = VK_SUCCESS;
+	clearConfigurationResult();
 	_canAcceptCommands = true;
 
 	VkCommandBufferUsageFlags usage = pBeginInfo->flags;
@@ -49,7 +51,7 @@ VkResult MVKCommandBuffer::begin(const VkCommandBufferBeginInfo* pBeginInfo) {
 	bool hasInheritInfo = mvkSetOrClear(&_secondaryInheritanceInfo, pInheritInfo);
 	_doesContinueRenderPass = mvkAreFlagsEnabled(usage, VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT) && hasInheritInfo;
 
-	return _recordingResult;
+	return getConfigurationResult();
 }
 
 VkResult MVKCommandBuffer::reset(VkCommandBufferResetFlags flags) {
@@ -70,9 +72,9 @@ VkResult MVKCommandBuffer::reset(VkCommandBufferResetFlags flags) {
 	_supportsConcurrentExecution = false;
 	_wasExecuted = false;
 	_isExecutingNonConcurrently.clear();
-	_recordingResult = VK_NOT_READY;
 	_commandCount = 0;
 	_initialVisibilityResultMTLBuffer = nil;		// not retained
+	setConfigurationResult(VK_NOT_READY);
 
 	if (mvkAreFlagsEnabled(flags, VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT)) {
 		// TODO: what are we releasing or returning here?
@@ -84,12 +86,12 @@ VkResult MVKCommandBuffer::reset(VkCommandBufferResetFlags flags) {
 VkResult MVKCommandBuffer::end() {
 	_canAcceptCommands = false;
 	prefill();
-	return _recordingResult;
+	return getConfigurationResult();
 }
 
 void MVKCommandBuffer::addCommand(MVKCommand* command) {
 	if ( !_canAcceptCommands ) {
-		recordResult(mvkNotifyErrorWithText(VK_NOT_READY, "Command buffer cannot accept commands before vkBeginCommandBuffer() is called."));
+		setConfigurationResult(reportError(VK_NOT_READY, "Command buffer cannot accept commands before vkBeginCommandBuffer() is called."));
 		return;
 	}
 
@@ -101,7 +103,7 @@ void MVKCommandBuffer::addCommand(MVKCommand* command) {
 
     command->added(this);
 
-    recordResult(command->getConfigurationResult());
+    setConfigurationResult(command->getConfigurationResult());
 }
 
 void MVKCommandBuffer::submit(MVKQueueCommandBufferSubmission* cmdBuffSubmit) {
@@ -120,17 +122,17 @@ void MVKCommandBuffer::submit(MVKQueueCommandBufferSubmission* cmdBuffSubmit) {
 
 bool MVKCommandBuffer::canExecute() {
 	if (_isSecondary) {
-		recordResult(mvkNotifyErrorWithText(VK_NOT_READY, "Secondary command buffers may not be submitted directly to a queue."));
+		setConfigurationResult(reportError(VK_NOT_READY, "Secondary command buffers may not be submitted directly to a queue."));
 		return false;
 	}
 	if ( !_isReusable && _wasExecuted ) {
-		recordResult(mvkNotifyErrorWithText(VK_NOT_READY, "Command buffer does not support execution more that once."));
+		setConfigurationResult(reportError(VK_NOT_READY, "Command buffer does not support execution more that once."));
 		return false;
 	}
 
 	// Do this test last so that _isExecutingNonConcurrently is only set if everything else passes
 	if ( !_supportsConcurrentExecution && _isExecutingNonConcurrently.test_and_set()) {
-		recordResult(mvkNotifyErrorWithText(VK_NOT_READY, "Command buffer does not support concurrent execution."));
+		setConfigurationResult(reportError(VK_NOT_READY, "Command buffer does not support concurrent execution."));
 		return false;
 	}
 
@@ -175,7 +177,7 @@ void MVKCommandBuffer::clearPrefilledMTLCommandBuffer() {
 
 #pragma mark Construction
 
-// Initializes this instance after it has been created retrieved from a pool.
+// Initializes this instance after it has been created or retrieved from a pool.
 void MVKCommandBuffer::init(const VkCommandBufferAllocateInfo* pAllocateInfo) {
 	_commandPool = (MVKCommandPool*)pAllocateInfo->commandPool;
 	_isSecondary = (pAllocateInfo->level == VK_COMMAND_BUFFER_LEVEL_SECONDARY);
@@ -189,13 +191,54 @@ MVKCommandBuffer::~MVKCommandBuffer() {
 
 
 #pragma mark -
+#pragma mark Constituent render pass management
+
+void MVKCommandBuffer::recordBeginRenderPass(MVKCmdBeginRenderPass* mvkBeginRenderPass) {
+	_lastBeginRenderPass = mvkBeginRenderPass;
+	_lastTessellationPipeline = nullptr;
+	_lastTessellationDraw = nullptr;
+}
+
+void MVKCommandBuffer::recordEndRenderPass(MVKCmdEndRenderPass* /*mvkEndRenderPass*/) {
+	// Unset the store override for the last draw call
+	if (_lastTessellationDraw != nullptr)
+	{
+		_lastTessellationDraw->setStoreOverride(false);
+		_lastBeginRenderPass->setStoreOverride(true);
+	}
+	_lastBeginRenderPass = nullptr;
+	_lastTessellationPipeline = nullptr;
+	_lastTessellationDraw = nullptr;
+}
+
+void MVKCommandBuffer::recordBindPipeline(MVKCmdBindPipeline* mvkBindPipeline) {
+	if (mvkBindPipeline->isTessellationPipeline())
+		_lastTessellationPipeline = mvkBindPipeline;
+	else
+		_lastTessellationPipeline = nullptr;
+}
+
+void MVKCommandBuffer::recordDraw(MVKLoadStoreOverrideMixin* mvkDraw) {
+	if (_lastTessellationPipeline != nullptr) {
+		// If a multi-pass pipeline is bound and we've already drawn something, need to override load actions
+		mvkDraw->setLoadOverride(true);
+		mvkDraw->setStoreOverride(true);
+		_lastTessellationDraw = mvkDraw;
+	}
+}
+
+
+#pragma mark -
 #pragma mark MVKCommandEncoder
 
 void MVKCommandEncoder::encode(id<MTLCommandBuffer> mtlCmdBuff) {
 	_subpassContents = VK_SUBPASS_CONTENTS_INLINE;
 	_renderSubpassIndex = 0;
+	_isUsingLayeredRendering = false;
 
 	_mtlCmdBuffer = mtlCmdBuff;		// not retained
+
+	setLabelIfNotNil(_mtlCmdBuffer, _cmdBuffer->_debugName);
 
     MVKCommand* cmd = _cmdBuffer->_head;
 	while (cmd) {
@@ -219,14 +262,16 @@ void MVKCommandEncoder::beginRenderpass(VkSubpassContents subpassContents,
 										MVKRenderPass* renderPass,
 										MVKFramebuffer* framebuffer,
 										VkRect2D& renderArea,
-										vector<VkClearValue>* clearValues) {
+										MVKVector<VkClearValue>* clearValues,
+										bool loadOverride,
+										bool storeOverride) {
 	_renderPass = renderPass;
 	_framebuffer = framebuffer;
 	_renderArea = renderArea;
 	_isRenderingEntireAttachment = (mvkVkOffset2DsAreEqual(_renderArea.offset, {0,0}) &&
 									mvkVkExtent2DsAreEqual(_renderArea.extent, _framebuffer->getExtent2D()));
 	_clearValues.assign(clearValues->begin(), clearValues->end());
-	setSubpass(subpassContents, 0);
+	setSubpass(subpassContents, 0, loadOverride, storeOverride);
 }
 
 void MVKCommandEncoder::beginNextSubpass(VkSubpassContents contents) {
@@ -234,27 +279,37 @@ void MVKCommandEncoder::beginNextSubpass(VkSubpassContents contents) {
 }
 
 // Sets the current render subpass to the subpass with the specified index.
-void MVKCommandEncoder::setSubpass(VkSubpassContents subpassContents, uint32_t subpassIndex) {
+void MVKCommandEncoder::setSubpass(VkSubpassContents subpassContents, uint32_t subpassIndex, bool loadOverride, bool storeOverride) {
 	_subpassContents = subpassContents;
 	_renderSubpassIndex = subpassIndex;
 
-    beginMetalRenderPass();
+	_isUsingLayeredRendering = ((_framebuffer->getLayerCount() > 1) &&
+								_device->_pMetalFeatures->layeredRendering &&
+								(_device->_pMetalFeatures->multisampleLayeredRendering ||
+								 (getSubpass()->getSampleCount() == VK_SAMPLE_COUNT_1_BIT)));
+
+	beginMetalRenderPass(loadOverride, storeOverride);
 }
 
 // Creates _mtlRenderEncoder and marks cached render state as dirty so it will be set into the _mtlRenderEncoder.
-void MVKCommandEncoder::beginMetalRenderPass() {
+void MVKCommandEncoder::beginMetalRenderPass(bool loadOverride, bool storeOverride) {
 
     endCurrentMetalEncoding();
 
     MTLRenderPassDescriptor* mtlRPDesc = [MTLRenderPassDescriptor renderPassDescriptor];
-    getSubpass()->populateMTLRenderPassDescriptor(mtlRPDesc, _framebuffer, _clearValues, _isRenderingEntireAttachment);
+    getSubpass()->populateMTLRenderPassDescriptor(mtlRPDesc, _framebuffer, _clearValues, _isRenderingEntireAttachment, loadOverride, storeOverride);
     mtlRPDesc.visibilityResultBuffer = _occlusionQueryState.getVisibilityResultMTLBuffer();
-	mtlRPDesc.renderTargetArrayLengthMVK = _framebuffer->getLayerCount();
-	mtlRPDesc.renderTargetWidthMVK = min(_framebuffer->getExtent2D().width, _renderArea.extent.width);
-	mtlRPDesc.renderTargetHeightMVK = min(_framebuffer->getExtent2D().height, _renderArea.extent.height);
+
+	// Only set the layered rendering properties if layered rendering is supported and the framebuffer really has multiple layers
+	if (_isUsingLayeredRendering) {
+		VkExtent2D fbExtent = _framebuffer->getExtent2D();
+		mtlRPDesc.renderTargetWidthMVK = min(_renderArea.offset.x + _renderArea.extent.width, fbExtent.width);
+		mtlRPDesc.renderTargetHeightMVK = min(_renderArea.offset.y + _renderArea.extent.height, fbExtent.height);
+		mtlRPDesc.renderTargetArrayLengthMVK = _framebuffer->getLayerCount();
+	}
 
     _mtlRenderEncoder = [_mtlCmdBuffer renderCommandEncoderWithDescriptor: mtlRPDesc];     // not retained
-    _mtlRenderEncoder.label = getMTLRenderCommandEncoderName();
+	setLabelIfNotNil(_mtlRenderEncoder, getMTLRenderCommandEncoderName());
 
     if ( !_isRenderingEntireAttachment ) { clearRenderArea(); }
 
@@ -265,6 +320,8 @@ void MVKCommandEncoder::beginMetalRenderPass() {
     _depthBiasState.beginMetalRenderPass();
     _blendColorState.beginMetalRenderPass();
     _vertexPushConstants.beginMetalRenderPass();
+    _tessCtlPushConstants.beginMetalRenderPass();
+    _tessEvalPushConstants.beginMetalRenderPass();
     _fragmentPushConstants.beginMetalRenderPass();
     _depthStencilState.beginMetalRenderPass();
     _stencilReferenceValueState.beginMetalRenderPass();
@@ -275,8 +332,16 @@ MVKRenderSubpass* MVKCommandEncoder::getSubpass() { return _renderPass->getSubpa
 
 // Returns a name for use as a MTLRenderCommandEncoder label
 NSString* MVKCommandEncoder::getMTLRenderCommandEncoderName() {
-    MVKCommandUse cmdUse = (_renderSubpassIndex == 0) ? kMVKCommandUseBeginRenderPass : kMVKCommandUseNextSubpass;
-    return mvkMTLRenderCommandEncoderLabel(cmdUse);
+	NSString* rpName;
+
+	rpName = _renderPass->getDebugName();
+	if (rpName) { return rpName; }
+
+	rpName = _cmdBuffer->getDebugName();
+	if (rpName) { return rpName; }
+
+	MVKCommandUse cmdUse = (_renderSubpassIndex == 0) ? kMVKCommandUseBeginRenderPass : kMVKCommandUseNextSubpass;
+	return mvkMTLRenderCommandEncoderLabel(cmdUse);
 }
 
 void MVKCommandEncoder::bindPipeline(VkPipelineBindPoint pipelineBindPoint, MVKPipeline* pipeline) {
@@ -314,18 +379,20 @@ MTLScissorRect MVKCommandEncoder::clipToRenderArea(MTLScissorRect mtlScissor) {
 	return mtlScissor;
 }
 
-void MVKCommandEncoder::finalizeDrawState() {
-    _graphicsPipelineState.encode();    // Must do first..it sets others
-    _graphicsResourcesState.encode();
-    _viewportState.encode();
-    _scissorState.encode();
-    _depthBiasState.encode();
-    _blendColorState.encode();
-    _vertexPushConstants.encode();
-    _fragmentPushConstants.encode();
-    _depthStencilState.encode();
-    _stencilReferenceValueState.encode();
-    _occlusionQueryState.encode();
+void MVKCommandEncoder::finalizeDrawState(MVKGraphicsStage stage) {
+    _graphicsPipelineState.encode(stage);    // Must do first..it sets others
+    _graphicsResourcesState.encode(stage);
+    _viewportState.encode(stage);
+    _scissorState.encode(stage);
+    _depthBiasState.encode(stage);
+    _blendColorState.encode(stage);
+    _vertexPushConstants.encode(stage);
+    _tessCtlPushConstants.encode(stage);
+    _tessEvalPushConstants.encode(stage);
+    _fragmentPushConstants.encode(stage);
+    _depthStencilState.encode(stage);
+    _stencilReferenceValueState.encode(stage);
+    _occlusionQueryState.encode(stage);
 }
 
 // Clears the render area of the framebuffer attachments.
@@ -351,9 +418,17 @@ void MVKCommandEncoder::clearRenderArea() {
 }
 
 void MVKCommandEncoder::finalizeDispatchState() {
-    _computePipelineState.encode();
+    _computePipelineState.encode();    // Must do first..it sets others
     _computeResourcesState.encode();
     _computePushConstants.encode();
+}
+
+void MVKCommandEncoder::endRenderpass() {
+	endMetalRenderEncoding();
+
+	_renderPass = nullptr;
+	_framebuffer = nullptr;
+	_renderSubpassIndex = 0;
 }
 
 void MVKCommandEncoder::endMetalRenderEncoding() {
@@ -381,7 +456,7 @@ id<MTLComputeCommandEncoder> MVKCommandEncoder::getMTLComputeEncoder(MVKCommandU
 	}
 	if (_mtlComputeEncoderUse != cmdUse) {
 		_mtlComputeEncoderUse = cmdUse;
-		_mtlComputeEncoder.label = mvkMTLComputeCommandEncoderLabel(cmdUse);
+		setLabelIfNotNil(_mtlComputeEncoder, mvkMTLComputeCommandEncoderLabel(cmdUse));
 	}
 	return _mtlComputeEncoder;
 }
@@ -393,15 +468,25 @@ id<MTLBlitCommandEncoder> MVKCommandEncoder::getMTLBlitEncoder(MVKCommandUse cmd
 	}
     if (_mtlBlitEncoderUse != cmdUse) {
         _mtlBlitEncoderUse = cmdUse;
-        _mtlBlitEncoder.label = mvkMTLBlitCommandEncoderLabel(cmdUse);
+		setLabelIfNotNil(_mtlBlitEncoder, mvkMTLBlitCommandEncoderLabel(cmdUse));
     }
 	return _mtlBlitEncoder;
 }
+
+id<MTLCommandEncoder> MVKCommandEncoder::getMTLEncoder(){
+	if (_mtlRenderEncoder) { return _mtlRenderEncoder; }
+	if (_mtlComputeEncoder) { return _mtlComputeEncoder; }
+	if (_mtlBlitEncoder) { return _mtlBlitEncoder; }
+	return nil;
+}
+
 MVKPushConstantsCommandEncoderState* MVKCommandEncoder::getPushConstants(VkShaderStageFlagBits shaderStage) {
 	switch (shaderStage) {
-		case VK_SHADER_STAGE_VERTEX_BIT:	return &_vertexPushConstants;
-		case VK_SHADER_STAGE_FRAGMENT_BIT:	return &_fragmentPushConstants;
-		case VK_SHADER_STAGE_COMPUTE_BIT:	return &_computePushConstants;
+		case VK_SHADER_STAGE_VERTEX_BIT:					return &_vertexPushConstants;
+		case VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT:		return &_tessCtlPushConstants;
+		case VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT:	return &_tessEvalPushConstants;
+		case VK_SHADER_STAGE_FRAGMENT_BIT:					return &_fragmentPushConstants;
+		case VK_SHADER_STAGE_COMPUTE_BIT:					return &_computePushConstants;
 		default:
 			MVKAssert(false, "Invalid shader stage: %u", shaderStage);
 			return nullptr;
@@ -444,18 +529,25 @@ void MVKCommandEncoder::setComputeBytes(id<MTLComputeCommandEncoder> mtlEncoder,
     }
 }
 
+const MVKMTLBufferAllocation* MVKCommandEncoder::getTempMTLBuffer(NSUInteger length) {
+    const MVKMTLBufferAllocation* mtlBuffAlloc = getCommandEncodingPool()->acquireMTLBufferAllocation(length);
+	MVKMTLBufferAllocationPool* pool = mtlBuffAlloc->getPool();
+
+    // Return the MTLBuffer allocation to the pool once the command buffer is done with it
+    [_mtlCmdBuffer addCompletedHandler: ^(id<MTLCommandBuffer> mcb) {
+        pool->returnObjectSafely((MVKMTLBufferAllocation*)mtlBuffAlloc);
+    }];
+
+    return mtlBuffAlloc;
+}
+
 MVKCommandEncodingPool* MVKCommandEncoder::getCommandEncodingPool() { return _cmdBuffer->_commandPool->getCommandEncodingPool(); }
 
 // Copies the specified bytes into a temporary allocation within a pooled MTLBuffer, and returns the MTLBuffer allocation.
 const MVKMTLBufferAllocation* MVKCommandEncoder::copyToTempMTLBufferAllocation(const void* bytes, NSUInteger length) {
-    const MVKMTLBufferAllocation* mtlBuffAlloc = getCommandEncodingPool()->acquireMTLBufferAllocation(length);
+    const MVKMTLBufferAllocation* mtlBuffAlloc = getTempMTLBuffer(length);
     void* pBuffData = mtlBuffAlloc->getContents();
     memcpy(pBuffData, bytes, length);
-
-    // Return the MTLBuffer allocation to the pool once the command buffer is done with it
-    [_mtlCmdBuffer addCompletedHandler: ^(id<MTLCommandBuffer> mcb) {
-        ((MVKMTLBufferAllocation*)mtlBuffAlloc)->returnToPool();
-    }];
 
     return mtlBuffAlloc;
 }
@@ -509,6 +601,8 @@ MVKCommandEncoder::MVKCommandEncoder(MVKCommandBuffer* cmdBuffer) : MVKBaseDevic
         _depthBiasState(this),
         _blendColorState(this),
         _vertexPushConstants(this, VK_SHADER_STAGE_VERTEX_BIT),
+        _tessCtlPushConstants(this, VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT),
+        _tessEvalPushConstants(this, VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT),
         _fragmentPushConstants(this, VK_SHADER_STAGE_FRAGMENT_BIT),
         _computePushConstants(this, VK_SHADER_STAGE_COMPUTE_BIT),
         _depthStencilState(this),
@@ -517,7 +611,7 @@ MVKCommandEncoder::MVKCommandEncoder(MVKCommandBuffer* cmdBuffer) : MVKBaseDevic
         _computeResourcesState(this),
         _occlusionQueryState(this) {
 
-            _pDeviceFeatures = _device->_pFeatures;
+            _pDeviceFeatures = &_device->_enabledFeatures;
             _pDeviceMetalFeatures = _device->_pMetalFeatures;
             _pDeviceProperties = _device->_pProperties;
             _pDeviceMemoryProperties = _device->_pMemoryProperties;
@@ -533,16 +627,6 @@ MVKCommandEncoder::MVKCommandEncoder(MVKCommandBuffer* cmdBuffer) : MVKBaseDevic
 
 #pragma mark -
 #pragma mark Support functions
-
-NSString* mvkMTLCommandBufferLabel(MVKCommandUse cmdUse) {
-    switch (cmdUse) {
-        case kMVKCommandUseQueueSubmit:     return @"vkQueueSubmit CommandBuffer";
-        case kMVKCommandUseQueuePresent:    return @"vkQueuePresentKHR CommandBuffer";
-        case kMVKCommandUseQueueWaitIdle:   return @"vkQueueWaitIdle CommandBuffer";
-        case kMVKCommandUseDeviceWaitIdle:  return @"vkDeviceWaitIdle CommandBuffer";
-        default:                            return @"Unknown Use CommandBuffer";
-    }
-}
 
 NSString* mvkMTLRenderCommandEncoderLabel(MVKCommandUse cmdUse) {
     switch (cmdUse) {
@@ -568,16 +652,21 @@ NSString* mvkMTLBlitCommandEncoderLabel(MVKCommandUse cmdUse) {
         case kMVKCommandUseFillBuffer:          return @"vkCmdFillBuffer BlitEncoder";
         case kMVKCommandUseUpdateBuffer:        return @"vkCmdUpdateBuffer BlitEncoder";
         case kMVKCommandUseResetQueryPool:      return @"vkCmdResetQueryPool BlitEncoder";
+        case kMVKCommandUseCopyQueryPoolResults:return @"vkCmdCopyQueryPoolResults BlitEncoder";
         default:                                return @"Unknown Use BlitEncoder";
     }
 }
 
 NSString* mvkMTLComputeCommandEncoderLabel(MVKCommandUse cmdUse) {
-	switch (cmdUse) {
-		case kMVKCommandUseDispatch:          	return @"vkCmdDispatch ComputeEncoder";
-		case kMVKCommandUseCopyBuffer:          return @"vkCmdCopyBuffer ComputeEncoder";
-		case kMVKCommandUseFillBuffer:          return @"vkCmdFillBuffer ComputeEncoder";
-		default:                                return @"Unknown Use ComputeEncoder";
-	}
+    switch (cmdUse) {
+        case kMVKCommandUseDispatch:            return @"vkCmdDispatch ComputeEncoder";
+        case kMVKCommandUseCopyBuffer:          return @"vkCmdCopyBuffer ComputeEncoder";
+        case kMVKCommandUseCopyBufferToImage:   return @"vkCmdCopyBufferToImage ComputeEncoder";
+        case kMVKCommandUseCopyImageToBuffer:   return @"vkCmdCopyImageToBuffer ComputeEncoder";
+        case kMVKCommandUseFillBuffer:          return @"vkCmdFillBuffer ComputeEncoder";
+        case kMVKCommandUseTessellationControl: return @"vkCmdDraw (tess control stage) ComputeEncoder";
+        case kMVKCommandUseCopyQueryPoolResults:return @"vkCmdCopyQueryPoolResults ComputeEncoder";
+        default:                                return @"Unknown Use ComputeEncoder";
+    }
 }
 

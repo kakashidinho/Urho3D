@@ -1,7 +1,7 @@
 /*
  * GLSLConversion.mm
  *
- * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ using namespace mvk;
 
 
 MVK_PUBLIC_SYMBOL bool mvkConvertGLSLToSPIRV(const char* glslSource,
-                                             MVKShaderStage shaderStage,
+                                             MVKGLSLConversionShaderStage shaderStage,
                                              uint32_t** pSPIRVCode,
                                              size_t *pSPIRVLength,
                                              char** pResultLog,
@@ -59,7 +59,7 @@ MVK_PUBLIC_SYMBOL bool mvkConvertGLSLToSPIRV(const char* glslSource,
 }
 
 MVK_PUBLIC_SYMBOL bool mvkConvertGLSLFileToSPIRV(const char* glslFilepath,
-                                                 MVKShaderStage shaderStage,
+                                                 MVKGLSLConversionShaderStage shaderStage,
                                                  uint32_t** pSPIRVCode,
                                                  size_t *pSPIRVLength,
                                                  char** pResultLog,
@@ -75,8 +75,8 @@ MVK_PUBLIC_SYMBOL bool mvkConvertGLSLFileToSPIRV(const char* glslFilepath,
                                                         error: &err];
     if (err) {
         if (pResultLog) {
-            NSString* errMsg = [NSString stringWithFormat: @"Unable to convert GLSL in file %@ to SPIR-V: %@ (code %li) %@",
-                                filePath, err.localizedDescription, (long)err.code, err.localizedFailureReason];
+            NSString* errMsg = [NSString stringWithFormat: @"Unable to convert GLSL in file %@ to SPIR-V (Error code %li):\n%@",
+                                filePath, (long)err.code, err.localizedDescription];
             *pResultLog = (char*)malloc(errMsg.length + 1);
             strcpy(*pResultLog, errMsg.UTF8String);
         }

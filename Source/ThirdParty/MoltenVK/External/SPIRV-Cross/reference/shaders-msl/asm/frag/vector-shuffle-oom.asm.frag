@@ -3,6 +3,11 @@
 
 using namespace metal;
 
+struct _28
+{
+    float4 _m0;
+};
+
 struct _6
 {
     float4 _m0;
@@ -68,7 +73,7 @@ struct _18
     float2 _m24;
     float2 _m25;
     float2 _m26;
-    char pad27[8];
+    char _m27_pad[8];
     packed_float3 _m27;
     float _m28;
     float _m29;
@@ -113,11 +118,6 @@ struct _21
     float4 _m0;
 };
 
-struct _28
-{
-    float4 _m0;
-};
-
 constant _28 _74 = {};
 
 struct main0_out
@@ -125,7 +125,7 @@ struct main0_out
     float4 m_5 [[color(0)]];
 };
 
-fragment main0_out main0(constant _6& _7 [[buffer(0)]], constant _18& _19 [[buffer(1)]], constant _10& _11 [[buffer(2)]], texture2d<float> _14 [[texture(4)]], texture2d<float> _12 [[texture(13)]], texture2d<float> _8 [[texture(14)]], sampler _15 [[sampler(3)]], sampler _13 [[sampler(5)]], sampler _9 [[sampler(6)]], float4 gl_FragCoord [[position]])
+fragment main0_out main0(constant _6& _7 [[buffer(0)]], constant _10& _11 [[buffer(1)]], constant _18& _19 [[buffer(2)]], texture2d<float> _8 [[texture(0)]], texture2d<float> _12 [[texture(1)]], texture2d<float> _14 [[texture(2)]], sampler _9 [[sampler(0)]], sampler _13 [[sampler(1)]], sampler _15 [[sampler(2)]], float4 gl_FragCoord [[position]])
 {
     main0_out out = {};
     _28 _77 = _74;

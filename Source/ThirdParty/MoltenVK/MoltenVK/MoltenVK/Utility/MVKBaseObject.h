@@ -1,7 +1,7 @@
 /*
  * MVKBaseObject.h
  *
- * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,8 +19,9 @@
 #pragma once
 
 #include "mvk_vulkan.h"
-#include <vulkan/vk_icd.h>
 #include <string>
+
+class MVKVulkanAPIObject;
 
 
 #pragma mark -
@@ -36,6 +37,59 @@ public:
 
     /** Returns the name of the class of which this object is an instance. */
     std::string getClassName();
+
+	/** Returns the Vulkan API opaque object controlling this object. */
+	virtual MVKVulkanAPIObject* getVulkanAPIObject() = 0;
+
+	/**
+	 * Report a message. This includes logging to a standard system logging stream,
+	 * and some subclasses will also forward the message to their VkInstance for
+	 * output to the Vulkan debug report messaging API.
+	 */
+	void reportMessage(int aslLvl, const char* format, ...) __printflike(3, 4);
+
+	/**
+	 * Report a Vulkan error message, on behalf of the object, which may be nil.
+	 * Reporting includes logging to a standard system logging stream, and if the object
+	 * is not nil and has access to the VkInstance, the message will also be forwarded
+	 * to the VkInstance for output to the Vulkan debug report messaging API.
+	 */
+	static void reportMessage(MVKBaseObject* mvkObj, int aslLvl, const char* format, ...) __printflike(3, 4);
+
+	/**
+	 * Report a Vulkan error message, on behalf of the object, which may be nil.
+	 * Reporting includes logging to a standard system logging stream, and if the object
+	 * is not nil and has access to the VkInstance, the message will also be forwarded
+	 * to the VkInstance for output to the Vulkan debug report messaging API.
+	 *
+	 * This is the core reporting implementation. Other similar functions delegate here.
+	 */
+	static void reportMessage(MVKBaseObject* mvkObj, int aslLvl, const char* format, va_list args) __printflike(3, 0);
+
+	/**
+	 * Report a Vulkan error message. This includes logging to a standard system logging stream,
+	 * and some subclasses will also forward the message to their VkInstance for output to the
+	 * Vulkan debug report messaging API.
+	 */
+	VkResult reportError(VkResult vkErr, const char* format, ...) __printflike(3, 4);
+
+	/**
+	 * Report a Vulkan error message, on behalf of the object. which may be nil.
+	 * Reporting includes logging to a standard system logging stream, and if the object
+	 * is not nil and has access to the VkInstance, the message will also be forwarded
+	 * to the VkInstance for output to the Vulkan debug report messaging API.
+	 */
+	static VkResult reportError(MVKBaseObject* mvkObj, VkResult vkErr, const char* format, ...) __printflike(3, 4);
+
+	/**
+	 * Report a Vulkan error message, on behalf of the object. which may be nil.
+	 * Reporting includes logging to a standard system logging stream, and if the object
+	 * is not nil and has access to the VkInstance, the message will also be forwarded
+	 * to the VkInstance for output to the Vulkan debug report messaging API.
+	 *
+	 * This is the core reporting implementation. Other similar functions delegate here.
+	 */
+	static VkResult reportError(MVKBaseObject* mvkObj, VkResult vkErr, const char* format, va_list args) __printflike(3, 0);
 
 	/** Destroys this object. Default behaviour simply deletes it. Subclasses may override to delay deletion. */
 	virtual void destroy() { delete this; }
@@ -68,37 +122,4 @@ public:
 
 protected:
 	VkResult _configurationResult = VK_SUCCESS;
-};
-
-
-#pragma mark -
-#pragma mark MVKDispatchableObject
-
-/** Abstract class that represents an object that can be used as a Vulkan API dispatchable object. */
-class MVKDispatchableObject : public MVKConfigurableObject {
-
-    typedef struct {
-        VK_LOADER_DATA loaderData;
-        MVKDispatchableObject* mvkObject;
-    } MVKDispatchableObjectICDRef;
-
-public:
-
-    /**
-     * Returns a reference to this object suitable for use as a Vulkan API handle.
-     * This is the compliment of the getDispatchableObject() method.
-     */
-    inline void* getVkHandle() { return &_icdRef; }
-
-    /**
-     * Retrieves the MVKDispatchableObject instance referenced by the dispatchable Vulkan handle.
-     * This is the compliment of the getVkHandle() method.
-     */
-    static inline MVKDispatchableObject* getDispatchableObject(void* vkHandle) {
-		return vkHandle ? ((MVKDispatchableObjectICDRef*)vkHandle)->mvkObject : nullptr;
-    }
-
-protected:
-    MVKDispatchableObjectICDRef _icdRef = { ICD_LOADER_MAGIC, this };
-
 };

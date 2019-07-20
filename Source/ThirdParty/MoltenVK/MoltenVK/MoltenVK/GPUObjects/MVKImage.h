@@ -1,7 +1,7 @@
 /*
  * MVKImage.h
  *
- * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,8 +20,8 @@
 
 #include "MVKResource.h"
 #include "MVKSync.h"
+#include "MVKVector.h"
 #include <mutex>
-#include <list>
 
 #import <IOSurface/IOSurfaceRef.h>
 
@@ -47,6 +47,12 @@ typedef struct {
 class MVKImage : public MVKResource {
 
 public:
+
+	/** Returns the Vulkan type of this object. */
+	VkObjectType getVkObjectType() override { return VK_OBJECT_TYPE_IMAGE; }
+
+	/** Returns the debug report object type of this object. */
+	VkDebugReportObjectTypeEXT getVkDebugReportObjectType() override { return VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_EXT; }
 
 	/** Returns the Vulkan image type of this image. */
     VkImageType getImageType();
@@ -192,7 +198,12 @@ public:
 	/** Returns the Metal CPU cache mode used by this image. */
 	inline MTLCPUCacheMode getMTLCPUCacheMode() { return _deviceMemory->getMTLCPUCacheMode(); }
 
-	
+	/** 
+	 * Returns whether the memory is automatically coherent between device and host. 
+	 * On macOS, this always returns false because textures cannot use Shared storage mode.
+	 */
+	bool isMemoryHostCoherent();
+
 #pragma mark Construction
 
 	MVKImage(MVKDevice* device, const VkImageCreateInfo* pCreateInfo);
@@ -204,7 +215,11 @@ protected:
 	friend class MVKImageView;
 	using MVKResource::needsHostReadSync;
 
+	void propogateDebugName() override;
 	MVKImageSubresource* getSubresource(uint32_t mipLevel, uint32_t arrayLayer);
+	void validateConfig(const VkImageCreateInfo* pCreateInfo);
+	VkSampleCountFlagBits validateSamples(const VkImageCreateInfo* pCreateInfo);
+	uint32_t validateMipLevels(const VkImageCreateInfo* pCreateInfo);
 	bool validateLinear(const VkImageCreateInfo* pCreateInfo);
 	bool validateUseTexelBuffer();
 	void initSubresources(const VkImageCreateInfo* pCreateInfo);
@@ -238,6 +253,7 @@ protected:
     bool _hasExpectedTexelSize;
 	bool _usesTexelBuffer;
 	bool _isLinear;
+	bool _is3DCompressed;
 };
 
 
@@ -245,10 +261,15 @@ protected:
 #pragma mark MVKImageView
 
 /** Represents a Vulkan image view. */
-class MVKImageView : public MVKRefCountedDeviceObject {
+class MVKImageView : public MVKVulkanAPIDeviceObject {
 
 public:
 
+	/** Returns the Vulkan type of this object. */
+	VkObjectType getVkObjectType() override { return VK_OBJECT_TYPE_IMAGE_VIEW; }
+
+	/** Returns the debug report object type of this object. */
+	VkDebugReportObjectTypeEXT getVkDebugReportObjectType() override { return VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_VIEW_EXT; }
 
 #pragma mark Metal
 
@@ -279,17 +300,20 @@ public:
 
 #pragma mark Construction
 
-	MVKImageView(MVKDevice* device, const VkImageViewCreateInfo* pCreateInfo);
+	MVKImageView(MVKDevice* device,
+				 const VkImageViewCreateInfo* pCreateInfo,
+				 const MVKConfiguration* pAltMVKConfig = nullptr);
 
 	~MVKImageView() override;
 
 protected:
+	void propogateDebugName() override;
 	id<MTLTexture> newMTLTexture();
 	void initMTLTextureViewSupport();
-    MTLPixelFormat getSwizzledMTLPixelFormat(VkFormat format, VkComponentMapping components, bool& useSwizzle);
-    bool matchesSwizzle(VkComponentMapping components, VkComponentMapping pattern);
-    const char* getSwizzleName(VkComponentSwizzle swizzle);
-    uint32_t packSwizzle(VkComponentMapping components);
+    MTLPixelFormat getSwizzledMTLPixelFormat(VkFormat format,
+											 VkComponentMapping components,
+											 bool& useSwizzle,
+											 const MVKConfiguration* pMVKConfig);
 	void validateImageViewConfig(const VkImageViewCreateInfo* pCreateInfo);
 
     MVKImage* _image;
@@ -308,9 +332,15 @@ protected:
 #pragma mark MVKSampler
 
 /** Represents a Vulkan sampler. */
-class MVKSampler : public MVKRefCountedDeviceObject {
+class MVKSampler : public MVKVulkanAPIDeviceObject {
 
 public:
+
+	/** Returns the Vulkan type of this object. */
+	VkObjectType getVkObjectType() override { return VK_OBJECT_TYPE_SAMPLER; }
+
+	/** Returns the debug report object type of this object. */
+	VkDebugReportObjectTypeEXT getVkDebugReportObjectType() override { return VK_DEBUG_REPORT_OBJECT_TYPE_SAMPLER_EXT; }
 
 	/** Returns the Metal sampler state. */
 	inline id<MTLSamplerState> getMTLSamplerState() { return _mtlSamplerState; }
@@ -320,6 +350,7 @@ public:
 	~MVKSampler() override;
 
 protected:
+	void propogateDebugName() override {}
 	MTLSamplerDescriptor* getMTLSamplerDescriptor(const VkSamplerCreateInfo* pCreateInfo);
 
 	id<MTLSamplerState> _mtlSamplerState;
@@ -345,6 +376,9 @@ typedef struct MVKSwapchainImageAvailability_t {
 class MVKSwapchainImage : public MVKImage {
 
 public:
+
+	/** Returns the encompassing swapchain. */
+	inline MVKSwapchain* getSwapchain() { return _swapchain; }
 
 	/** Returns the index of this image within the encompassing swapchain. */
 	inline uint32_t getSwapchainIndex() { return _swapchainIndex; }
@@ -378,7 +412,8 @@ public:
 	/** Constructs an instance for the specified device and swapchain. */
 	MVKSwapchainImage(MVKDevice* device,
 					  const VkImageCreateInfo* pCreateInfo,
-					  MVKSwapchain* swapchain);
+					  MVKSwapchain* swapchain,
+					  uint32_t swapchainIndex);
 
 	~MVKSwapchainImage() override;
 
@@ -397,7 +432,7 @@ protected:
 	uint32_t _swapchainIndex;
 	id<CAMetalDrawable> _mtlDrawable;
 	std::mutex _availabilityLock;
-	std::list<MVKSwapchainSignaler> _availabilitySignalers;
+	MVKVectorInline<MVKSwapchainSignaler, 4> _availabilitySignalers;
 	MVKSwapchainSignaler _preSignaled;
 	MVKSwapchainImageAvailability _availability;
 };

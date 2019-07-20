@@ -1,7 +1,7 @@
 /*
  * MVKSync.h
  *
- * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@
 #pragma once
 
 #include "MVKDevice.h"
+#include <atomic>
 #include <mutex>
 #include <condition_variable>
 #include <unordered_set>
@@ -43,6 +44,9 @@ class MVKSemaphoreImpl : public MVKBaseObject {
 
 public:
 
+	/** Returns nil as this object has no need to track the Vulkan object. */
+	MVKVulkanAPIObject* getVulkanAPIObject() override { return nullptr; };
+
 	/**
 	 * Adds a reservation to this semaphore, incrementing the reservation count.
 	 * Subsequent calls to a wait() function will block until a corresponding call
@@ -53,8 +57,9 @@ public:
 	/**
 	 * Depending on configuration, releases one or all reservations. When all reservations
 	 * have been released, unblocks all waiting threads to continue processing.
+	 * Returns true if the last reservation was released.
 	 */
-	void release();
+	bool release();
 
 	/**
 	 * Blocks processing on the current thread until any or all (depending on configuration) outstanding
@@ -84,10 +89,12 @@ public:
     MVKSemaphoreImpl(bool waitAll = true, uint32_t reservationCount = 0)
         : _shouldWaitAll(waitAll), _reservationCount(reservationCount) {}
 
+    /** Destructor. */
+    ~MVKSemaphoreImpl();
+
 
 private:
 	bool operator()();
-    inline void reserveImpl() { _reservationCount++; }          // Not thread-safe
     inline bool isClear() { return _reservationCount == 0; }    // Not thread-safe
 
 	std::mutex _lock;
@@ -101,9 +108,15 @@ private:
 #pragma mark MVKSemaphore
 
 /** Represents a Vulkan semaphore. */
-class MVKSemaphore : public MVKRefCountedDeviceObject {
+class MVKSemaphore : public MVKVulkanAPIDeviceObject {
 
 public:
+
+	/** Returns the Vulkan type of this object. */
+	VkObjectType getVkObjectType() override { return VK_OBJECT_TYPE_SEMAPHORE; }
+
+	/** Returns the debug report object type of this object. */
+	VkDebugReportObjectTypeEXT getVkDebugReportObjectType() override { return VK_DEBUG_REPORT_OBJECT_TYPE_SEMAPHORE_EXT; }
 
 	/** 
 	 * Blocks processing on the current thread until this semaphore is 
@@ -118,14 +131,25 @@ public:
 	/** Signals the semaphore. Unblocks all waiting threads to continue processing. */
 	void signal();
 
+	/** Encodes an operation to block command buffer operation until this semaphore is signaled. */
+	void encodeWait(id<MTLCommandBuffer> cmdBuff);
+
+	/** Encodes an operation to signal the semaphore. */
+	void encodeSignal(id<MTLCommandBuffer> cmdBuff);
+
 
 #pragma mark Construction
 
-    MVKSemaphore(MVKDevice* device, const VkSemaphoreCreateInfo* pCreateInfo)
-        : MVKRefCountedDeviceObject(device), _blocker(false, 1) {}
+    MVKSemaphore(MVKDevice* device, const VkSemaphoreCreateInfo* pCreateInfo);
+
+    ~MVKSemaphore() override;
 
 protected:
+	void propogateDebugName() override {}
+
 	MVKSemaphoreImpl _blocker;
+	id<MTLEvent> _mtlEvent;
+	std::atomic<uint64_t> _mtlEventValue;
 };
 
 
@@ -133,9 +157,15 @@ protected:
 #pragma mark MVKFence
 
 /** Represents a Vulkan fence. */
-class MVKFence : public MVKRefCountedDeviceObject {
+class MVKFence : public MVKVulkanAPIDeviceObject {
 
 public:
+
+	/** Returns the Vulkan type of this object. */
+	VkObjectType getVkObjectType() override { return VK_OBJECT_TYPE_FENCE; }
+
+	/** Returns the debug report object type of this object. */
+	VkDebugReportObjectTypeEXT getVkDebugReportObjectType() override { return VK_DEBUG_REPORT_OBJECT_TYPE_FENCE_EXT; }
 
 	/**
 	 * If this fence has not been signaled yet, adds the specified fence sitter to the
@@ -166,12 +196,11 @@ public:
 	
 #pragma mark Construction
 
-    MVKFence(MVKDevice* device, const VkFenceCreateInfo* pCreateInfo) : MVKRefCountedDeviceObject(device),
-    _isSignaled(mvkAreFlagsEnabled(pCreateInfo->flags, VK_FENCE_CREATE_SIGNALED_BIT)) {}
-
-	~MVKFence() override;
+    MVKFence(MVKDevice* device, const VkFenceCreateInfo* pCreateInfo) :
+		MVKVulkanAPIDeviceObject(device), _isSignaled(mvkAreFlagsEnabled(pCreateInfo->flags, VK_FENCE_CREATE_SIGNALED_BIT)) {}
 
 protected:
+	void propogateDebugName() override {}
 	void notifySitters();
 
 	std::mutex _lock;
@@ -188,8 +217,11 @@ class MVKFenceSitter : public MVKBaseObject {
 
 public:
 
+	/** This is a temporarily instantiated helper class. */
+	MVKVulkanAPIObject* getVulkanAPIObject() override { return nullptr; }
+
 	/**
-	 * If this instance has been configured to wait for fences, blocks processing on the 
+	 * If this instance has been configured to wait for fences, blocks processing on the
 	 * current thread until any or all of the fences that this instance is waiting for are
 	 * signaled, or until the specified timeout in nanoseconds expires. If this instance
 	 * has not been configured to wait for fences, this function immediately returns true.
@@ -198,25 +230,19 @@ public:
 	 *
 	 * Returns true if the required fences were triggered, or false if the timeout interval expired.
 	 */
-	bool wait(uint64_t timeout = UINT64_MAX);
+	bool wait(uint64_t timeout = UINT64_MAX) { return _blocker.wait(timeout); }
 
 
 #pragma mark Construction
 
-	/** Constructs an instance with the specified type of waiting. */
-	MVKFenceSitter(bool waitAll = true) : _blocker(waitAll, 0) {}
-
-	~MVKFenceSitter() override;
+	MVKFenceSitter(bool waitAll) : _blocker(waitAll, 0) {}
 
 private:
 	friend class MVKFence;
 
-	void addUnsignaledFence(MVKFence* fence);
-	void fenceSignaled(MVKFence* fence);
-	void getUnsignaledFences(std::vector<MVKFence*>& fences);
+	void awaitFence(MVKFence* fence) { _blocker.reserve(); }
+	void fenceSignaled(MVKFence* fence) { _blocker.release(); }
 
-	std::mutex _lock;
-	std::unordered_set<MVKFence*> _unsignaledFences;
 	MVKSemaphoreImpl _blocker;
 };
 
@@ -231,7 +257,8 @@ VkResult mvkResetFences(uint32_t fenceCount, const VkFence* pFences);
  * Blocks the current thread until any or all of the specified 
  * fences have been signaled, or the specified timeout occurs.
  */
-VkResult mvkWaitForFences(uint32_t fenceCount,
+VkResult mvkWaitForFences(MVKDevice* device,
+						  uint32_t fenceCount,
 						  const VkFence* pFences,
 						  VkBool32 waitAll,
 						  uint64_t timeout = UINT64_MAX);
@@ -246,9 +273,12 @@ VkResult mvkWaitForFences(uint32_t fenceCount,
  *
  * Instances of this class are one-shot, and can only be used for a single compilation.
  */
-class MVKMetalCompiler : public MVKBaseDeviceObject {
+class MVKMetalCompiler : public MVKBaseObject {
 
 public:
+
+	/** Returns the Vulkan API opaque object controlling this object. */
+	MVKVulkanAPIObject* getVulkanAPIObject() override { return _owner->getVulkanAPIObject(); };
 
 	/** If this object is waiting for compilation to complete, deletion will be deferred until then. */
 	void destroy() override;
@@ -256,7 +286,7 @@ public:
 
 #pragma mark Construction
 
-	MVKMetalCompiler(MVKDevice* device) : MVKBaseDeviceObject(device) {}
+	MVKMetalCompiler(MVKVulkanAPIDeviceObject* owner) : _owner(owner) {}
 
 	~MVKMetalCompiler() override;
 
@@ -266,6 +296,7 @@ protected:
 	bool endCompile(NSError* compileError);
 	bool markDestroyed();
 
+	MVKVulkanAPIDeviceObject* _owner;
 	NSError* _compileError = nil;
 	uint64_t _startTime = 0;
 	bool _isCompileDone = false;

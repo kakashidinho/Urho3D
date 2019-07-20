@@ -1,7 +1,7 @@
 /*
  * MVKCmdRenderPass.mm
  *
- * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@
 #include "MVKRenderPass.h"
 #include "MVKPipeline.h"
 #include "MVKFoundation.h"
-#include "mvk_datatypes.h"
+#include "mvk_datatypes.hpp"
 
 
 #pragma mark -
@@ -34,6 +34,8 @@ void MVKCmdBeginRenderPass::setContent(const VkRenderPassBeginInfo* pRenderPassB
 	_contents = contents;
 	_renderPass = (MVKRenderPass*)_info.renderPass;
 	_framebuffer = (MVKFramebuffer*)_info.framebuffer;
+    _loadOverride = false;
+    _storeOverride = false;
 
 	// Add clear values
 	_clearValues.clear();	// Clear for reuse
@@ -45,7 +47,7 @@ void MVKCmdBeginRenderPass::setContent(const VkRenderPassBeginInfo* pRenderPassB
 
 void MVKCmdBeginRenderPass::encode(MVKCommandEncoder* cmdEncoder) {
 //	MVKLogDebug("Encoding vkCmdBeginRenderPass(). Elapsed time: %.6f ms.", mvkGetElapsedMilliseconds());
-	cmdEncoder->beginRenderpass(_contents, _renderPass, _framebuffer, _info.renderArea, &_clearValues);
+	cmdEncoder->beginRenderpass(_contents, _renderPass, _framebuffer, _info.renderArea, &_clearValues, _loadOverride, _storeOverride);
 }
 
 MVKCmdBeginRenderPass::MVKCmdBeginRenderPass(MVKCommandTypePool<MVKCmdBeginRenderPass>* pool)
@@ -72,7 +74,7 @@ MVKCmdNextSubpass::MVKCmdNextSubpass(MVKCommandTypePool<MVKCmdNextSubpass>* pool
 
 void MVKCmdEndRenderPass::encode(MVKCommandEncoder* cmdEncoder) {
 //	MVKLogDebug("Encoding vkCmdEndRenderPass(). Elapsed time: %.6f ms.", mvkGetElapsedMilliseconds());
-	cmdEncoder->endMetalRenderEncoding();
+	cmdEncoder->endRenderpass();
 }
 
 MVKCmdEndRenderPass::MVKCmdEndRenderPass(MVKCommandTypePool<MVKCmdEndRenderPass>* pool)
@@ -147,9 +149,8 @@ void MVKCmdSetLineWidth::setContent(float lineWidth) {
     _lineWidth = lineWidth;
 
     // Validate
-    clearConfigurationResult();
-    if (_lineWidth != 1.0 || getDevice()->_pFeatures->wideLines) {
-        setConfigurationResult(mvkNotifyErrorWithText(VK_ERROR_FEATURE_NOT_PRESENT, "vkCmdSetLineWidth(): The current device does not support wide lines."));
+    if (_lineWidth != 1.0 || getDevice()->_enabledFeatures.wideLines) {
+        setConfigurationResult(reportError(VK_ERROR_FEATURE_NOT_PRESENT, "vkCmdSetLineWidth(): The current device does not support wide lines."));
     }
 }
 
@@ -206,9 +207,8 @@ void MVKCmdSetDepthBounds::setContent(float minDepthBounds, float maxDepthBounds
     _maxDepthBounds = maxDepthBounds;
 
     // Validate
-    clearConfigurationResult();
-    if (getDevice()->_pFeatures->depthBounds) {
-        setConfigurationResult(mvkNotifyErrorWithText(VK_ERROR_FEATURE_NOT_PRESENT, "vkCmdSetDepthBounds(): The current device does not support setting depth bounds."));
+    if (getDevice()->_enabledFeatures.depthBounds) {
+        setConfigurationResult(reportError(VK_ERROR_FEATURE_NOT_PRESENT, "vkCmdSetDepthBounds(): The current device does not support setting depth bounds."));
     }
 }
 
@@ -277,6 +277,7 @@ void mvkCmdBeginRenderPass(MVKCommandBuffer* cmdBuff,
 						   VkSubpassContents contents) {
 	MVKCmdBeginRenderPass* cmd = cmdBuff->_commandPool->_cmdBeginRenderPassPool.acquireObject();
 	cmd->setContent(pRenderPassBegin, contents);
+	cmdBuff->recordBeginRenderPass(cmd);
 	cmdBuff->addCommand(cmd);
 }
 
@@ -288,6 +289,7 @@ void mvkCmdNextSubpass(MVKCommandBuffer* cmdBuff, VkSubpassContents contents) {
 
 void mvkCmdEndRenderPass(MVKCommandBuffer* cmdBuff) {
 	MVKCmdEndRenderPass* cmd = cmdBuff->_commandPool->_cmdEndRenderPassPool.acquireObject();
+	cmdBuff->recordEndRenderPass(cmd);
 	cmdBuff->addCommand(cmd);
 }
 

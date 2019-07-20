@@ -1,7 +1,7 @@
 /*
  * MVKDeviceMemory.h
  *
- * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@
 
 #include "MVKDevice.h"
 #include <vector>
+#include <mutex>
 
 #import <Metal/Metal.h>
 
@@ -30,9 +31,15 @@ class MVKImage;
 #pragma mark MVKDeviceMemory
 
 /** Represents a Vulkan device-space memory allocation. */
-class MVKDeviceMemory : public MVKBaseDeviceObject {
+class MVKDeviceMemory : public MVKVulkanAPIDeviceObject {
 
 public:
+
+	/** Returns the Vulkan type of this object. */
+	VkObjectType getVkObjectType() override { return VK_OBJECT_TYPE_DEVICE_MEMORY; }
+
+	/** Returns the debug report object type of this object. */
+	VkDebugReportObjectTypeEXT getVkDebugReportObjectType() override { return VK_DEBUG_REPORT_OBJECT_TYPE_DEVICE_MEMORY_EXT; }
 
 	/** Returns whether the memory is accessible from the host. */
     inline bool isMemoryHostAccessible() {
@@ -110,6 +117,7 @@ protected:
 	friend MVKBuffer;
 	friend MVKImage;
 
+	void propogateDebugName() override;
 	VkDeviceSize adjustMemorySize(VkDeviceSize size, VkDeviceSize offset);
 	VkResult addBuffer(MVKBuffer* mvkBuff);
 	void removeBuffer(MVKBuffer* mvkBuff);

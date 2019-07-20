@@ -1,7 +1,7 @@
 /*
  * GLSLConversion.h
  *
- * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,14 +32,14 @@ extern "C" {
 
 /** Enumeration of the pipeline stages for which a shader can be compiled. */
 typedef enum {
-	kMVKShaderStageAuto,
-	kMVKShaderStageVertex,
-	kMVKShaderStageTessControl,
-	kMVKShaderStageTessEval,
-	kMVKShaderStageGeometry,
-	kMVKShaderStageFragment,
-	kMVKShaderStageCompute,
-} MVKShaderStage;
+	kMVKGLSLConversionShaderStageAuto,
+	kMVKGLSLConversionShaderStageVertex,
+	kMVKGLSLConversionShaderStageTessControl,
+	kMVKGLSLConversionShaderStageTessEval,
+	kMVKGLSLConversionShaderStageGeometry,
+	kMVKGLSLConversionShaderStageFragment,
+	kMVKGLSLConversionShaderStageCompute,
+} MVKGLSLConversionShaderStage;
 
 
 /**
@@ -63,7 +63,7 @@ typedef enum {
  * should be logged to the converter results log. This can be useful during shader debugging.
  */
 bool mvkConvertGLSLToSPIRV(const char* glslSource,
-                           MVKShaderStage shaderStage,
+                           MVKGLSLConversionShaderStage shaderStage,
                            uint32_t** pSPIRVCode,
                            size_t *pSPIRVLength,
                            char** pResultLog,
@@ -90,7 +90,7 @@ bool mvkConvertGLSLToSPIRV(const char* glslSource,
  * should be logged to the converter results log. This can be useful during shader debugging.
  */
 bool mvkConvertGLSLFileToSPIRV(const char* glslFilepath,
-                               MVKShaderStage shaderStage,
+                               MVKGLSLConversionShaderStage shaderStage,
                                uint32_t** pSPIRVCode,
                                size_t *pSPIRVLength,
                                char** pResultLog,

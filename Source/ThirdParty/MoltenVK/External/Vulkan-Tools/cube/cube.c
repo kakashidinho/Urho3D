@@ -60,8 +60,8 @@
 #define BILLION 1000000000L
 
 #define DEMO_TEXTURE_COUNT 1
-#define APP_SHORT_NAME "cube"
-#define APP_LONG_NAME "The Vulkan Cube Demo Program"
+#define APP_SHORT_NAME "vkcube"
+#define APP_LONG_NAME "Vulkan Cube"
 
 // Allow a maximum of two outstanding presentation operations.
 #define FRAME_LAG 2
@@ -99,20 +99,20 @@ void DbgMsg(char *fmt, ...) {
 #include <android/log.h>
 #define ERR_EXIT(err_msg, err_class)                                    \
     do {                                                                \
-        ((void)__android_log_print(ANDROID_LOG_INFO, "Cube", err_msg)); \
+        ((void)__android_log_print(ANDROID_LOG_INFO, "Vulkan Cube", err_msg)); \
         exit(1);                                                        \
     } while (0)
 #ifdef VARARGS_WORKS_ON_ANDROID
 void DbgMsg(const char *fmt, ...) {
     va_list va;
     va_start(va, fmt);
-    __android_log_print(ANDROID_LOG_INFO, "Cube", fmt, va);
+    __android_log_print(ANDROID_LOG_INFO, "Vulkan Cube", fmt, va);
     va_end(va);
 }
 #else  // VARARGS_WORKS_ON_ANDROID
 #define DbgMsg(fmt, ...)                                                           \
     do {                                                                           \
-        ((void)__android_log_print(ANDROID_LOG_INFO, "Cube", fmt, ##__VA_ARGS__)); \
+        ((void)__android_log_print(ANDROID_LOG_INFO, "Vulkan Cube", fmt, ##__VA_ARGS__)); \
     } while (0)
 #endif  // VARARGS_WORKS_ON_ANDROID
 #else
@@ -1084,6 +1084,9 @@ static void demo_draw(struct demo *demo) {
         .pImageIndices = &demo->current_buffer,
     };
 
+    VkRectLayerKHR rect;
+    VkPresentRegionKHR region;
+    VkPresentRegionsKHR regions;
     if (demo->VK_KHR_incremental_present_enabled) {
         // If using VK_KHR_incremental_present, we provide a hint of the region
         // that contains changed content relative to the previously-presented
@@ -1093,23 +1096,20 @@ static void demo_draw(struct demo *demo) {
         // ensure that the entire image has the correctly-drawn content.
         uint32_t eighthOfWidth = demo->width / 8;
         uint32_t eighthOfHeight = demo->height / 8;
-        VkRectLayerKHR rect = {
-            .offset.x = eighthOfWidth,
-            .offset.y = eighthOfHeight,
-            .extent.width = eighthOfWidth * 6,
-            .extent.height = eighthOfHeight * 6,
-            .layer = 0,
-        };
-        VkPresentRegionKHR region = {
-            .rectangleCount = 1,
-            .pRectangles = &rect,
-        };
-        VkPresentRegionsKHR regions = {
-            .sType = VK_STRUCTURE_TYPE_PRESENT_REGIONS_KHR,
-            .pNext = present.pNext,
-            .swapchainCount = present.swapchainCount,
-            .pRegions = &region,
-        };
+
+        rect.offset.x = eighthOfWidth;
+        rect.offset.y = eighthOfHeight;
+        rect.extent.width = eighthOfWidth * 6;
+        rect.extent.height = eighthOfHeight * 6;
+        rect.layer = 0;
+
+        region.rectangleCount = 1;
+        region.pRectangles = &rect;
+
+        regions.sType = VK_STRUCTURE_TYPE_PRESENT_REGIONS_KHR;
+        regions.pNext = present.pNext;
+        regions.swapchainCount = present.swapchainCount;
+        regions.pRegions = &region;
         present.pNext = &regions;
     }
 
@@ -1379,6 +1379,10 @@ static void demo_prepare_buffers(struct demo *demo) {
         demo->refresh_duration_multiplier = 1;
         demo->prev_desired_present_time = 0;
         demo->next_present_id = 1;
+    }
+
+    if (NULL != swapchainImages) {
+        free(swapchainImages);
     }
 
     if (NULL != presentModes) {
@@ -2397,7 +2401,7 @@ static void demo_run(struct demo *demo) {
 
     demo_draw(demo);
     demo->curFrame++;
-    if (demo->frameCount != INT_MAX && demo->curFrame == demo->frameCount) {
+    if (demo->frameCount != INT32_MAX && demo->curFrame == demo->frameCount) {
         PostQuitMessage(validation_error);
     }
 }
@@ -2431,6 +2435,22 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
                 demo_resize(&demo);
             }
             break;
+        case WM_KEYDOWN:
+            switch (wParam) {
+                case VK_ESCAPE:
+                    PostQuitMessage(validation_error);
+                    break;
+                case VK_LEFT:
+                    demo.spin_angle -= demo.spin_increment;
+                    break;
+                case VK_RIGHT:
+                    demo.spin_angle += demo.spin_increment;
+                    break;
+                case VK_SPACE:
+                    demo.pause = !demo.pause;
+                    break;
+            }
+            return 0;
         default:
             break;
     }
@@ -2902,47 +2922,28 @@ static void demo_init_vk(struct demo *demo) {
     VkResult err;
     uint32_t instance_extension_count = 0;
     uint32_t instance_layer_count = 0;
-    uint32_t validation_layer_count = 0;
-    char **instance_validation_layers = NULL;
+    char *instance_validation_layers[] = {"VK_LAYER_KHRONOS_validation"};
     demo->enabled_extension_count = 0;
     demo->enabled_layer_count = 0;
     demo->is_minimized = false;
     demo->cmd_pool = VK_NULL_HANDLE;
 
-    char *instance_validation_layers_alt1[] = {"VK_LAYER_LUNARG_standard_validation"};
-
-    char *instance_validation_layers_alt2[] = {"VK_LAYER_GOOGLE_threading", "VK_LAYER_LUNARG_parameter_validation",
-                                               "VK_LAYER_LUNARG_object_tracker", "VK_LAYER_LUNARG_core_validation",
-                                               "VK_LAYER_GOOGLE_unique_objects"};
-
-    /* Look for validation layers */
+    // Look for validation layers
     VkBool32 validation_found = 0;
     if (demo->validate) {
         err = vkEnumerateInstanceLayerProperties(&instance_layer_count, NULL);
         assert(!err);
 
-        instance_validation_layers = instance_validation_layers_alt1;
         if (instance_layer_count > 0) {
             VkLayerProperties *instance_layers = malloc(sizeof(VkLayerProperties) * instance_layer_count);
             err = vkEnumerateInstanceLayerProperties(&instance_layer_count, instance_layers);
             assert(!err);
 
-            validation_found = demo_check_layers(ARRAY_SIZE(instance_validation_layers_alt1), instance_validation_layers,
+            validation_found = demo_check_layers(ARRAY_SIZE(instance_validation_layers), instance_validation_layers,
                                                  instance_layer_count, instance_layers);
             if (validation_found) {
-                demo->enabled_layer_count = ARRAY_SIZE(instance_validation_layers_alt1);
-                demo->enabled_layers[0] = "VK_LAYER_LUNARG_standard_validation";
-                validation_layer_count = 1;
-            } else {
-                // use alternative set of validation layers
-                instance_validation_layers = instance_validation_layers_alt2;
-                demo->enabled_layer_count = ARRAY_SIZE(instance_validation_layers_alt2);
-                validation_found = demo_check_layers(ARRAY_SIZE(instance_validation_layers_alt2), instance_validation_layers,
-                                                     instance_layer_count, instance_layers);
-                validation_layer_count = ARRAY_SIZE(instance_validation_layers_alt2);
-                for (uint32_t i = 0; i < validation_layer_count; i++) {
-                    demo->enabled_layers[i] = instance_validation_layers[i];
-                }
+                demo->enabled_layer_count = ARRAY_SIZE(instance_validation_layers);
+                demo->enabled_layers[0] = "VK_LAYER_KHRONOS_validation";
             }
             free(instance_layers);
         }
@@ -3476,6 +3477,7 @@ static void demo_init_vk_swapchain(struct demo *demo) {
         demo->format = surfFormats[0].format;
     }
     demo->color_space = surfFormats[0].colorSpace;
+    free(surfFormats);
 
     demo->quit = false;
     demo->curFrame = 0;
@@ -3707,7 +3709,7 @@ static void demo_init(struct demo *demo, int argc, char **argv) {
         }
 
 #if defined(ANDROID)
-        ERR_EXIT("Usage: cube [--validate]\n", "Usage");
+        ERR_EXIT("Usage: vkcube [--validate]\n", "Usage");
 #else
         fprintf(stderr,
                 "Usage:\n  %s\t[--use_staging] [--validate] [--validate-checks-disabled] [--break]\n"
@@ -3798,7 +3800,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine,
     }
 
     demo.connection = hInstance;
-    strncpy(demo.name, "cube", APP_NAME_STR_LEN);
+    strncpy(demo.name, "Vulkan Cube", APP_NAME_STR_LEN);
     demo_create_window(&demo);
     demo_init_vk_swapchain(&demo);
 
@@ -3808,6 +3810,15 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine,
 
     // main message loop
     while (!done) {
+        if (demo.pause) {
+            const BOOL succ = WaitMessage();
+
+            if (!succ) {
+                struct demo *tmp = &demo;
+                struct demo *demo = tmp;
+                ERR_EXIT("WaitMessage() failed on paused demo", "event loop error");
+            }
+        }
         PeekMessage(&msg, NULL, 0, 0, PM_REMOVE);
         if (msg.message == WM_QUIT)  // check for a quit message
         {

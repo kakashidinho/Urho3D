@@ -1,7 +1,7 @@
 /*
  * MVKSwapchain.h
  *
- * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,13 +24,21 @@
 class MVKSwapchainImage;
 class MVKWatermark;
 
+@class MVKBlockObserver;
+
 
 #pragma mark MVKSwapchain
 
 /** Represents a Vulkan swapchain. */
-class MVKSwapchain : public MVKBaseDeviceObject {
+class MVKSwapchain : public MVKVulkanAPIDeviceObject {
 
 public:
+
+	/** Returns the Vulkan type of this object. */
+	VkObjectType getVkObjectType() override { return VK_OBJECT_TYPE_SWAPCHAIN_KHR; }
+
+	/** Returns the debug report object type of this object. */
+	VkDebugReportObjectTypeEXT getVkDebugReportObjectType() override { return VK_DEBUG_REPORT_OBJECT_TYPE_SWAPCHAIN_KHR_EXT; }
 
 	/** Returns the number of images in this swapchain. */
 	uint32_t getImageCount();
@@ -57,10 +65,14 @@ public:
 	VkResult acquireNextImageKHR(uint64_t timeout,
 								 VkSemaphore semaphore,
 								 VkFence fence,
+								 uint32_t deviceMask,
 								 uint32_t* pImageIndex);
 
 	/** Returns whether the surface size has changed since the last time this function was called. */
 	bool getHasSurfaceSizeChanged();
+
+	/** Returns whether the parent surface is now lost and this swapchain must be recreated. */
+	bool getIsSurfaceLost() { return _surfaceLost; }
 
 	/** Returns the specified performance stats structure. */
 	const MVKSwapchainPerformance* getPerformanceStatistics() { return &_performanceStatistics; }
@@ -87,8 +99,9 @@ public:
 protected:
 	friend class MVKSwapchainImage;
 
-	void initCAMetalLayer(const VkSwapchainCreateInfoKHR* pCreateInfo);
-	void initSurfaceImages(const VkSwapchainCreateInfoKHR* pCreateInfo);
+	void propogateDebugName() override;
+	void initCAMetalLayer(const VkSwapchainCreateInfoKHR* pCreateInfo, uint32_t imgCnt);
+	void initSurfaceImages(const VkSwapchainCreateInfoKHR* pCreateInfo, uint32_t imgCnt);
     void initFrameIntervalTracking();
 	void releaseUndisplayedSurfaces();
 	uint64_t getNextAcquisitionID();
@@ -105,5 +118,7 @@ protected:
     uint64_t _lastFrameTime;
     double _averageFrameIntervalFilterAlpha;
     uint32_t _currentPerfLogFrameCount;
+    std::atomic<bool> _surfaceLost;
+    MVKBlockObserver* _layerObserver;
 };
 

@@ -1,7 +1,7 @@
 /*
  * MTLRenderPassDescriptor+MoltenVK.m
  *
- * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@
 
 
 #include "MTLRenderPassDescriptor+MoltenVK.h"
-#include "MVKCommonEnvironment.h"
+#include "MVKEnvironment.h"
 
 @implementation MTLRenderPassDescriptor (MoltenVK)
 
@@ -28,6 +28,9 @@
 	return self.renderTargetArrayLength;
 #endif
 #if MVK_IOS
+	if ( [self respondsToSelector: @selector(renderTargetArrayLength)] ) {
+		return self.renderTargetArrayLength;
+	}
 	return 0;
 #endif
 
@@ -37,6 +40,11 @@
 
 #if MVK_MACOS
 	self.renderTargetArrayLength = length;
+#endif
+#if MVK_IOS
+	if ( [self respondsToSelector: @selector(setRenderTargetArrayLength:)] ) {
+		self.renderTargetArrayLength = length;
+	}
 #endif
 
 }

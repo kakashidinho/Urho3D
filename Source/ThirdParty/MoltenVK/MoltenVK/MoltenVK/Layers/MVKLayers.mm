@@ -1,7 +1,7 @@
 /*
  * MVKLayers.mm
  *
- * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -60,7 +60,7 @@ VkResult MVKLayer::getExtensionProperties(uint32_t* pCount, VkExtensionPropertie
 
 #pragma mark Object Creation
 
-MVKLayer::MVKLayer() : _supportedExtensions(true) {
+MVKLayer::MVKLayer() : _supportedExtensions(nullptr, true) {
 
 	// The core driver layer
 	memset(_layerProperties.layerName, 0, sizeof(_layerProperties.layerName));
@@ -100,7 +100,7 @@ VkResult MVKLayerManager::getLayerProperties(uint32_t* pCount, VkLayerProperties
 
 	// Othewise, determine how many layers we'll return, and return that count
 	uint32_t layerCnt = (uint32_t)_layers.size();
-	VkResult result = (*pCount <= layerCnt) ? VK_SUCCESS : VK_INCOMPLETE;
+	VkResult result = (*pCount >= layerCnt) ? VK_SUCCESS : VK_INCOMPLETE;
 	*pCount = min(layerCnt, *pCount);
 
 	// Now populate the layer properties
@@ -116,7 +116,7 @@ VkResult MVKLayerManager::getLayerProperties(uint32_t* pCount, VkLayerProperties
 
 // Populate the layers
 MVKLayerManager::MVKLayerManager() {
-	_layers.push_back(MVKLayer());
+	_layers.emplace_back();
 }
 
 static mutex _lock;

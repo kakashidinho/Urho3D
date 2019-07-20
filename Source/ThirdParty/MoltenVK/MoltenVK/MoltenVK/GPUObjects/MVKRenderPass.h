@@ -1,7 +1,7 @@
 /*
  * MVKRenderPass.h
  *
- * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@
 #pragma once
 
 #include "MVKDevice.h"
+#include "MVKVector.h"
 #include <vector>
 
 #import <Metal/Metal.h>
@@ -34,6 +35,10 @@ class MVKFramebuffer;
 class MVKRenderSubpass : public MVKBaseObject {
 
 public:
+
+
+	/** Returns the Vulkan API opaque object controlling this object. */
+	MVKVulkanAPIObject* getVulkanAPIObject() override;
 
 	/** Returns the number of color attachments, which may be zero for depth-only rendering. */
 	inline uint32_t getColorAttachmentCount() { return uint32_t(_colorAttachments.size()); }
@@ -56,15 +61,17 @@ public:
 	 */
 	void populateMTLRenderPassDescriptor(MTLRenderPassDescriptor* mtlRPDesc,
 										 MVKFramebuffer* framebuffer,
-										 std::vector<VkClearValue>& clearValues,
-										 bool isRenderingEntireAttachment);
+										 MVKVector<VkClearValue>& clearValues,
+										 bool isRenderingEntireAttachment,
+                                         bool loadOverride = false,
+                                         bool storeOverride = false);
 
 	/**
 	 * Populates the specified vector with the attachments that need to be cleared
 	 * when the render area is smaller than the full framebuffer size.
 	 */
 	void populateClearAttachments(std::vector<VkClearAttachment>& clearAtts,
-								  std::vector<VkClearValue>& clearValues);
+								  MVKVector<VkClearValue>& clearValues);
 
 	/** Constructs an instance for the specified parent renderpass. */
 	MVKRenderSubpass(MVKRenderPass* renderPass, const VkSubpassDescription* pCreateInfo);
@@ -94,7 +101,9 @@ private:
 class MVKRenderPassAttachment : public MVKBaseObject {
 
 public:
-    friend MVKRenderSubpass;
+
+	/** Returns the Vulkan API opaque object controlling this object. */
+	MVKVulkanAPIObject* getVulkanAPIObject() override;
 
     /** Returns the Vulkan format of this attachment. */
     VkFormat getFormat();
@@ -110,7 +119,9 @@ public:
                                                    MVKRenderSubpass* subpass,
                                                    bool isRenderingEntireAttachment,
                                                    bool hasResolveAttachment,
-                                                   bool isStencil);
+                                                   bool isStencil,
+                                                   bool loadOverride = false,
+                                                   bool storeOverride = false);
 
     /** Returns whether this attachment should be cleared in the subpass. */
     bool shouldUseClearAttachment(MVKRenderSubpass* subpass);
@@ -132,9 +143,15 @@ protected:
 #pragma mark MVKRenderPass
 
 /** Represents a Vulkan render pass. */
-class MVKRenderPass : public MVKBaseDeviceObject {
+class MVKRenderPass : public MVKVulkanAPIDeviceObject {
 
 public:
+
+	/** Returns the Vulkan type of this object. */
+	VkObjectType getVkObjectType() override { return VK_OBJECT_TYPE_RENDER_PASS; }
+
+	/** Returns the debug report object type of this object. */
+	VkDebugReportObjectTypeEXT getVkDebugReportObjectType() override { return VK_DEBUG_REPORT_OBJECT_TYPE_RENDER_PASS_EXT; }
 
     /** Returns the granularity of the render area of this instance.  */
     VkExtent2D getRenderAreaGranularity();
@@ -145,10 +162,11 @@ public:
 	/** Constructs an instance for the specified device. */
 	MVKRenderPass(MVKDevice* device, const VkRenderPassCreateInfo* pCreateInfo);
 
-private:
-
+protected:
 	friend class MVKRenderSubpass;
 	friend class MVKRenderPassAttachment;
+
+	void propogateDebugName() override {}
 
 	std::vector<MVKRenderSubpass> _subpasses;
 	std::vector<MVKRenderPassAttachment> _attachments;

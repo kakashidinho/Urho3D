@@ -1,7 +1,7 @@
 /*
  * MVKDescriptorSet.h
  *
- * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@
 
 #include "MVKDevice.h"
 #include "MVKImage.h"
+#include "MVKVector.h"
 #include <MoltenVKSPIRVToMSLConverter/SPIRVToMSLConverter.h>
 #include <unordered_set>
 #include <unordered_map>
@@ -54,9 +55,7 @@ typedef struct MVKShaderStageResourceBinding {
 
 /** Indicates the Metal resource indexes used by each shader stage in a descriptor binding. */
 typedef struct MVKShaderResourceBinding {
-	MVKShaderStageResourceBinding vertexStage;
-	MVKShaderStageResourceBinding fragmentStage;
-    MVKShaderStageResourceBinding computeStage;
+	MVKShaderStageResourceBinding stages[kMVKShaderStageMax];
 
 	uint32_t getMaxBufferIndex();
 	uint32_t getMaxTextureIndex();
@@ -72,15 +71,18 @@ typedef struct MVKShaderResourceBinding {
 #pragma mark MVKDescriptorSetLayoutBinding
 
 /** Represents a Vulkan descriptor set layout binding. */
-class MVKDescriptorSetLayoutBinding : public MVKConfigurableObject {
+class MVKDescriptorSetLayoutBinding : public MVKBaseDeviceObject {
 
 public:
+
+	/** Returns the Vulkan API opaque object controlling this object. */
+	MVKVulkanAPIObject* getVulkanAPIObject() override;
 
 	/** Encodes this binding layout and the specified descriptor set binding on the specified command encoder. */
     void bind(MVKCommandEncoder* cmdEncoder,
               MVKDescriptorBinding& descBinding,
               MVKShaderResourceBinding& dslMTLRezIdxOffsets,
-              std::vector<uint32_t>& dynamicOffsets,
+              MVKVector<uint32_t>& dynamicOffsets,
               uint32_t* pDynamicOffsetIndex);
 
     /** Encodes this binding layout and the specified descriptor binding on the specified command encoder immediately. */
@@ -99,23 +101,28 @@ public:
                                         uint32_t dslIndex);
 
 	/** Constructs an instance. */
-	MVKDescriptorSetLayoutBinding(MVKDescriptorSetLayout* layout,
+	MVKDescriptorSetLayoutBinding(MVKDevice* device,
+								  MVKDescriptorSetLayout* layout,
 								  const VkDescriptorSetLayoutBinding* pBinding);
+
+	MVKDescriptorSetLayoutBinding(const MVKDescriptorSetLayoutBinding& binding);
+
+	/** Destuctor. */
+	~MVKDescriptorSetLayoutBinding() override;
 
 protected:
 	friend class MVKDescriptorBinding;
 	friend class MVKPipelineLayout;
 
-	VkResult initMetalResourceIndexOffsets(MVKShaderStageResourceBinding* pBindingIndexes,
-                                           MVKShaderStageResourceBinding* pDescSetCounts,
-                                           const VkDescriptorSetLayoutBinding* pBinding);
+	void initMetalResourceIndexOffsets(MVKShaderStageResourceBinding* pBindingIndexes,
+									   MVKShaderStageResourceBinding* pDescSetCounts,
+									   const VkDescriptorSetLayoutBinding* pBinding);
 
+	MVKDescriptorSetLayout* _layout;
 	VkDescriptorSetLayoutBinding _info;
 	std::vector<MVKSampler*> _immutableSamplers;
 	MVKShaderResourceBinding _mtlResourceIndexOffsets;
-    bool _applyToVertexStage;
-    bool _applyToFragmentStage;
-    bool _applyToComputeStage;
+	bool _applyToStage[kMVKShaderStageMax];
 };
 
 
@@ -123,21 +130,27 @@ protected:
 #pragma mark MVKDescriptorSetLayout
 
 /** Represents a Vulkan descriptor set layout. */
-class MVKDescriptorSetLayout : public MVKBaseDeviceObject {
+class MVKDescriptorSetLayout : public MVKVulkanAPIDeviceObject {
 
 public:
+
+	/** Returns the Vulkan type of this object. */
+	VkObjectType getVkObjectType() override { return VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT; }
+
+	/** Returns the debug report object type of this object. */
+	VkDebugReportObjectTypeEXT getVkDebugReportObjectType() override { return VK_DEBUG_REPORT_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT_EXT; }
 
 	/** Encodes this descriptor set layout and the specified descriptor set on the specified command encoder. */
     void bindDescriptorSet(MVKCommandEncoder* cmdEncoder,
                            MVKDescriptorSet* descSet,
                            MVKShaderResourceBinding& dslMTLRezIdxOffsets,
-                           std::vector<uint32_t>& dynamicOffsets,
+                           MVKVector<uint32_t>& dynamicOffsets,
                            uint32_t* pDynamicOffsetIndex);
 
 
 	/** Encodes this descriptor set layout and the specified descriptor updates on the specified command encoder immediately. */
 	void pushDescriptorSet(MVKCommandEncoder* cmdEncoder,
-						   std::vector<VkWriteDescriptorSet>& descriptorWrites,
+						   MVKVector<VkWriteDescriptorSet>& descriptorWrites,
 						   MVKShaderResourceBinding& dslMTLRezIdxOffsets);
 
 
@@ -165,7 +178,9 @@ protected:
 	friend class MVKPipelineLayout;
 	friend class MVKDescriptorSet;
 
-	std::vector<MVKDescriptorSetLayoutBinding> _bindings;
+	void propogateDebugName() override {}
+	MVKVectorInline<MVKDescriptorSetLayoutBinding, 8> _bindings;
+	std::unordered_map<uint32_t, uint32_t> _bindingToIndex;
 	MVKShaderResourceBinding _mtlResourceCounts;
 	bool _isPushDescriptorLayout : 1;
 };
@@ -178,6 +193,9 @@ protected:
 class MVKDescriptorBinding : public MVKBaseObject {
 
 public:
+
+	/** Returns the Vulkan API opaque object controlling this object. */
+	MVKVulkanAPIObject* getVulkanAPIObject() override;
 
 	/**
 	 * Updates the internal element bindings from the specified content.
@@ -237,7 +255,7 @@ public:
     bool hasBinding(uint32_t binding);
 
 	/** Constructs an instance. */
-	MVKDescriptorBinding(MVKDescriptorSetLayoutBinding* pBindingLayout);
+	MVKDescriptorBinding(MVKDescriptorSet* pDescSet, MVKDescriptorSetLayoutBinding* pBindingLayout);
 
 	/** Destructor. */
 	~MVKDescriptorBinding();
@@ -247,6 +265,7 @@ protected:
 
 	void initMTLSamplers(MVKDescriptorSetLayoutBinding* pBindingLayout);
 
+	MVKDescriptorSet* _pDescSet;
 	MVKDescriptorSetLayoutBinding* _pBindingLayout;
 	std::vector<VkDescriptorImageInfo> _imageBindings;
 	std::vector<VkDescriptorBufferInfo> _bufferBindings;
@@ -263,9 +282,15 @@ protected:
 #pragma mark MVKDescriptorSet
 
 /** Represents a Vulkan descriptor set. */
-class MVKDescriptorSet : public MVKBaseDeviceObject {
+class MVKDescriptorSet : public MVKVulkanAPIDeviceObject {
 
 public:
+
+	/** Returns the Vulkan type of this object. */
+	VkObjectType getVkObjectType() override { return VK_OBJECT_TYPE_DESCRIPTOR_SET; }
+
+	/** Returns the debug report object type of this object. */
+	VkDebugReportObjectTypeEXT getVkDebugReportObjectType() override { return VK_DEBUG_REPORT_OBJECT_TYPE_DESCRIPTOR_SET_EXT; }
 
 	/** Updates the resource bindings in this instance from the specified content. */
 	template<typename DescriptorAction>
@@ -290,12 +315,13 @@ public:
 	 */
 	MVKDescriptorSet* _next;
 
-	MVKDescriptorSet(MVKDevice* device) : MVKBaseDeviceObject(device) {}
+	MVKDescriptorSet(MVKDevice* device) : MVKVulkanAPIDeviceObject(device) {}
 
 protected:
 	friend class MVKDescriptorSetLayout;
 	friend class MVKDescriptorPool;
 
+	void propogateDebugName() override {}
 	void setLayout(MVKDescriptorSetLayout* layout);
     MVKDescriptorBinding* getBinding(uint32_t binding);
 
@@ -310,9 +336,15 @@ protected:
 typedef MVKDeviceObjectPool<MVKDescriptorSet> MVKDescriptorSetPool;
 
 /** Represents a Vulkan descriptor pool. */
-class MVKDescriptorPool : public MVKBaseDeviceObject {
+class MVKDescriptorPool : public MVKVulkanAPIDeviceObject {
 
 public:
+
+	/** Returns the Vulkan type of this object. */
+	VkObjectType getVkObjectType() override { return VK_OBJECT_TYPE_DESCRIPTOR_POOL; }
+
+	/** Returns the debug report object type of this object. */
+	VkDebugReportObjectTypeEXT getVkDebugReportObjectType() override { return VK_DEBUG_REPORT_OBJECT_TYPE_DESCRIPTOR_POOL_EXT; }
 
 	/** Allocates the specified number of descriptor sets. */
 	VkResult allocateDescriptorSets(uint32_t count,
@@ -332,6 +364,7 @@ public:
 	~MVKDescriptorPool() override;
 
 protected:
+	void propogateDebugName() override {}
 	MVKDescriptorSetPool* getDescriptorSetPool(MVKDescriptorSetLayout* mvkDescSetLayout);
 
 	uint32_t _maxSets;
@@ -344,9 +377,15 @@ protected:
 #pragma mark MVKDescriptorUpdateTemplate
 
 /** Represents a Vulkan descriptor update template. */
-class MVKDescriptorUpdateTemplate : public MVKConfigurableObject {
+class MVKDescriptorUpdateTemplate : public MVKVulkanAPIDeviceObject {
 
 public:
+
+	/** Returns the Vulkan type of this object. */
+	VkObjectType getVkObjectType() override { return VK_OBJECT_TYPE_DESCRIPTOR_UPDATE_TEMPLATE; }
+
+	/** Returns the debug report object type of this object. */
+	VkDebugReportObjectTypeEXT getVkDebugReportObjectType() override { return VK_DEBUG_REPORT_OBJECT_TYPE_DESCRIPTOR_UPDATE_TEMPLATE_EXT; }
 
 	/** Get the nth update template entry. */
 	const VkDescriptorUpdateTemplateEntryKHR* getEntry(uint32_t n) const;
@@ -363,7 +402,9 @@ public:
 	/** Destructor. */
 	~MVKDescriptorUpdateTemplate() override = default;
 
-private:
+protected:
+	void propogateDebugName() override {}
+
 	VkDescriptorUpdateTemplateTypeKHR _type;
 	std::vector<VkDescriptorUpdateTemplateEntryKHR> _entries;
 };

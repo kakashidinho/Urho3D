@@ -1,7 +1,7 @@
 /*
  * SPIRVConversion.mm
  *
- * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -64,8 +64,8 @@ MVK_PUBLIC_SYMBOL bool mvkConvertSPIRVFileToMSL(const char* spvFilepath,
     NSData* spv = [NSData dataWithContentsOfFile: filePath options: 0 error: &err];
     if (err) {
         if (pResultLog) {
-            NSString* errMsg = [NSString stringWithFormat: @"Unable to convert SPIR-V in file %@ to MSL: %@ (code %li) %@",
-                                filePath, err.localizedDescription, (long)err.code, err.localizedFailureReason];
+			NSString* errMsg = [NSString stringWithFormat: @"Unable to convert SPIR-V in file %@ to MSL (Error code %li):\n%@",
+                                filePath, (long)err.code, err.localizedDescription];
             *pResultLog = (char*)malloc(errMsg.length + 1);
             strcpy(*pResultLog, errMsg.UTF8String);
         }

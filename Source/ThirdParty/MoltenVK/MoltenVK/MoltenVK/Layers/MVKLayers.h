@@ -1,7 +1,7 @@
 /*
  * MVKLayers.h
  *
- * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,9 +26,12 @@
 #pragma mark MVKLayer
 
 /** Represents a single Vulkan layer. */
-class MVKLayer : public MVKConfigurableObject {
+class MVKLayer : public MVKBaseObject {
 
 public:
+
+	/** Returns the Vulkan API opaque object controlling this object. */
+	MVKVulkanAPIObject* getVulkanAPIObject() override { return nullptr; };
 
 	/** Returns the name of this layer. */
 	const char* getName();
@@ -66,9 +69,12 @@ protected:
 #pragma mark MVKLayerManager
 
 /** Manages a set of Vulkan layers. */
-class MVKLayerManager : public MVKConfigurableObject {
+class MVKLayerManager : public MVKBaseObject {
 
 public:
+
+	/** Returns the Vulkan API opaque object controlling this object. */
+	MVKVulkanAPIObject* getVulkanAPIObject() override { return nullptr; };
 
 	/** Returns the driver layer. */
 	MVKLayer* getDriverLayer();

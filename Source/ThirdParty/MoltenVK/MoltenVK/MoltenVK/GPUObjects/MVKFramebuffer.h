@@ -1,7 +1,7 @@
 /*
  * MVKFramebuffer.h
  *
- * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,9 +26,15 @@
 #pragma mark MVKFramebuffer
 
 /** Represents a Vulkan framebuffer. */
-class MVKFramebuffer : public MVKBaseDeviceObject {
+class MVKFramebuffer : public MVKVulkanAPIDeviceObject {
 
 public:
+
+	/** Returns the Vulkan type of this object. */
+	VkObjectType getVkObjectType() override { return VK_OBJECT_TYPE_FRAMEBUFFER; }
+
+	/** Returns the debug report object type of this object. */
+	VkDebugReportObjectTypeEXT getVkDebugReportObjectType() override { return VK_DEBUG_REPORT_OBJECT_TYPE_FRAMEBUFFER_EXT; }
 
 	/** Returns the dimensions of this framebuffer. */
 	inline VkExtent2D getExtent2D() { return _extent; }
@@ -46,7 +52,9 @@ public:
 	MVKFramebuffer(MVKDevice* device, const VkFramebufferCreateInfo* pCreateInfo);
 
 protected:
-    VkExtent2D _extent;
+	void propogateDebugName() override {}
+
+	VkExtent2D _extent;
 	uint32_t _layerCount;
 	std::vector<MVKImageView*> _attachments;
 };

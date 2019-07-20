@@ -48,8 +48,7 @@ SurfaceImpl *DisplayVkMacOS::createWindowSurfaceVk(const egl::SurfaceState &stat
 egl::ConfigSet DisplayVkMacOS::generateConfigs()
 {
     constexpr GLenum kColorFormats[] = {GL_BGRA8_EXT, GL_BGRX8_ANGLEX};
-    constexpr EGLint kSampleCounts[] = {0};
-    return egl_vk::GenerateConfigs(kColorFormats, egl_vk::kConfigDepthStencilFormats, kSampleCounts,
+    return egl_vk::GenerateConfigs(kColorFormats, egl_vk::kConfigDepthStencilFormats,
                                    this);
 }
 

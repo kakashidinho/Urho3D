@@ -1,7 +1,7 @@
 /*
  * MVKQueue.h
  *
- * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@
 #include "MVKCommandBuffer.h"
 #include "MVKImage.h"
 #include "MVKSync.h"
+#include "MVKVector.h"
 #include <vector>
 #include <mutex>
 
@@ -37,9 +38,12 @@ class MVKGPUCaptureScope;
 #pragma mark MVKQueueFamily
 
 /** Represents a Vulkan queue family. */
-class MVKQueueFamily : public MVKConfigurableObject {
+class MVKQueueFamily : public MVKBaseObject {
 
 public:
+
+	/** Returns the Vulkan API opaque object controlling this object. */
+	MVKVulkanAPIObject* getVulkanAPIObject() override { return _physicalDevice->getVulkanAPIObject(); }
 
 	/** Returns the index of this queue family. */
 	inline uint32_t getIndex() { return _queueFamilyIndex; }
@@ -70,21 +74,29 @@ protected:
 #pragma mark MVKQueue
 
 /** Represents a Vulkan queue. */
-class MVKQueue : public MVKDispatchableDeviceObject {
+class MVKQueue : public MVKDispatchableVulkanAPIObject, public MVKDeviceTrackingMixin {
 
 public:
+
+	/** Returns the Vulkan type of this object. */
+	VkObjectType getVkObjectType() override { return VK_OBJECT_TYPE_QUEUE; }
+
+	/** Returns the debug report object type of this object. */
+	VkDebugReportObjectTypeEXT getVkDebugReportObjectType() override { return VK_DEBUG_REPORT_OBJECT_TYPE_QUEUE_EXT; }
+
+	/** Returns a pointer to the Vulkan instance. */
+	MVKInstance* getInstance() override { return _device->getInstance(); }
 
 #pragma mark Queue submissions
 
 	/** Submits the specified command buffers to the queue. */
-	VkResult submit(uint32_t submitCount, const VkSubmitInfo* pSubmits,
-                    VkFence fence, MVKCommandUse cmdBuffUse);
+	VkResult submit(uint32_t submitCount, const VkSubmitInfo* pSubmits, VkFence fence);
 
 	/** Submits the specified presentation command to the queue. */
 	VkResult submit(const VkPresentInfoKHR* pPresentInfo);
 
 	/** Block the current thread until this queue is idle. */
-	VkResult waitIdle(MVKCommandUse cmdBuffUse);
+	VkResult waitIdle();
 
 	/** Return the name of this queue. */
 	inline const std::string& getName() { return _name; }
@@ -121,6 +133,8 @@ protected:
 	friend class MVKQueueCommandBufferSubmission;
 	friend class MVKQueuePresentSurfaceSubmission;
 
+	MVKBaseObject* getBaseObject() override { return this; };
+	void propogateDebugName() override;
 	void initName();
 	void initExecQueue();
 	void initMTLCommandQueue();
@@ -144,32 +158,31 @@ protected:
 #pragma mark MVKQueueSubmission
 
 /** This is an abstract class for an operation that can be submitted to an MVKQueue. */
-class MVKQueueSubmission : public MVKBaseDeviceObject {
+class MVKQueueSubmission : public MVKConfigurableObject {
 
 public:
 
-	/** 
+	/** Returns the Vulkan API opaque object controlling this object. */
+	MVKVulkanAPIObject* getVulkanAPIObject() override { return _queue->getVulkanAPIObject(); }
+
+	/**
 	 * Executes this action on the queue and then disposes of this instance.
 	 *
 	 * Upon completion of this function, no further calls should be made to this instance.
 	 */
 	virtual void execute() = 0;
 
-	MVKQueueSubmission(MVKDevice* device,
-					   MVKQueue* queue,
+	MVKQueueSubmission(MVKQueue* queue,
 					   uint32_t waitSemaphoreCount,
 					   const VkSemaphore* pWaitSemaphores);
 
 protected:
 	friend class MVKQueue;
 
-   void recordResult(VkResult vkResult);
-
 	MVKQueue* _queue;
 	MVKQueueSubmission* _prev;
 	MVKQueueSubmission* _next;
-	VkResult _submissionResult;
-	std::vector<MVKSemaphore*> _waitSemaphores;
+	MVKVectorInline<MVKSemaphore*, 8> _waitSemaphores;
 	bool _isAwaitingSemaphores;
 };
 
@@ -183,18 +196,10 @@ class MVKQueueCommandBufferSubmission : public MVKQueueSubmission {
 public:
 	void execute() override;
 
-	/** 
-     * Constructs an instance for the device and queue.
-     * pSubmit may be VK_NULL_HANDLE to create an instance that triggers a fence without submitting any actual command buffers.
-     */
-	MVKQueueCommandBufferSubmission(MVKDevice* device,
-									MVKQueue* queue,
+	/** Constructs an instance for the queue. */
+	MVKQueueCommandBufferSubmission(MVKQueue* queue,
 									const VkSubmitInfo* pSubmit,
-									VkFence fence,
-                                    MVKCommandUse cmdBuffUse);
-
-    /** Constructs an instance for the device and queue, with a fence, but without actual command buffers. */
-    MVKQueueCommandBufferSubmission(MVKDevice* device, MVKQueue* queue, VkFence fence);
+									VkFence fence);
 
 protected:
 	friend MVKCommandBuffer;
@@ -204,11 +209,11 @@ protected:
 	void commitActiveMTLCommandBuffer(bool signalCompletion = false);
 	void finish();
 
-	std::vector<MVKCommandBuffer*> _cmdBuffers;
-	std::vector<MVKSemaphore*> _signalSemaphores;
+	MVKVectorInline<MVKCommandBuffer*, 16> _cmdBuffers;
+	MVKVectorInline<MVKSemaphore*, 16> _signalSemaphores;
 	MVKFence* _fence;
-    MVKCommandUse _cmdBuffUse;
 	id<MTLCommandBuffer> _activeMTLCommandBuffer;
+	bool _isSignalingSemaphores;
 };
 
 
@@ -221,12 +226,12 @@ class MVKQueuePresentSurfaceSubmission : public MVKQueueSubmission {
 public:
 	void execute() override;
 
-	/** Constructs an instance for the device and queue. */
-	MVKQueuePresentSurfaceSubmission(MVKDevice* device,
-									 MVKQueue* queue,
+	MVKQueuePresentSurfaceSubmission(MVKQueue* queue,
 									 const VkPresentInfoKHR* pPresentInfo);
 
 protected:
-	std::vector<MVKSwapchainImage*> _surfaceImages;
+	id<MTLCommandBuffer> getMTLCommandBuffer();
+
+	MVKVectorInline<MVKSwapchainImage*, 4> _surfaceImages;
 };
 

@@ -1,7 +1,7 @@
 /*
  * MVKCommandResourceFactory.h
  *
- * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@
 
 #include "MVKDevice.h"
 #include "MVKFoundation.h"
-#include "mvk_datatypes.h"
+#include "mvk_datatypes.hpp"
 #include <string>
 
 #import <Metal/Metal.h>
@@ -74,8 +74,9 @@ namespace std {
 #pragma mark -
 #pragma mark MVKRPSKeyClearAtt
 
-#define kMVKAttachmentFormatCount					9
-#define kMVKAttachmentFormatDepthStencilIndex		(kMVKAttachmentFormatCount - 1)
+#define kMVKClearAttachmentCount						(kMVKCachedColorAttachmentCount + 1)
+#define kMVKClearAttachmentDepthStencilIndex			(kMVKClearAttachmentCount - 1)
+#define kMVKClearAttachmentLayeredRenderingBitIndex		kMVKClearAttachmentCount
 
 /**
  * Key to use for looking up cached MTLRenderPipelineState instances.
@@ -85,37 +86,40 @@ namespace std {
  * This structure can be used as a key in a std::map and std::unordered_map.
  */
 typedef struct MVKRPSKeyClearAtt_t {
-    uint16_t attachmentMTLPixelFormats[kMVKAttachmentFormatCount];
+    uint16_t attachmentMTLPixelFormats[kMVKClearAttachmentCount];
 	uint16_t mtlSampleCount;
-    uint32_t enabledFlags;
+    uint16_t flags;			// bitcount > kMVKClearAttachmentLayeredRenderingBitIndex
 
     const static uint32_t bitFlag = 1;
 
-    void enable(uint32_t attIdx) { mvkEnableFlag(enabledFlags, bitFlag << attIdx); }
+    void enableAttachment(uint32_t attIdx) { mvkEnableFlag(flags, bitFlag << attIdx); }
 
-    bool isEnabled(uint32_t attIdx) { return mvkIsAnyFlagEnabled(enabledFlags, bitFlag << attIdx); }
+    bool isAttachmentEnabled(uint32_t attIdx) { return mvkIsAnyFlagEnabled(flags, bitFlag << attIdx); }
+
+	void enableLayeredRendering() { mvkEnableFlag(flags, bitFlag << kMVKClearAttachmentLayeredRenderingBitIndex); }
+
+	bool isLayeredRenderingEnabled() { return mvkIsAnyFlagEnabled(flags, bitFlag << kMVKClearAttachmentLayeredRenderingBitIndex); }
 
     bool operator==(const MVKRPSKeyClearAtt_t& rhs) const {
-        return ((enabledFlags == rhs.enabledFlags) &&
+        return ((flags == rhs.flags) &&
 				(mtlSampleCount == rhs.mtlSampleCount) &&
                 (memcmp(attachmentMTLPixelFormats, rhs.attachmentMTLPixelFormats, sizeof(attachmentMTLPixelFormats)) == 0));
     }
 
 	std::size_t hash() const {
-		std::size_t hash = mvkHash(&enabledFlags);
+		std::size_t hash = mvkHash(&flags);
 		hash = mvkHash(&mtlSampleCount, 1, hash);
-		return mvkHash(attachmentMTLPixelFormats, kMVKAttachmentFormatCount, hash);
+		return mvkHash(attachmentMTLPixelFormats, kMVKClearAttachmentCount, hash);
 	}
 
-	MVKRPSKeyClearAtt_t() {
+	void reset() {
 		memset(this, 0, sizeof(*this));
 		mtlSampleCount = mvkSampleCountFromVkSampleCountFlagBits(VK_SAMPLE_COUNT_1_BIT);
 	}
 
-} MVKRPSKeyClearAtt;
+	MVKRPSKeyClearAtt_t() { reset(); }
 
-/** An instance populated with default values, for use in resetting other instances to default state. */
-const MVKRPSKeyClearAtt kMVKRPSKeyClearAttDefault;
+} MVKRPSKeyClearAtt;
 
 /**
  * Hash structure implementation for MVKRPSKeyClearAtt in std namespace,
@@ -259,6 +263,43 @@ namespace std {
 
 
 #pragma mark -
+#pragma mark MVKBufferDescriptorData
+
+/**
+ * Key to use for looking up cached MVKBuffer instances, and to create a new MVKBuffer when needed.
+ * The contents of this structure is a subset of the contents of the VkBufferCreateInfo structure.
+ *
+ * This structure can be used as a key in a std::map and std::unordered_map.
+ */
+typedef struct MVKBufferDescriptorData_t {
+    VkDeviceSize             size;
+    VkBufferUsageFlags       usage;
+
+    bool operator==(const MVKBufferDescriptorData_t& rhs) const {
+        return (memcmp(this, &rhs, sizeof(*this)) == 0);
+    }
+
+	std::size_t hash() const {
+		return mvkHash((uint64_t*)this, sizeof(*this) / sizeof(uint64_t));
+	}
+
+    MVKBufferDescriptorData_t() { memset(this, 0, sizeof(*this)); }
+
+} __attribute__((aligned(sizeof(uint64_t)))) MVKBufferDescriptorData;
+
+/**
+ * Hash structure implementation for MVKBufferDescriptorData in std namespace, so
+ * MVKBufferDescriptorData can be used as a key in a std::map and std::unordered_map.
+ */
+namespace std {
+    template <>
+    struct hash<MVKBufferDescriptorData> {
+        std::size_t operator()(const MVKBufferDescriptorData& k) const { return k.hash(); }
+    };
+}
+
+
+#pragma mark -
 #pragma mark MVKCommandResourceFactory
 
 /** 
@@ -269,10 +310,14 @@ class MVKCommandResourceFactory : public MVKBaseDeviceObject {
 
 public:
 
+	/** Returns the Vulkan API opaque object controlling this object. */
+	MVKVulkanAPIObject* getVulkanAPIObject() override { return _device->getVulkanAPIObject(); };
+
 #pragma mark Command resources
 
 	/** Returns a new MTLRenderPipelineState to support certain Vulkan BLIT commands. */
-	id<MTLRenderPipelineState> newCmdBlitImageMTLRenderPipelineState(MVKRPSKeyBlitImg& blitKey);
+	id<MTLRenderPipelineState> newCmdBlitImageMTLRenderPipelineState(MVKRPSKeyBlitImg& blitKey,
+																	 MVKVulkanAPIDeviceObject* owner);
 
 	/**
 	 * Returns a new MTLSamplerState dedicated to rendering to a texture using the
@@ -284,7 +329,8 @@ public:
 	 * Returns a new MTLRenderPipelineState dedicated to rendering to several 
 	 * attachments to support clearing regions of those attachments.
 	 */
-	id<MTLRenderPipelineState> newCmdClearMTLRenderPipelineState(MVKRPSKeyClearAtt& attKey);
+	id<MTLRenderPipelineState> newCmdClearMTLRenderPipelineState(MVKRPSKeyClearAtt& attKey,
+																 MVKVulkanAPIDeviceObject* owner);
 
 	/**
 	 * Returns a new MTLDepthStencilState dedicated to rendering to several 
@@ -308,11 +354,34 @@ public:
      */
     MVKImage* newMVKImage(MVKImageDescriptorData& imgData);
     
+    /**
+     * Returns a new MVKBuffer configured with content held in Private storage.
+     * The buffer returned is bound to a new device memory, also returned, and
+     * can be used as a temporary buffer during buffer-image transfers.
+     */
+    MVKBuffer* newMVKBuffer(MVKBufferDescriptorData& buffData, MVKDeviceMemory*& buffMem);
+    
     /** Returns a new MTLComputePipelineState for copying between two buffers with byte-aligned copy regions. */
-    id<MTLComputePipelineState> newCmdCopyBufferBytesMTLComputePipelineState();
+    id<MTLComputePipelineState> newCmdCopyBufferBytesMTLComputePipelineState(MVKVulkanAPIDeviceObject* owner);
 
 	/** Returns a new MTLComputePipelineState for filling a buffer. */
-	id<MTLComputePipelineState> newCmdFillBufferMTLComputePipelineState();
+	id<MTLComputePipelineState> newCmdFillBufferMTLComputePipelineState(MVKVulkanAPIDeviceObject* owner);
+
+	/** Returns a new MTLComputePipelineState for copying between a buffer holding compressed data and a 3D image. */
+	id<MTLComputePipelineState> newCmdCopyBufferToImage3DDecompressMTLComputePipelineState(bool needTempBuf,
+																						   MVKVulkanAPIDeviceObject* owner);
+
+	/** Returns a new MTLComputePipelineState for converting an indirect buffer for use in a tessellated draw. */
+	id<MTLComputePipelineState> newCmdDrawIndirectConvertBuffersMTLComputePipelineState(bool indexed,
+																						MVKVulkanAPIDeviceObject* owner);
+
+	/** Returns a new MTLComputePipelineState for copying an index buffer for use in a tessellated draw. */
+	id<MTLComputePipelineState> newCmdDrawIndexedCopyIndexBufferMTLComputePipelineState(MTLIndexType type,
+																						MVKVulkanAPIDeviceObject* owner);
+
+	/** Returns a new MTLComputePipelineState for copying query results to a buffer. */
+	id<MTLComputePipelineState> newCmdCopyQueryPoolResultsMTLComputePipelineState(MVKVulkanAPIDeviceObject* owner);
+
 
 #pragma mark Construction
 
@@ -324,12 +393,15 @@ protected:
 	void initMTLLibrary();
 	void initImageDeviceMemory();
 	id<MTLFunction> getBlitFragFunction(MVKRPSKeyBlitImg& blitKey);
+	id<MTLFunction> getClearVertFunction(MVKRPSKeyClearAtt& attKey);
 	id<MTLFunction> getClearFragFunction(MVKRPSKeyClearAtt& attKey);
 	NSString* getMTLFormatTypeString(MTLPixelFormat mtlPixFmt);
     id<MTLFunction> getFunctionNamed(const char* funcName);
 	id<MTLFunction> newMTLFunction(NSString* mslSrcCode, NSString* funcName);
-    id<MTLRenderPipelineState> newMTLRenderPipelineState(MTLRenderPipelineDescriptor* plDesc);
-	id<MTLComputePipelineState> newMTLComputePipelineState(id<MTLFunction> mtlFunction);
+	id<MTLRenderPipelineState> newMTLRenderPipelineState(MTLRenderPipelineDescriptor* plDesc,
+														 MVKVulkanAPIDeviceObject* owner);
+	id<MTLComputePipelineState> newMTLComputePipelineState(id<MTLFunction> mtlFunction,
+														   MVKVulkanAPIDeviceObject* owner);
 
 	id<MTLLibrary> _mtlLibrary;
 	MVKDeviceMemory* _transferImageMemory;

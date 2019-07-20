@@ -27,6 +27,7 @@
 #include <vector>
 
 #include "source/latest_version_spirv_header.h"
+#include "source/opt/instruction.h"
 #include "spirv-tools/libspirv.h"
 
 namespace spvtools {
@@ -56,6 +57,7 @@ class Pipe;
 class ForwardPointer;
 class PipeStorage;
 class NamedBarrier;
+class AccelerationStructureNV;
 
 // Abstract class for a SPIR-V type. It has a bunch of As<sublcass>() methods,
 // which is used as a way to probe the actual <subclass>.
@@ -90,6 +92,7 @@ class Type {
     kForwardPointer,
     kPipeStorage,
     kNamedBarrier,
+    kAccelerationStructureNV,
   };
 
   Type(Kind k) : kind_(k) {}
@@ -170,6 +173,7 @@ class Type {
   DeclareCastMethod(ForwardPointer);
   DeclareCastMethod(PipeStorage);
   DeclareCastMethod(NamedBarrier);
+  DeclareCastMethod(AccelerationStructureNV);
 #undef DeclareCastMethod
 
   bool operator==(const Type& other) const;
@@ -353,12 +357,36 @@ class SampledImage : public Type {
 
 class Array : public Type {
  public:
-  Array(Type* element_type, uint32_t length_id);
+  // Data about the length operand, that helps us distinguish between one
+  // array length and another.
+  struct LengthInfo {
+    // The result id of the instruction defining the length.
+    const uint32_t id;
+    enum Case : uint32_t {
+      kConstant = 0,
+      kConstantWithSpecId = 1,
+      kDefiningId = 2
+    };
+    // Extra words used to distinshish one array length and another.
+    //  - if OpConstant, then it's 0, then the words in the literal constant
+    //    value.
+    //  - if OpSpecConstant, then it's 1, then the SpecID decoration if there
+    //    is one, followed by the words in the literal constant value.
+    //    The spec might not be overridden, in which case we'll end up using
+    //    the literal value.
+    //  - Otherwise, it's an OpSpecConsant, and this 2, then the ID (again).
+    const std::vector<uint32_t> words;
+  };
+
+  // Constructs an array type with given element and length.  If the length
+  // is an OpSpecConstant, then |spec_id| should be its SpecId decoration.
+  Array(const Type* element_type, const LengthInfo& length_info_arg);
   Array(const Array&) = default;
 
   std::string str() const override;
   const Type* element_type() const { return element_type_; }
-  uint32_t LengthId() const { return length_id_; }
+  uint32_t LengthId() const { return length_info_.id; }
+  const LengthInfo& length_info() const { return length_info_; }
 
   Array* AsArray() override { return this; }
   const Array* AsArray() const override { return this; }
@@ -372,7 +400,7 @@ class Array : public Type {
   bool IsSameImpl(const Type* that, IsSameCache*) const override;
 
   const Type* element_type_;
-  uint32_t length_id_;
+  const LengthInfo length_info_;
 };
 
 class RuntimeArray : public Type {
@@ -595,6 +623,7 @@ DefineParameterlessType(ReserveId, reserve_id);
 DefineParameterlessType(Queue, queue);
 DefineParameterlessType(PipeStorage, pipe_storage);
 DefineParameterlessType(NamedBarrier, named_barrier);
+DefineParameterlessType(AccelerationStructureNV, accelerationStructureNV);
 #undef DefineParameterlessType
 
 }  // namespace analysis

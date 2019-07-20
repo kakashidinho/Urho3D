@@ -7,7 +7,7 @@
 MoltenVK
 ========
 
-Copyright (c) 2014-2018 [The Brenwill Workshop Ltd.](http://www.brenwill.com)
+Copyright (c) 2014-2019 [The Brenwill Workshop Ltd.](http://www.brenwill.com)
 
 *This document is written in [Markdown](http://en.wikipedia.org/wiki/Markdown) format. 
 For best results, use a Markdown reader.*
@@ -17,37 +17,47 @@ For best results, use a Markdown reader.*
 Table of Contents
 -----------------
 
-- [About This Document](#about_this)
-- [Introduction](#intro)
-- [Installing **MoltenVK**](#install)
+- [Developing Vulkan Applications on macOS and iOS](#developing_vulkan)
+- [Introduction to **MoltenVK**](#intro)
+- [Fetching **MoltenVK** Source Code](#install)
 - [Building **MoltenVK**](#building)
 - [Running the **MoltenVK** Demo Applications](#demos)
 - [Using **MoltenVK** in Your Application](#using)
 - [**MoltenVK** and *Vulkan* Compliance](#compliance)
+- [Reporting Issues](#issues)
 - [Contributing to **MoltenVK** Development](#contributing)
 
 
 
-<a name="about_this"></a>
-About This Document
--------------------
+<a name="developing_vulkan"></a>
+Developing Vulkan Applications for macOS and iOS
+------------------------------------------------
 
-This document describes how to use the **MoltenVK** open-source repository to build a **MoltenVK** 
-runtime distribution package.
+The recommended method for developing a *Vulkan* application for *macOS* is to use the 
+[*Vulkan SDK*](https://vulkan.lunarg.com/sdk/home).
 
-To learn how to integrate the **MoltenVK** runtime into a game or application, see the 
-[`Docs/MoltenVK_Runtime_UserGuide.md `](Docs/MoltenVK_Runtime_UserGuide.md) document in the `Docs` directory. 
+The *Vulkan SDK* includes a  **MoltenVK** runtime library for *macOS*. *Vulkan* is a layered 
+architecture that allows applications to add additional functionality without modifying the 
+application itself. The *Validation Layers* included in the *Vulkan SDK* are an essential debugging
+tool for application developers because they identify inappropriate use of the *Vulkan API*. 
+If you are developing a *Vulkan* application for *macOS*, it is highly recommended that you use the
+[*Vulkan SDK*](https://vulkan.lunarg.com/sdk/home) and the **MoltenVK** library included in it. 
 
-If you are just looking for a pre-built **MoltenVK** runtime binary, you can download it as part of the 
-[*LunarG SDK*](https://vulkan.lunarg.com).
+If you are developing a *Vulkan* application for *iOS*, or are developing a *Vulkan* application for
+*macOS* and want to use a different **MoltenVK** runtime library than provided in the *macOS Vulkan SDK*,
+you can use this document to learn how to build a **MoltenVK** runtime library from source code.
+
+To learn how to integrate the **MoltenVK** runtime library into a game or application, 
+see the [`MoltenVK_Runtime_UserGuide.md `](Docs/MoltenVK_Runtime_UserGuide.md) 
+document in the `Docs` directory. 
 
 
 
 <a name="intro"></a>
-Introduction
-------------
+Introduction to MoltenVK
+------------------------
 
-**MoltenVK** is an implementation of the [*Vulkan 1.0*](https://www.khronos.org/vulkan) 
+**MoltenVK** is a driver-level implementation of the [*Vulkan 1.0*](https://www.khronos.org/vulkan) 
 graphics and compute API, that runs on Apple's [*Metal*](https://developer.apple.com/metal) 
 graphics and compute framework on both *iOS* and *macOS*.
 
@@ -64,9 +74,9 @@ publicly available API's, including *Metal*. **MoltenVK** does **_not_** use any
 undocumented API calls or features, so your app will be compatible with all standard distribution 
 channels, including *Apple's App Store*.
 
-**MoltenVK** contains two products:
+The **MoltenVK** runtime package contains two products:
 
-- **MoltenVK** is an implementation of the [*Vulkan 1.0*](https://www.khronos.org/vulkan) 
+- **MoltenVK** is a driver-level implementation of the [*Vulkan 1.0*](https://www.khronos.org/vulkan) 
   graphics and compute API.
 
 - **MoltenVKShaderConverter** converts *SPIR-V* shader code to *Metal Shading Language (MSL)*
@@ -79,12 +89,12 @@ channels, including *Apple's App Store*.
 
 
 <a name="install"></a>
-Installing **MoltenVK**
------------------------
+Fetching **MoltenVK** Source Code
+---------------------------------
 
-To install **MoltenVK**, clone this `MoltenVK` repository, and then run the 
-`fetchDependencies` script to retrieve and build several external 
-open-source libraries on which **MoltenVK** relies:
+To fetch **MoltenVK** source code, clone this `MoltenVK` repository, and then run the 
+`fetchDependencies` script to retrieve and build several external open-source libraries 
+on which **MoltenVK** relies:
 
 1. Ensure you have `cmake` and `python3` installed:
 
@@ -112,21 +122,20 @@ see the [`ExternalRevisions/README.md`](ExternalRevisions/README.md) document.
 Building **MoltenVK**
 -------------------
 
-At development time, **MoltenVK** references advanced OS frameworks during building.
- 
-- *Xcode 9* or above is required to build and link **MoltenVK** projects.
-
-Once built, **MoltenVK** can be run on *iOS* or *macOS* devices that support *Metal*.
-
-- **MoltenVK** requires at least *macOS 10.11* or  *iOS 9*.
-- Information on *macOS* devices that are compatible with *Metal* can be found in 
-  [this article](http://www.idownloadblog.com/2015/06/22/how-to-find-mac-el-capitan-metal-compatible).
-- Information on compatible *iOS* devices that are compatible with *Metal* can be found in 
-  [this article](https://developer.apple.com/library/content/documentation/DeviceInformation/Reference/iOSDeviceCompatibility/HardwareGPUInformation/HardwareGPUInformation.html).
+During building, **MoltenVK** references the latest *Apple SDK* frameworks. To access these frameworks, 
+and to avoid build errors, be sure to use the latest publicly available version of *Xcode*.
 
 >***Note:*** To support `IOSurfaces` on *iOS*, **MoltenVK**, and any app that uses **MoltenVK**, 
 must be built with a minimum **iOS Deployment Target** (aka `IPHONEOS_DEPLOYMENT_TARGET `) build 
 setting of `iOS 11.0` or greater.
+
+Once built, the **MoltenVK** libraries can be run on *iOS* or *macOS* devices that support *Metal*.
+
+- At runtime, **MoltenVK** requires at least *macOS 10.11* or *iOS 9* (or *iOS 11* if using `IOSurfaces`).
+- Information on *macOS* devices that are compatible with *Metal* can be found in 
+  [this article](http://www.idownloadblog.com/2015/06/22/how-to-find-mac-el-capitan-metal-compatible).
+- Information on *iOS* devices that are compatible with *Metal* can be found in 
+  [this article](https://developer.apple.com/library/content/documentation/DeviceInformation/Reference/iOSDeviceCompatibility/HardwareGPUInformation/HardwareGPUInformation.html).
 
 The `MoltenVKPackaging.xcodeproj` *Xcode* project contains targets and schemes to build 
 and package the entire **MoltenVK** runtime distribution package, or to build individual 
@@ -151,8 +160,8 @@ or **_Debug_** build. Effectively, the `Package/Latest` directory points to whic
 or `Package/Debug` directories was most recently updated.
 
 With this packaging structure, you can follow the [instructions below](#using) to link your application 
-to the **MoltenVK** frameworks in the `Package/Latest` directory, to provide the flexibility to test your 
-app with either a **_Debug_** build, or a higher-performance **_Release_** build.
+to the **MoltenVK** libraries and frameworks in the `Package/Latest` directory, to provide the flexibility 
+to test your app with either a **_Debug_** build, or a higher-performance **_Release_** build.
 
 
 ### Building from the Command Line
@@ -172,13 +181,33 @@ in the **_Release_** configuration from the command line. The following `make` t
 	make macos
 	make ios
 	make clean
+	make install
 
-The `make` targets above all require that *Xcode* is installed on your system.
+The `install` target will copy the most recently built *macOS* `MoltenVK.framework` into 
+the `/Library/Frameworks` folder of your computer. Since `/Library/Frameworks` is protected, 
+you will generally need to run it as `sudo make install` and enter your password.
 
-The default `make` command with no arguments is the same as `make all`. 
+The default `make` command with no arguments is the same as `make all`.
+
+The `make` targets all require that *Xcode* is installed on your system. 
 
 Building from the command line creates the same `Package` folder structure described above when building
 from within *Xcode*.
+
+
+### Building Within a Larger External Build Environment
+
+If you build **MoltenVK** as part of a larger build environment, that does not use the scripts or *Xcode* 
+projects provided by **MoltenVK**, you may be interested in certain build options designed to allow you to 
+customize the use of **MoltenVK** within your custom build environment. These options are not available
+in the default **MoltenVK** build environment described in the previous sections.
+
+- `MoltenVKShaderConverter` uses the `SPIRV-Tools` external library to log SPIR-V code for diagnostics. 
+  If this is not useful to you, you can define the `MVK_EXCLUDE_SPIRV_TOOLS` when building the 
+  `MoltenVKShaderConverter` code base, and **MoltenVK** will not attempt to use code from the `SPIRV-Tools` 
+  repository. In this way, you will not need to retrieve or build the `SPIRV-Tools` repository, or link to 
+  a `SPIRV-Tools` external library.
+
 
 
 <a name="demos"></a>
@@ -205,8 +234,8 @@ Using **MoltenVK** in Your Application
 
 Once you have compiled and built the **MoltenVK** runtime distribution package from this **MoltenVK** repository, 
 as described in the [Building **MoltenVK**](#building) section, follow the instructions in the Installation 
-section of the [`Docs/MoltenVK_Runtime_UserGuide.md`](Docs/MoltenVK_Runtime_UserGuide.md#install) document in the
-`Docs` directory, to link the **MoltenVK** frameworks and libraries to your application.
+section of the [`Docs/MoltenVK_Runtime_UserGuide.md`](Docs/MoltenVK_Runtime_UserGuide.md#install) document 
+in the `Docs` directory, to link the **MoltenVK** libraries and frameworks to your application.
 
 The runtime distribution package in the `Package/Latest` directory is a stand-alone package, and you can copy 
 the contents of that directory out of this **MoltenVK** repository into your own application building environment.
@@ -237,7 +266,7 @@ native driver on *macOS* and *iOS* platforms. *Vulkan* compliance may fall into 
   there is no practical, or reasonably performant, mechanism to implement a *Vulkan* capability in *Metal*. 
   Because of design differences between *Vulkan* and *Metal*, a very small amount of capability falls into this 
   category, and at present **MoltenVK** is **_not_** fully compliant with the *Vulkan* specification. A list of 
-  known limitations is documented in the [`Docs/MoltenVK_Runtime_UserGuide.md`](Docs/MoltenVK_Runtime_UserGuide.md#limitations) 
+  known limitations is documented in the [`MoltenVK_Runtime_UserGuide.md`](Docs/MoltenVK_Runtime_UserGuide.md#limitations) 
   document in the `Docs` directory.
 
 The **MoltenVK** development team welcomes you to [post Issues](https://github.com/KhronosGroup/MoltenVK/issues) 
@@ -248,6 +277,19 @@ be implemented or worked around.
 whose intention is to provide specifications, resources, and tools to allow developers to understand and design 
 their *Vulkan* apps for maximum cross-platform compatibility and portability, including on platforms, such as 
 *macOS* and *iOS*, where a native *Vulkan* driver is not available. 
+
+
+
+<a name="issues"></a>
+
+Reporting Issues
+----------------
+
+- If you encounter an issue with the behaviour of **MoltenVK**, you can report it in the 
+  [*MoltenVK Issues List*](https://github.com/KhronosGroup/MoltenVK/issues).
+ 
+- If you encounter an issue with the *Vulkan SDK*, including the *Validation Layers*, you can report it in the 
+  [*Vulkan SDK Issues List*](https://vulkan.lunarg.com/issue/home).
 
 
 

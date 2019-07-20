@@ -19,6 +19,8 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 #
+# git checkout  v1.0.35
+
 
 # Define target name
 set (TARGET_NAME MoltenVK)
@@ -34,6 +36,8 @@ source_group("API"            FILES ${api_sources})
 list (APPEND SOURCE_FILES ${api_sources})
 #############################################################################
 set (commands_sources 
+MoltenVK/MoltenVK/Commands/MVKCmdDebug.h
+MoltenVK/MoltenVK/Commands/MVKCmdDebug.mm
 MoltenVK/MoltenVK/Commands/MVKCmdDispatch.h
 MoltenVK/MoltenVK/Commands/MVKCmdDispatch.mm
 MoltenVK/MoltenVK/Commands/MVKCmdDraw.h
@@ -99,12 +103,14 @@ MoltenVK/MoltenVK/GPUObjects/MVKSwapchain.h
 MoltenVK/MoltenVK/GPUObjects/MVKSwapchain.mm
 MoltenVK/MoltenVK/GPUObjects/MVKSync.h
 MoltenVK/MoltenVK/GPUObjects/MVKSync.mm
+MoltenVK/MoltenVK/GPUObjects/MVKVulkanAPIObject.h
+MoltenVK/MoltenVK/GPUObjects/MVKVulkanAPIObject.mm
 	)
 source_group("GpuObjects"            FILES ${gpuobjects_sources})
 list (APPEND SOURCE_FILES ${gpuobjects_sources})
 #############################################################################
 set (layers_sources 
-MoltenVK/MoltenVK/Layers/MVKExtensions.cpp
+MoltenVK/MoltenVK/Layers/MVKExtensions.mm
 MoltenVK/MoltenVK/Layers/MVKExtensions.def
 MoltenVK/MoltenVK/Layers/MVKExtensions.h
 MoltenVK/MoltenVK/Layers/MVKLayers.h
@@ -126,8 +132,6 @@ MoltenVK/MoltenVK/OS/MTLTextureDescriptor+MoltenVK.h
 MoltenVK/MoltenVK/OS/MTLTextureDescriptor+MoltenVK.m
 MoltenVK/MoltenVK/OS/MVKGPUCapture.h
 MoltenVK/MoltenVK/OS/MVKGPUCapture.mm
-MoltenVK/MoltenVK/OS/MVKOSExtensions.h
-MoltenVK/MoltenVK/OS/MVKOSExtensions.mm
 MoltenVK/MoltenVK/OS/NSString+MoltenVK.h
 MoltenVK/MoltenVK/OS/NSString+MoltenVK.mm	
 	)
@@ -135,8 +139,13 @@ source_group("OS"            FILES ${os_sources})
 list (APPEND SOURCE_FILES ${os_sources})
 #############################################################################
 set (utility_sources 
-MoltenVK/MoltenVK/Utility/MVKBaseObject.cpp
+MoltenVK/MoltenVK/Utility/MVKBaseObject.mm
 MoltenVK/MoltenVK/Utility/MVKBaseObject.h
+MoltenVK/MoltenVK/Utility/MVKBlockObserver.m
+MoltenVK/MoltenVK/Utility/MVKBlockObserver.h
+MoltenVK/MoltenVK/Utility/MVKCodec.cpp
+MoltenVK/MoltenVK/Utility/MVKCodec.h
+MoltenVK/MoltenVK/Utility/MVKDXTnCodec.def
 MoltenVK/MoltenVK/Utility/MVKEnvironment.h
 MoltenVK/MoltenVK/Utility/MVKFoundation.cpp
 MoltenVK/MoltenVK/Utility/MVKFoundation.h
@@ -162,13 +171,27 @@ MoltenVKShaderConverter/MoltenVKSPIRVToMSLConverter/FileSupport.h
 MoltenVKShaderConverter/MoltenVKSPIRVToMSLConverter/FileSupport.mm
 MoltenVKShaderConverter/MoltenVKSPIRVToMSLConverter/SPIRVConversion.h
 MoltenVKShaderConverter/MoltenVKSPIRVToMSLConverter/SPIRVConversion.mm
+MoltenVKShaderConverter/MoltenVKSPIRVToMSLConverter/SPIRVReflection.cpp
+MoltenVKShaderConverter/MoltenVKSPIRVToMSLConverter/SPIRVReflection.h
 MoltenVKShaderConverter/MoltenVKSPIRVToMSLConverter/SPIRVToMSLConverter.cpp
 MoltenVKShaderConverter/MoltenVKSPIRVToMSLConverter/SPIRVToMSLConverter.h
-MoltenVKShaderConverter/MoltenVKSPIRVToMSLConverter/spirv.hpp
+MoltenVKShaderConverter/Common/SPIRVSupport.cpp
+MoltenVKShaderConverter/Common/SPIRVSupport.h
 )
 
 source_group("MoltenVKSPIRVToMSLConverter"            FILES ${MoltenVKSPIRVToMSLConverter})
 list (APPEND SOURCE_FILES ${MoltenVKSPIRVToMSLConverter})
+
+#############################################################################
+
+set (MoltenVKGLSLToSPIRVConverter
+MoltenVKShaderConverter/MoltenVKGLSLToSPIRVConverter/GLSLConversion.mm
+MoltenVKShaderConverter/MoltenVKGLSLToSPIRVConverter/GLSLToSPIRVConverter.cpp
+)
+
+source_group("MoltenVKGLSLToSPIRVConverter"            FILES ${MoltenVKGLSLToSPIRVConverter})
+list (APPEND SOURCE_FILES ${MoltenVKGLSLToSPIRVConverter})
+
 #############################################################################
 set(SPIRV-Cross
 External/SPIRV-Cross/spirv_cfg.cpp
@@ -184,12 +207,22 @@ External/SPIRV-Cross/spirv_msl.cpp
 External/SPIRV-Cross/spirv_msl.hpp
 External/SPIRV-Cross/spirv_parser.cpp
 External/SPIRV-Cross/spirv_parser.hpp
+External/SPIRV-Cross/spirv_reflect.cpp
+External/SPIRV-Cross/spirv_reflect.hpp
 )
 
 source_group("SPIRV-Cross"            FILES ${SPIRV-Cross})
 list (APPEND SOURCE_FILES ${SPIRV-Cross})
 
 
+#############################################################################
+
+set(Common
+Common/MVKOSExtensions.mm
+)
+
+source_group("Common"            FILES ${Common})
+list (APPEND SOURCE_FILES ${Common})
 #############################################################################
 
 # Define dependency libs
@@ -200,12 +233,16 @@ MoltenVK/MoltenVK/GPUObjects
 MoltenVK/MoltenVK/Layers
 MoltenVK/MoltenVK/OS
 MoltenVK/MoltenVK/Utility
+MoltenVK/MoltenVK/Vulkan
 External/Vulkan-Headers/include
 External/cereal/include
 External/SPIRV-Cross
 External/glslang/External/spirv-tools/include
 Common
 MoltenVKShaderConverter
+MoltenVKShaderConverter/Common
+MoltenVKShaderConverter/MoltenVKSPIRVToMSLConverter
+External
 )
 
 set (INCLUDE_DIRS ${moltenvk_includes})

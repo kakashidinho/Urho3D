@@ -7,7 +7,7 @@
 MoltenVK Runtime User Guide
 ===========================
 
-Copyright (c) 2014-2018 [The Brenwill Workshop Ltd.](http://www.brenwill.com)
+Copyright (c) 2014-2019 [The Brenwill Workshop Ltd.](http://www.brenwill.com)
 
 *This document is written in [Markdown](http://en.wikipedia.org/wiki/Markdown) format.
 For best results, use a Markdown reader.*
@@ -23,7 +23,8 @@ Table of Contents
 	- [Build and Runtime Requirements](#requirements)
 	- [Install as Static Framework, Static Library, or Dynamic Library](#install_lib)
 - [Interacting with the **MoltenVK** Runtime](#interaction)
-	- [MoltenVK Extension](#moltenvk_extension)
+	- [MoltenVK `VK_MVK_moltenvk` Extension](#moltenvk_extension)
+	- [Configuring MoltenVK](#moltenvk_config)
 - [*Metal Shading Language* Shaders](#shaders)
 	- [MoltenVKShaderConverter Shader Converter Tool](#shader_converter_tool)
 	- [Troubleshooting Shader Conversion](#spv_vs_msl)
@@ -79,17 +80,21 @@ Installing **MoltenVK** in Your *Vulkan* Application
 <a name="requirements"></a>
 ### Build and Runtime Requirements
 
-At development time, **MoltenVK** references advanced OS frameworks during building.
- 
-- *Xcode 9* or above is required to build and link **MoltenVK** projects.
+**MoltenVK** references the latest *Apple SDK* frameworks. To access these frameworks when building
+your app, and to avoid build errors, be sure to use the latest publicly available version of *Xcode*.
 
-Once built, **MoltenVK** can be run on *iOS* or *macOS* devices that support *Metal*.
+>***Note:*** To support `IOSurfaces`, any app that uses **MoltenVK**, must be built with a minimum 
+**iOS Deployment Target** (aka `IPHONEOS_DEPLOYMENT_TARGET `) build setting of `iOS 11.0` or greater.
 
-- **MoltenVK** requires at least *macOS 10.11* or  *iOS 9*.
+Once built, your app integrating the **MoltenVK** libraries can be run on *iOS* or *macOS* devices 
+that support *Metal*.
+
+- At runtime, **MoltenVK** requires at least *macOS 10.11* or *iOS 9* (or *iOS 11* if using `IOSurfaces`).
 - Information on *macOS* devices that are compatible with *Metal* can be found in 
   [this article](http://www.idownloadblog.com/2015/06/22/how-to-find-mac-el-capitan-metal-compatible).
-- Information on compatible *iOS* devices that are compatible with *Metal* can be found in 
+- Information on *iOS* devices that are compatible with *Metal* can be found in 
   [this article](https://developer.apple.com/library/content/documentation/DeviceInformation/Reference/iOSDeviceCompatibility/HardwareGPUInformation/HardwareGPUInformation.html).
+
 
 
 <a name="install_lib"></a>
@@ -210,8 +215,8 @@ Interacting with the **MoltenVK** Runtime
 
 You programmatically configure and interact with the **MoltenVK** runtime through function 
 calls, enumeration values, and capabilities, in exactly the same way you do with other
-*Vulkan* implementations. The `MoltenVK.framework` contains several header files that define
-access to *Vulkan* and **MoltenVK** function calls.
+*Vulkan* implementations. **MoltenVK** contains several header files that define access 
+to *Vulkan* and **MoltenVK** function calls.
 
 In your application code, you access *Vulkan* features through the API defined in the standard 
 `vulkan.h` header file. This file is included in the **MoltenVK** framework, and can be included 
@@ -228,6 +233,7 @@ In addition to the core *Vulkan* API, **MoltenVK**  also supports the following 
 - `VK_KHR_descriptor_update_template`
 - `VK_KHR_get_memory_requirements2`
 - `VK_KHR_get_physical_device_properties2`
+- `VK_KHR_get_surface_capabilities2`
 - `VK_KHR_image_format_list`
 - `VK_KHR_maintenance1`
 - `VK_KHR_maintenance2`
@@ -241,13 +247,20 @@ In addition to the core *Vulkan* API, **MoltenVK**  also supports the following 
 - `VK_KHR_surface`
 - `VK_KHR_swapchain`
 - `VK_KHR_swapchain_mutable_format`
+- `VK_KHR_variable_pointers`
+- `VK_EXT_debug_report`
+- `VK_EXT_host_query_reset`
+- `VK_EXT_memory_budget`
 - `VK_EXT_shader_viewport_index_layer`
 - `VK_EXT_vertex_attribute_divisor`
-- `VK_MVK_moltenvk`
-- `VK_MVK_macos_surface` (macOS)
+- `VK_EXTX_portability_subset`
 - `VK_MVK_ios_surface` (iOS)
+- `VK_MVK_macos_surface` (macOS)
+- `VK_MVK_moltenvk`
+- `VK_AMD_gpu_shader_half_float`
 - `VK_AMD_negative_viewport_height`
 - `VK_IMG_format_pvrtc` (iOS)
+- `VK_NV_glsl_shader`
 
 In order to visibly display your content on *iOS* or *macOS*, you must enable the `VK_MVK_ios_surface` 
 or `VK_MVK_macos_surface` extension, respectively, and use the functions defined for that extension
@@ -259,9 +272,9 @@ of the `mvk_vulkan.h` file below for a convenient way to enable these extensions
 
 When using the `VK_MVK_macos_surface ` extension, the `pView` member of the `VkMacOSSurfaceCreateInfoMVK` 
 structure passed in the `vkCreateMacOSSurfaceMVK` function can be either an `NSView` whose layer is a 
-`CAMetalLayer`, or the `CAMetalLayer` itself. Passing the `CAMetalLayer` itself is recommended when calling
-the `vkCreateMacOSSurfaceMVK` function from outside the main application thread, as `NSView` should only be
-accessed from the main application thread.
+`CAMetalLayer`, or the `CAMetalLayer` itself. Passing the `CAMetalLayer` itself is recommended when 
+calling the `vkCreateMacOSSurfaceMVK` function from outside the main application thread, as `NSView` 
+should only be accessed from the main application thread.
 
 When using the `VK_MVK_ios_surface ` extension, the `pView` member of the `VkIOSSurfaceCreateInfoMVK` 
 structure passed in the `vkCreateIOSSurfaceMVK` function can be either a `UIView` whose layer is a 
@@ -269,14 +282,14 @@ structure passed in the `vkCreateIOSSurfaceMVK` function can be either a `UIView
 calling the `vkCreateIOSSurfaceMVK ` function from outside the main application thread, as `UIView` 
 should only be accessed from the main application thread.
 
-<a name="moltenvk_extension"></a>
-### MoltenVK Extension
 
-The `VK_MVK_moltenvk` *Vulkan* extension provides functionality beyond the standard *Vulkan*
-API, to support configuration options, license registration, and behaviour that is specific 
-to the **MoltenVK** implementation of *Vulkan*. You can access this functionality by including
-the `vk_mvk_moltenvk.h` header file in your code. The `vk_mvk_moltenvk.h` file also includes 
-the API documentation for this `VK_MVK_moltenvk` extension.
+<a name="moltenvk_extension"></a>
+### MoltenVK `VK_MVK_moltenvk` Extension
+
+The `VK_MVK_moltenvk` *Vulkan* extension provides functionality beyond the standard *Vulkan* API, to 
+support configuration options and behaviour that is specific to the **MoltenVK** implementation of *Vulkan*. 
+You can access this functionality by including the `vk_mvk_moltenvk.h` header file in your code. 
+The `vk_mvk_moltenvk.h` file also includes the API documentation for this `VK_MVK_moltenvk` extension.
 
 The following API header files are included in the **MoltenVK** package, each of which 
 can be included in your application source code as follows:
@@ -304,6 +317,30 @@ where `HEADER_FILE` is one of the following:
   These functions are exposed in this header for your own purposes such as interacting with *Metal* 
   directly, or simply logging data values.
 
+
+<a name="moltenvk_config"></a>
+### Configuring MoltenVK
+
+The `VK_MVK_moltenvk` *Vulkan* extension provides the ability to configure and optimize 
+**MoltenVK** for your particular application runtime requirements.
+
+There are three mechanisms for setting the values of the **MoltenVK** configuration parameters:
+
+- Runtime API via the `vkGetMoltenVKConfigurationMVK()/vkSetMoltenVKConfigurationMVK()` functions.
+- Application runtime environment variables.
+- Build settings at **MoltenVK** build time.
+
+To change the **MoltenVK** configuration settings at runtime using a programmatic API, use the 
+`vkGetMoltenVKConfigurationMVK()` and `vkSetMoltenVKConfigurationMVK()` functions to retrieve, 
+modify, and set a copy of the `MVKConfiguration` structure.
+
+The initial value of each of the configuration settings can established at runtime 
+by a corresponding environment variable, or if the environment variable is not set, 
+by a corresponding build setting at the time **MoltenVK** is compiled. The environment 
+variable and build setting for each configuration parameter share the same name.
+
+See the description of the `MVKConfiguration` structure parameters in the `vk_mvk_moltenvk.h` 
+file for more info about configuring and optimizing **MoltenVK** at build time or runtime.
 
 
 <a name="shaders"></a>
@@ -376,21 +413,16 @@ you can address the issue as follows:
 
 - Errors encountered during **Runtime Shader Conversion** are logged to the console.
 
-- To help understand conversion issues during **Runtime Shader Conversion**, you can enable
-  the logging of the *SPIR-V* and *MSL* shader source code during conversion as follows:
-  
-  		#include <MoltenVK/vk_mvk_moltenvk.h>
-  		...
-  		MVKConfiguration mvkConfig;
-  		size_t appConfigSize = sizeof(mvkConfig);
-  		vkGetMoltenVKConfigurationMVK(vkInstance, &mvkConfig, &appConfigSize);
-  		mvkConfig.debugMode = true;
-  		vkSetMoltenVKConfigurationMVK(vkInstance, &mvkConfig, &appConfigSize);
+- To help understand conversion issues during **Runtime Shader Conversion**, you can enable the 
+  logging of the *SPIR-V* and *MSL* shader source code during shader conversion, by turning on 
+  the `MVKConfiguration::debugMode` configuration parameter, or setting the value of the `MVK_DEBUG` 
+  runtime environment variable to `1`. See the [*MoltenVK Configuration*](#moltenvk_config) 
+  description above.
 
-  Performing these steps will enable debug mode in **MoltenVK**, which includes shader conversion 
-  logging, and causes both the incoming *SPIR-V* code and the converted *MSL* source code to be 
-  logged to the console (in human-readable form). This allows you to manually verify the conversions, 
-  and can help you diagnose issues that might occur during shader conversion.
+  Enabling debug mode in **MoltenVK** includes shader conversion logging, which causes both 
+  the incoming *SPIR-V* code and the converted *MSL* source code to be logged to the console 
+  in human-readable form. This allows you to manually verify the conversions, and can help 
+  you diagnose issues that might occur during shader conversion.
 
 - For minor issues, you may be able to adjust your *SPIR-V* code so that it behaves the same 
   under *Vulkan*, but is easier to automatically convert to *MSL*.
@@ -475,28 +507,11 @@ This section documents the known limitations in this version of **MoltenVK**.
   In order to use Vulkan layers such as the validation layers, use the Vulkan loader and layers from the
   [LunarG Vulkan SDK](https://vulkan.lunarg.com).
 
-The following *Vulkan 1.0* features have not been implemented in this version of **MoltenVK**:
+- `VkEvents` are not supported.
 
-- Tessellation and Geometry shader stages.
+- Application-controlled memory allocations using `VkAllocationCallbacks` are ignored.
 
-- Events:
-	- `vkCreateEvent()`
-	- `vkDestroyEvent()`
-	- `vkGetEventStatus()`
-	- `vkSetEvent()`
-	- `vkResetEvent()`
-	- `vkCmdSetEvent()`
-	- `vkCmdResetEvent()`
-	- `vkCmdWaitEvents()`
+- Pipeline statistics query pool using `VK_QUERY_TYPE_PIPELINE_STATISTICS` is not supported.
 
-- Application-controlled memory allocations:
-	- `VkAllocationCallbacks` are ignored
-	 
-- Sparse memory:
-	- `vkGetImageSparseMemoryRequirements()`
-	- `vkGetPhysicalDeviceSparseImageFormatProperties()`
-	- `vkQueueBindSparse()`
-	 
-- Pipeline statistics query pool:
-	- `vkCreateQueryPool(VK_QUERY_TYPE_PIPELINE_STATISTICS)`
-
+- Image content in `PVRTC` compressed formats must be loaded directly into a `VkImage` using 
+  host-visible memory mapping. Loading via a staging buffer will result in malformed image content. 

@@ -1,7 +1,7 @@
 /*
  * MVKShaderModule.h
  *
- * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@
 #include "MVKDevice.h"
 #include "MVKSync.h"
 #include <MoltenVKSPIRVToMSLConverter/SPIRVToMSLConverter.h>
+#include <MoltenVKGLSLToSPIRVConverter/GLSLToSPIRVConverter.h>
 #include <vector>
 #include <mutex>
 
@@ -28,6 +29,8 @@
 
 class MVKPipelineCache;
 class MVKShaderCacheIterator;
+class MVKShaderLibraryCache;
+class MVKShaderModule;
 
 using namespace mvk;
 
@@ -45,17 +48,23 @@ typedef struct {
 extern const MVKMTLFunction MVKMTLFunctionNull;
 
 /** Wraps a single MTLLibrary. */
-class MVKShaderLibrary : public MVKBaseDeviceObject {
+class MVKShaderLibrary : public MVKBaseObject {
 
 public:
-	/** Returns the Metal shader function, possibly specialized. */
-	MVKMTLFunction getMTLFunction(const VkSpecializationInfo* pSpecializationInfo);
 
+	/** Returns the Vulkan API opaque object controlling this object. */
+	MVKVulkanAPIObject* getVulkanAPIObject() override { return _owner->getVulkanAPIObject(); };
+
+    /** Sets the number of threads in a single compute kernel workgroup, per dimension. */
+    void setWorkgroupSize(uint32_t x, uint32_t y, uint32_t z);
+    
 	/** Constructs an instance from the specified MSL source code. */
-	MVKShaderLibrary(MVKDevice* device, const std::string& mslSourceCode, const SPIRVEntryPoint& entryPoint);
+	MVKShaderLibrary(MVKVulkanAPIDeviceObject* owner,
+					 const std::string& mslSourceCode,
+					 const SPIRVEntryPoint& entryPoint);
 
 	/** Constructs an instance from the specified compiled MSL code data. */
-	MVKShaderLibrary(MVKDevice* device,
+	MVKShaderLibrary(MVKVulkanAPIDeviceObject* owner,
 					 const void* mslCompiledCodeData,
 					 size_t mslCompiledCodeLength);
 
@@ -66,10 +75,14 @@ public:
 
 protected:
 	friend MVKShaderCacheIterator;
+	friend MVKShaderLibraryCache;
+	friend MVKShaderModule;
 
+	MVKMTLFunction getMTLFunction(const VkSpecializationInfo* pSpecializationInfo, MVKShaderModule* shaderModule);
 	void handleCompilationError(NSError* err, const char* opDesc);
     MTLFunctionConstant* getFunctionConstant(NSArray<MTLFunctionConstant*>* mtlFCs, NSUInteger mtlFCID);
 
+	MVKVulkanAPIDeviceObject* _owner;
 	id<MTLLibrary> _mtlLibrary;
 	SPIRVEntryPoint _entryPoint;
 	std::string _msl;
@@ -80,9 +93,12 @@ protected:
 #pragma mark MVKShaderLibraryCache
 
 /** Represents a cache of shader libraries for one shader module. */
-class MVKShaderLibraryCache : public MVKBaseDeviceObject {
+class MVKShaderLibraryCache : public MVKBaseObject {
 
 public:
+
+	/** Returns the Vulkan API opaque object controlling this object. */
+	MVKVulkanAPIObject* getVulkanAPIObject() override { return _owner->getVulkanAPIObject(); };
 
 	/**
 	 * Returns a shader library from the specified shader context sourced from the specified shader module,
@@ -95,13 +111,14 @@ public:
 									   MVKShaderModule* shaderModule,
 									   bool* pWasAdded = nullptr);
 
-	MVKShaderLibraryCache(MVKDevice* device) : MVKBaseDeviceObject(device) {};
+	MVKShaderLibraryCache(MVKVulkanAPIDeviceObject* owner) : _owner(owner) {};
 
 	~MVKShaderLibraryCache() override;
 
 protected:
 	friend MVKShaderCacheIterator;
 	friend MVKPipelineCache;
+	friend MVKShaderModule;
 
 	MVKShaderLibrary* findShaderLibrary(SPIRVToMSLConverterContext* pContext);
 	MVKShaderLibrary* addShaderLibrary(SPIRVToMSLConverterContext* pContext,
@@ -109,7 +126,7 @@ protected:
 									   const SPIRVEntryPoint& entryPoint);
 	void merge(MVKShaderLibraryCache* other);
 
-	std::mutex _accessLock;
+	MVKVulkanAPIDeviceObject* _owner;
 	std::vector<std::pair<SPIRVToMSLConverterContext, MVKShaderLibrary*>> _shaderLibraries;
 };
 
@@ -140,9 +157,16 @@ namespace std {
 }
 
 /** Represents a Vulkan shader module. */
-class MVKShaderModule : public MVKBaseDeviceObject {
+class MVKShaderModule : public MVKVulkanAPIDeviceObject {
 
 public:
+
+	/** Returns the Vulkan type of this object. */
+	VkObjectType getVkObjectType() override { return VK_OBJECT_TYPE_SHADER_MODULE; }
+
+	/** Returns the debug report object type of this object. */
+	VkDebugReportObjectTypeEXT getVkDebugReportObjectType() override { return VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT; }
+
 	/** Returns the Metal shader function, possibly specialized. */
 	MVKMTLFunction getMTLFunction(SPIRVToMSLConverterContext* pContext,
 								  const VkSpecializationInfo* pSpecializationInfo,
@@ -151,20 +175,26 @@ public:
 	/** Convert the SPIR-V to MSL, using the specified shader conversion context. */
 	bool convert(SPIRVToMSLConverterContext* pContext);
 
+	/** Returns the original SPIR-V code that was specified when this object was created. */
+	const std::vector<uint32_t>& getSPIRV() { return _spvConverter.getSPIRV(); }
+
 	/**
 	 * Returns the Metal Shading Language source code as converted by the most recent
 	 * call to convert() function, or set directly using the setMSL() function.
 	 */
-	inline const std::string& getMSL() { return _converter.getMSL(); }
+	const std::string& getMSL() { return _spvConverter.getMSL(); }
 
 	/**
 	 * Returns information about the shader entry point as converted by the most recent
 	 * call to convert() function, or set directly using the setMSL() function.
 	 */
-	inline const SPIRVEntryPoint& getEntryPoint() { return _converter.getEntryPoint(); }
-
+	const SPIRVEntryPoint& getEntryPoint() { return _spvConverter.getEntryPoint(); }
+    
+    /** Sets the number of threads in a single compute kernel workgroup, per dimension. */
+    void setWorkgroupSize(uint32_t x, uint32_t y, uint32_t z);
+    
 	/** Returns a key as a means of identifying this shader module in a pipeline cache. */
-	inline MVKShaderModuleKey getKey() { return _key; }
+	MVKShaderModuleKey getKey() { return _key; }
 
 	MVKShaderModule(MVKDevice* device, const VkShaderModuleCreateInfo* pCreateInfo);
 
@@ -173,8 +203,12 @@ public:
 protected:
 	friend MVKShaderCacheIterator;
 
+	void propogateDebugName() override {}
+	MVKGLSLConversionShaderStage getMVKGLSLConversionShaderStage(SPIRVToMSLConverterContext* pContext);
+
 	MVKShaderLibraryCache _shaderLibraryCache;
-	SPIRVToMSLConverter _converter;
+	SPIRVToMSLConverter _spvConverter;
+	GLSLToSPIRVConverter _glslConverter;
 	MVKShaderLibrary* _defaultLibrary;
 	MVKShaderModuleKey _key;
     std::mutex _accessLock;
@@ -204,9 +238,9 @@ public:
 
 #pragma mark Construction
 
-	MVKShaderLibraryCompiler(MVKDevice* device) : MVKMetalCompiler(device) {
+	MVKShaderLibraryCompiler(MVKVulkanAPIDeviceObject* owner) : MVKMetalCompiler(owner) {
 		_compilerType = "Shader library";
-		_pPerformanceTracker = &_device->_performanceStatistics.shaderCompilation.mslCompile;
+		_pPerformanceTracker = &_owner->getDevice()->_performanceStatistics.shaderCompilation.mslCompile;
 	}
 
 	~MVKShaderLibraryCompiler() override;
@@ -242,9 +276,9 @@ public:
 
 #pragma mark Construction
 
-	MVKFunctionSpecializer(MVKDevice* device) : MVKMetalCompiler(device) {
+	MVKFunctionSpecializer(MVKVulkanAPIDeviceObject* owner) : MVKMetalCompiler(owner) {
 		_compilerType = "Function specialization";
-		_pPerformanceTracker = &_device->_performanceStatistics.shaderCompilation.functionSpecialization;
+		_pPerformanceTracker = &_owner->getDevice()->_performanceStatistics.shaderCompilation.functionSpecialization;
 	}
 
 	~MVKFunctionSpecializer() override;

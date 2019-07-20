@@ -1,7 +1,7 @@
 /*
  * MVKEnvironment.h
  *
- * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,19 @@
 #pragma once
 
 #include "MVKCommonEnvironment.h"
+#include "mvk_vulkan.h"
 
+
+// Expose MoltenVK Apple surface extension functionality
+#ifdef VK_USE_PLATFORM_IOS_MVK
+#	define vkCreate_PLATFORM_SurfaceMVK			vkCreateIOSSurfaceMVK
+#	define Vk_PLATFORM_SurfaceCreateInfoMVK		VkIOSSurfaceCreateInfoMVK
+#endif
+
+#ifdef VK_USE_PLATFORM_MACOS_MVK
+#	define vkCreate_PLATFORM_SurfaceMVK			vkCreateMacOSSurfaceMVK
+#	define Vk_PLATFORM_SurfaceCreateInfoMVK		VkMacOSSurfaceCreateInfoMVK
+#endif
 
 /** Macro to determine the Vulkan version supported by MoltenVK. */
 #define MVK_VULKAN_API_VERSION		VK_MAKE_VERSION(VK_VERSION_MAJOR(VK_API_VERSION_1_0),	\
@@ -44,9 +56,9 @@
 #   define MVK_CONFIG_SHADER_CONVERSION_FLIP_VERTEX_Y    1
 #endif
 
-/** Process command queue submissions on the same thread on which the submission call was made. Disabled by default. */
+/** Process command queue submissions on the same thread on which the submission call was made. Enable by default. */
 #ifndef MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS
-#   define MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS    0
+#   define MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS    1
 #endif
 
 /** Fill a Metal command buffers when each Vulkan command buffer is filled. */
@@ -58,8 +70,8 @@
  * The maximum number of Metal command buffers that can be concurrently
  * active per Vulkan queue. Default is Metal's default value of 64.
  */
-#ifndef MVK_CONFIG_MAX_ACTIVE_METAL_COMMAND_BUFFERS_PER_POOL
-#   define MVK_CONFIG_MAX_ACTIVE_METAL_COMMAND_BUFFERS_PER_POOL    64
+#ifndef MVK_CONFIG_MAX_ACTIVE_METAL_COMMAND_BUFFERS_PER_QUEUE
+#   define MVK_CONFIG_MAX_ACTIVE_METAL_COMMAND_BUFFERS_PER_QUEUE    64
 #endif
 
 /** Support more than 8192 occlusion queries per buffer. Enabled by default. */
@@ -77,15 +89,68 @@
 #   define MVK_CONFIG_SWAPCHAIN_MAG_FILTER_USE_NEAREST    1
 #endif
 
+/** The maximum amount of time, in nanoseconds, to wait for a Metal library. Default is infinite. */
+#ifndef MVK_CONFIG_METAL_COMPILE_TIMEOUT
+#   define MVK_CONFIG_METAL_COMPILE_TIMEOUT    INT64_MAX
+#endif
+
+/** Track performance. Disabled by default. */
+#ifndef MVK_CONFIG_PERFORMANCE_TRACKING
+#   define MVK_CONFIG_PERFORMANCE_TRACKING    0
+#endif
+
+/** Log performance once every this number of frames. Default is zero (never). */
+#ifndef MVK_CONFIG_PERFORMANCE_LOGGING_FRAME_COUNT
+#   define MVK_CONFIG_PERFORMANCE_LOGGING_FRAME_COUNT    0
+#endif
+
 /** Display the MoltenVK logo watermark. Disabled by default. */
 #ifndef MVK_CONFIG_DISPLAY_WATERMARK
 #   define MVK_CONFIG_DISPLAY_WATERMARK    0
 #endif
 
-/** The maximum amount of time, in nanoseconds, to wait for a Metal library. Default is infinite. */
-#ifndef MVK_CONFIG_METAL_COMPILE_TIMEOUT
-#   define MVK_CONFIG_METAL_COMPILE_TIMEOUT    INT64_MAX
+/** Advertise specialized queue families. Disabled by default. */
+#ifndef MVK_CONFIG_SPECIALIZED_QUEUE_FAMILIES
+#   define MVK_CONFIG_SPECIALIZED_QUEUE_FAMILIES    0
 #endif
+
+/** If the Vulkan app selects a high-power GPU, force the system to use it. Enabled by default. */
+#ifndef MVK_CONFIG_SWITCH_SYSTEM_GPU
+#   define MVK_CONFIG_SWITCH_SYSTEM_GPU    1
+#endif
+
+/** Support full ImageView swizzles. Disabled by default. */
+#ifndef MVK_CONFIG_FULL_IMAGE_VIEW_SWIZZLE
+#   define MVK_CONFIG_FULL_IMAGE_VIEW_SWIZZLE    0
+#endif
+
+/**
+ * The index of the queue family whose presentation submissions will
+ * be used as the default GPU Capture Scope during debugging in Xcode.
+ */
+#ifndef MVK_CONFIG_DEFAULT_GPU_CAPTURE_SCOPE_QUEUE_FAMILY_INDEX
+#   define MVK_CONFIG_DEFAULT_GPU_CAPTURE_SCOPE_QUEUE_FAMILY_INDEX    0
+#endif
+
+/**
+ * The index of the queue, within the queue family identified by the
+ * MVK_CONFIG_DEFAULT_GPU_CAPTURE_SCOPE_QUEUE_FAMILY_INDEX setting, whose presentation
+ * submissions will be used as the default GPU Capture Scope during debugging in Xcode.
+ */
+#ifndef MVK_CONFIG_DEFAULT_GPU_CAPTURE_SCOPE_QUEUE_INDEX
+#   define MVK_CONFIG_DEFAULT_GPU_CAPTURE_SCOPE_QUEUE_INDEX    0
+#endif
+
+/** Force the use of a low-power GPU if it exists. Disabled by default. */
+#ifndef MVK_CONFIG_FORCE_LOW_POWER_GPU
+#   define MVK_CONFIG_FORCE_LOW_POWER_GPU    0
+#endif
+
+/** Allow the use of Metal events for Vulkan synchronizations such as VkSemaphores. Disabled by default. */
+#ifndef MVK_ALLOW_METAL_EVENTS
+#   define MVK_ALLOW_METAL_EVENTS    0
+#endif
+
 
 /**
  * IOSurfaces are supported on macOS, and on iOS starting with iOS 11.

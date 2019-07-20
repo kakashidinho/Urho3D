@@ -1,7 +1,7 @@
 /*
  * MVKMTLBufferAllocation.h
  *
- * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,11 +38,17 @@ public:
     NSUInteger _offset;
     NSUInteger _length;
 
+	/** Returns the Vulkan API opaque object controlling this object. */
+	MVKVulkanAPIObject* getVulkanAPIObject() override;
+
     /**
      * Returns a pointer to the begining of this allocation memory, taking into
      * consideration this allocation's offset into the underlying MTLBuffer.
      */
     inline void* getContents() const { return (void*)((uintptr_t)_mtlBuffer.contents + _offset); }
+
+    /** Returns the pool whence this object was created. */
+    MVKMTLBufferAllocationPool* getPool() const { return _pool; }
 
 	/** Returns this object back to the pool that created it. This will reset the value of _next member. */
     void returnToPool();
@@ -80,6 +86,9 @@ class MVKMTLBufferAllocationPool : public MVKObjectPool<MVKMTLBufferAllocation> 
 
 public:
 
+	/** Returns the Vulkan API opaque object controlling this object. */
+	MVKVulkanAPIObject* getVulkanAPIObject() override { return _device->getVulkanAPIObject(); };
+
     /** Returns a new MVKMTLBufferAllocation instance. */
     MVKMTLBufferAllocation* newObject() override;
 
@@ -115,6 +124,9 @@ protected:
 class MVKMTLBufferAllocator : public MVKBaseDeviceObject {
 
 public:
+
+	/** Returns the Vulkan API opaque object controlling this object. */
+	MVKVulkanAPIObject* getVulkanAPIObject() override { return _device->getVulkanAPIObject(); };
 
     /** 
      * Returns a MVKMTLBufferAllocation instance with a size that is the next 

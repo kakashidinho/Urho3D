@@ -440,6 +440,9 @@ bool Graphics::SetMode(int width, int height, bool fullscreen, bool borderless, 
 #ifdef URHO3D_ANGLE_VULKAN
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
 		SDL_SetHint(SDL_HINT_OPENGL_ES_DRIVER, "1");
+#if defined(IOS) || defined(TVOS) || defined(__APPLE__)
+        SDL_setenv("MVK_CONFIG_FULL_IMAGE_VIEW_SWIZZLE" , "1" , true);
+#endif
 #endif
         for (;;)
         {

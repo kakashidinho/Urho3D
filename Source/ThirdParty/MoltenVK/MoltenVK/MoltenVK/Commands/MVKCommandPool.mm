@@ -1,7 +1,7 @@
 /*
  * MVKCommandPool.mm
  *
- * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@
 #include "MVKQueue.h"
 #include "MVKDeviceMemory.h"
 #include "MVKFoundation.h"
-#include "mvk_datatypes.h"
+#include "mvk_datatypes.hpp"
 #include "MVKLogging.h"
 
 using namespace std;
@@ -56,7 +56,10 @@ VkResult MVKCommandPool::allocateCommandBuffers(const VkCommandBufferAllocateInf
 		mvkCmdBuff->init(pAllocateInfo);
 		_allocatedCommandBuffers.insert(mvkCmdBuff);
         pCmdBuffer[cbIdx] = mvkCmdBuff->getVkCommandBuffer();
-		if (rslt == VK_SUCCESS) { rslt = mvkCmdBuff->getConfigurationResult(); }
+
+		// Command buffers start out in a VK_NOT_READY config result
+		VkResult cbRslt = mvkCmdBuff->getConfigurationResult();
+		if (rslt == VK_SUCCESS && cbRslt != VK_NOT_READY) { rslt = cbRslt; }
 	}
 	return rslt;
 }
@@ -127,51 +130,54 @@ void MVKCommandPool::trim() {
 
 MVKCommandPool::MVKCommandPool(MVKDevice* device,
 							   const VkCommandPoolCreateInfo* pCreateInfo) :
-	MVKBaseDeviceObject(device),
+	MVKVulkanAPIDeviceObject(device),
 	_commandBufferPool(device),
-	_commandEncodingPool(device),
+	_commandEncodingPool(this),
 	_queueFamilyIndex(pCreateInfo->queueFamilyIndex),
-	_cmdPipelineBarrierPool(this, true),
-	_cmdBindPipelinePool(this, true),
-	_cmdBeginRenderPassPool(this, true),
-	_cmdNextSubpassPool(this, true),
-	_cmdExecuteCommandsPool(this, true),
-	_cmdEndRenderPassPool(this, true),
-	_cmdBindDescriptorSetsPool(this, true),
-	_cmdSetViewportPool(this, true),
-	_cmdSetScissorPool(this, true),
-    _cmdSetLineWidthPool(this, true),
-    _cmdSetDepthBiasPool(this, true),
-    _cmdSetBlendConstantsPool(this, true),
-    _cmdSetDepthBoundsPool(this, true),
-    _cmdSetStencilCompareMaskPool(this, true),
-    _cmdSetStencilWriteMaskPool(this, true),
-    _cmdSetStencilReferencePool(this, true),
-	_cmdBindVertexBuffersPool(this, true),
-	_cmdBindIndexBufferPool(this, true),
-	_cmdDrawPool(this, true),
-	_cmdDrawIndexedPool(this, true),
-	_cmdDrawIndirectPool(this, true),
-	_cmdDrawIndexedIndirectPool(this, true),
-	_cmdCopyImagePool(this, true),
-	_cmdBlitImagePool(this, true),
-    _cmdResolveImagePool(this, true),
-    _cmdFillBufferPool(this, true),
-    _cmdUpdateBufferPool(this, true),
-	_cmdCopyBufferPool(this, true),
-    _cmdBufferImageCopyPool(this, true),
-	_cmdClearAttachmentsPool(this, true),
-	_cmdClearImagePool(this, true),
-    _cmdBeginQueryPool(this, true),
-    _cmdEndQueryPool(this, true),
-	_cmdWriteTimestampPool(this, true),
-    _cmdResetQueryPoolPool(this, true),
-    _cmdCopyQueryPoolResultsPool(this, true),
-	_cmdPushConstantsPool(this, true),
-    _cmdDispatchPool(this, true),
-    _cmdDispatchIndirectPool(this, true),
-    _cmdPushDescriptorSetPool(this, true),
-    _cmdPushSetWithTemplatePool(this, true)
+	_cmdPipelineBarrierPool(this),
+	_cmdBindPipelinePool(this),
+	_cmdBeginRenderPassPool(this),
+	_cmdNextSubpassPool(this),
+	_cmdExecuteCommandsPool(this),
+	_cmdEndRenderPassPool(this),
+	_cmdBindDescriptorSetsPool(this),
+	_cmdSetViewportPool(this),
+	_cmdSetScissorPool(this),
+    _cmdSetLineWidthPool(this),
+    _cmdSetDepthBiasPool(this),
+    _cmdSetBlendConstantsPool(this),
+    _cmdSetDepthBoundsPool(this),
+    _cmdSetStencilCompareMaskPool(this),
+    _cmdSetStencilWriteMaskPool(this),
+    _cmdSetStencilReferencePool(this),
+	_cmdBindVertexBuffersPool(this),
+	_cmdBindIndexBufferPool(this),
+	_cmdDrawPool(this),
+	_cmdDrawIndexedPool(this),
+	_cmdDrawIndirectPool(this),
+	_cmdDrawIndexedIndirectPool(this),
+	_cmdCopyImagePool(this),
+	_cmdBlitImagePool(this),
+    _cmdResolveImagePool(this),
+    _cmdFillBufferPool(this),
+    _cmdUpdateBufferPool(this),
+	_cmdCopyBufferPool(this),
+    _cmdBufferImageCopyPool(this),
+	_cmdClearAttachmentsPool(this),
+	_cmdClearImagePool(this),
+    _cmdBeginQueryPool(this),
+    _cmdEndQueryPool(this),
+	_cmdWriteTimestampPool(this),
+    _cmdResetQueryPoolPool(this),
+    _cmdCopyQueryPoolResultsPool(this),
+	_cmdPushConstantsPool(this),
+    _cmdDispatchPool(this),
+    _cmdDispatchIndirectPool(this),
+    _cmdPushDescriptorSetPool(this),
+    _cmdPushSetWithTemplatePool(this),
+	_cmdDebugMarkerBeginPool(this),
+	_cmdDebugMarkerEndPool(this),
+	_cmdDebugMarkerInsertPool(this)
 {}
 
 MVKCommandPool::~MVKCommandPool() {

@@ -1,7 +1,7 @@
 /*
  * MVKSync.mm
  *
- * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@
 
 #include "MVKSync.h"
 #include "MVKFoundation.h"
+#include "MVKLogging.h"
 
 using namespace std;
 
@@ -25,9 +26,9 @@ using namespace std;
 #pragma mark -
 #pragma mark MVKSemaphoreImpl
 
-void MVKSemaphoreImpl::release() {
+bool MVKSemaphoreImpl::release() {
 	lock_guard<mutex> lock(_lock);
-    if (isClear()) { return; }
+    if (isClear()) { return true; }
 
     // Either decrement the reservation counter, or clear it altogether
     if (_shouldWaitAll) {
@@ -37,11 +38,12 @@ void MVKSemaphoreImpl::release() {
     }
     // If all reservations have been released, unblock all waiting threads
     if ( isClear() ) { _blocker.notify_all(); }
+    return isClear();
 }
 
 void MVKSemaphoreImpl::reserve() {
 	lock_guard<mutex> lock(_lock);
-	reserveImpl();
+	_reservationCount++;
 }
 
 bool MVKSemaphoreImpl::wait(uint64_t timeout, bool reserveAgain) {
@@ -60,8 +62,13 @@ bool MVKSemaphoreImpl::wait(uint64_t timeout, bool reserveAgain) {
         isDone = _blocker.wait_for(lock, nanos, [this]{ return isClear(); });
     }
 
-    if (reserveAgain) { reserveImpl(); }
+	if (reserveAgain) { _reservationCount++; }
     return isDone;
+}
+
+MVKSemaphoreImpl::~MVKSemaphoreImpl() {
+    // Acquire the lock to ensure proper ordering.
+    lock_guard<mutex> lock(_lock);
 }
 
 
@@ -70,12 +77,33 @@ bool MVKSemaphoreImpl::wait(uint64_t timeout, bool reserveAgain) {
 
 bool MVKSemaphore::wait(uint64_t timeout) {
 	bool isDone = _blocker.wait(timeout, true);
-	if ( !isDone && timeout > 0 ) { mvkNotifyErrorWithText(VK_TIMEOUT, "Vulkan semaphore timeout after %llu nanoseconds.", timeout); }
+	if ( !isDone && timeout > 0 ) { reportError(VK_TIMEOUT, "Vulkan semaphore timeout after %llu nanoseconds.", timeout); }
 	return isDone;
 }
 
 void MVKSemaphore::signal() {
     _blocker.release();
+}
+
+void MVKSemaphore::encodeWait(id<MTLCommandBuffer> cmdBuff) {
+    [cmdBuff encodeWaitForEvent: _mtlEvent value: _mtlEventValue];
+    ++_mtlEventValue;
+}
+
+void MVKSemaphore::encodeSignal(id<MTLCommandBuffer> cmdBuff) {
+    [cmdBuff encodeSignalEvent: _mtlEvent value: _mtlEventValue];
+}
+
+MVKSemaphore::MVKSemaphore(MVKDevice* device, const VkSemaphoreCreateInfo* pCreateInfo)
+    : MVKVulkanAPIDeviceObject(device), _blocker(false, 1), _mtlEvent(nil), _mtlEventValue(1) {
+
+    if (device->_pMetalFeatures->events) {
+        _mtlEvent = [device->getMTLDevice() newEvent];
+    }
+}
+
+MVKSemaphore::~MVKSemaphore() {
+    [_mtlEvent release];
 }
 
 
@@ -85,17 +113,18 @@ void MVKSemaphore::signal() {
 void MVKFence::addSitter(MVKFenceSitter* fenceSitter) {
 	lock_guard<mutex> lock(_lock);
 
-	// Sitters only care about unsignaled fences. If already signaled,
-	// don't add myself to the sitter and don't notify the sitter.
+	// We only care about unsignaled fences. If already signaled,
+	// don't add myself to the sitter and don't signal the sitter.
 	if (_isSignaled) { return; }
 
 	// Ensure each fence only added once to each fence sitter
 	auto addRslt = _fenceSitters.insert(fenceSitter);	// pair with second element true if was added
-	if (addRslt.second) { fenceSitter->addUnsignaledFence(this); }
+	if (addRslt.second) { fenceSitter->awaitFence(this); }
 }
 
 void MVKFence::removeSitter(MVKFenceSitter* fenceSitter) {
 	lock_guard<mutex> lock(_lock);
+
 	_fenceSitters.erase(fenceSitter);
 }
 
@@ -114,69 +143,15 @@ void MVKFence::signal() {
 
 void MVKFence::reset() {
 	lock_guard<mutex> lock(_lock);
+
 	_isSignaled = false;
 	_fenceSitters.clear();
 }
 
 bool MVKFence::getIsSignaled() {
 	lock_guard<mutex> lock(_lock);
+
 	return _isSignaled;
-}
-
-
-#pragma mark Construction
-
-MVKFence::~MVKFence() {
-	lock_guard<mutex> lock(_lock);
-    for (auto& fs : _fenceSitters) {
-        fs->fenceSignaled(this);
-    }
-}
-
-
-#pragma mark -
-#pragma mark MVKFenceSitter
-
-void MVKFenceSitter::addUnsignaledFence(MVKFence* fence) {
-	lock_guard<mutex> lock(_lock);
-	// Only reserve semaphore once per fence
-	auto addRslt = _unsignaledFences.insert(fence);		// pair with second element true if was added
-	if (addRslt.second) { _blocker.reserve(); }
-}
-
-void MVKFenceSitter::fenceSignaled(MVKFence* fence) {
-	lock_guard<mutex> lock(_lock);
-	// Only release semaphore if actually waiting for this fence
-	if (_unsignaledFences.erase(fence)) { _blocker.release(); }
-}
-
-bool MVKFenceSitter::wait(uint64_t timeout) {
-	bool isDone = _blocker.wait(timeout);
-	if ( !isDone && timeout > 0 ) { mvkNotifyErrorWithText(VK_TIMEOUT, "Vulkan fence timeout after %llu nanoseconds.", timeout); }
-	return isDone;
-}
-
-
-#pragma mark Construction
-
-MVKFenceSitter::~MVKFenceSitter() {
-	// Use copy of collection to avoid deadlocks with the fences if lock in place here when removing sitters
-	vector<MVKFence*> ufsCopy;
-	getUnsignaledFences(ufsCopy);
-	for (auto& uf : ufsCopy) {
-        uf->removeSitter(this);
-    }
-}
-
-// Fills the vector with the collection of unsignaled fences
-void MVKFenceSitter::getUnsignaledFences(vector<MVKFence*>& fences) {
-	fences.clear();
-
-	lock_guard<mutex> lock(_lock);
-	fences.reserve(_unsignaledFences.size());
-	for (auto& uf : _unsignaledFences) {
-		fences.push_back(uf);
-	}
 }
 
 
@@ -190,18 +165,32 @@ VkResult mvkResetFences(uint32_t fenceCount, const VkFence* pFences) {
 	return VK_SUCCESS;
 }
 
-VkResult mvkWaitForFences(uint32_t fenceCount,
+// Create a blocking fence sitter, add it to each fence, wait, then remove it.
+VkResult mvkWaitForFences(MVKDevice* device,
+						  uint32_t fenceCount,
 						  const VkFence* pFences,
 						  VkBool32 waitAll,
 						  uint64_t timeout) {
 
-	// Create a blocking fence sitter and add it to each fence
+	VkResult rslt = VK_SUCCESS;
 	MVKFenceSitter fenceSitter(waitAll);
+
 	for (uint32_t i = 0; i < fenceCount; i++) {
-		MVKFence* mvkFence = (MVKFence*)pFences[i];
-		mvkFence->addSitter(&fenceSitter);
+		((MVKFence*)pFences[i])->addSitter(&fenceSitter);
 	}
-	return fenceSitter.wait(timeout) ? VK_SUCCESS : VK_TIMEOUT;
+
+	if ( !fenceSitter.wait(timeout) ) {
+		rslt = VK_TIMEOUT;
+		if (timeout > 0) {
+			device->reportError(rslt, "Vulkan fence timeout after %llu nanoseconds.", timeout);
+		}
+	}
+
+	for (uint32_t i = 0; i < fenceCount; i++) {
+		((MVKFence*)pFences[i])->removeSitter(&fenceSitter);
+	}
+
+	return rslt;
 }
 
 
@@ -215,12 +204,14 @@ VkResult mvkWaitForFences(uint32_t fenceCount,
 // over a second to return when a compiler failure occurs!
 void MVKMetalCompiler::compile(unique_lock<mutex>& lock, dispatch_block_t block) {
 	MVKAssert( _startTime == 0, "%s compile occurred already in this instance. Instances of %s should only be used for a single compile activity.", _compilerType.c_str(), getClassName().c_str());
-	_startTime = _device->getPerformanceTimestamp();
+
+	MVKDevice* mvkDev = _owner->getDevice();
+	_startTime = mvkDev->getPerformanceTimestamp();
 
 	dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), block);
 
 	// Limit timeout to avoid overflow since wait_for() uses wait_until()
-	chrono::nanoseconds nanoTimeout(min(_device->_pMVKConfig->metalCompileTimeout, kMVKUndefinedLargeUInt64));
+	chrono::nanoseconds nanoTimeout(min(mvkDev->_pMVKConfig->metalCompileTimeout, kMVKUndefinedLargeUInt64));
 	_blocker.wait_for(lock, nanoTimeout, [this]{ return _isCompileDone; });
 
 	if ( !_isCompileDone ) {
@@ -230,11 +221,14 @@ void MVKMetalCompiler::compile(unique_lock<mutex>& lock, dispatch_block_t block)
 
 	if (_compileError) { handleError(); }
 
-	_device->addActivityPerformance(*_pPerformanceTracker, _startTime);
+	mvkDev->addActivityPerformance(*_pPerformanceTracker, _startTime);
 }
 
 void MVKMetalCompiler::handleError() {
-	setConfigurationResult(mvkNotifyErrorWithText(VK_ERROR_INITIALIZATION_FAILED, "%s compile failed (error code %li):\n%s.", _compilerType.c_str(), (long)_compileError.code, _compileError.localizedDescription.UTF8String));
+	_owner->setConfigurationResult(reportError(VK_ERROR_INITIALIZATION_FAILED,
+											   "%s compile failed (Error code %li):\n%s.",
+											   _compilerType.c_str(), (long)_compileError.code,
+											   _compileError.localizedDescription.UTF8String));
 }
 
 // Returns whether the compilation came in late, after the compiler was destroyed.
@@ -246,7 +240,7 @@ bool MVKMetalCompiler::endCompile(NSError* compileError) {
 }
 
 void MVKMetalCompiler::destroy() {
-	if (markDestroyed()) { MVKBaseDeviceObject::destroy(); }
+	if (markDestroyed()) { MVKBaseObject::destroy(); }
 }
 
 // Marks this object as destroyed, and returns whether the compilation is complete.

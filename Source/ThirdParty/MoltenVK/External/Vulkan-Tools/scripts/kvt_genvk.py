@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 #
-# Copyright (c) 2013-2018 The Khronos Group Inc.
+# Copyright (c) 2013-2019 The Khronos Group Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,12 +21,14 @@ startTime = None
 
 def startTimer(timeit):
     global startTime
-    startTime = time.clock()
+    if timeit:
+        startTime = time.process_time()
 
 def endTimer(timeit, msg):
     global startTime
     endTime = time.clock()
-    if (timeit):
+    if timeit:
+        endTime = time.process_time()
         write(msg, endTime - startTime, file=sys.stderr)
         startTime = None
 
@@ -110,10 +112,14 @@ def makeGenOpts(args):
     # Defaults for generating re-inclusion protection wrappers (or not)
     protectFeature = protect
 
+    # An API style convention object
+    conventions = VulkanConventions()
+
     # Helper file generator options for typemap_helper.h
     genOpts['vk_typemap_helper.h'] = [
           HelperFileOutputGenerator,
           HelperFileOutputGeneratorOptions(
+            conventions       = conventions,
             filename          = 'vk_typemap_helper.h',
             directory         = directory,
             apiname           = 'vulkan',
@@ -138,6 +144,7 @@ def makeGenOpts(args):
     genOpts['mock_icd.h'] = [
           MockICDOutputGenerator,
           MockICDGeneratorOptions(
+            conventions       = conventions,
             filename          = 'mock_icd.h',
             directory         = directory,
             apiname           = 'vulkan',
@@ -162,6 +169,7 @@ def makeGenOpts(args):
     genOpts['mock_icd.cpp'] = [
           MockICDOutputGenerator,
           MockICDGeneratorOptions(
+            conventions       = conventions,
             filename          = 'mock_icd.cpp',
             directory         = directory,
             apiname           = 'vulkan',
@@ -294,6 +302,9 @@ if __name__ == '__main__':
     # Generator Modifications
     from mock_icd_generator import MockICDGeneratorOptions, MockICDOutputGenerator
     from vulkan_tools_helper_file_generator import HelperFileOutputGenerator, HelperFileOutputGeneratorOptions
+    # Temporary workaround for vkconventions python2 compatibility
+    import abc; abc.ABC = abc.ABCMeta('ABC', (object,), {})
+    from vkconventions import VulkanConventions
 
     # This splits arguments which are space-separated lists
     args.feature = [name for arg in args.feature for name in arg.split()]

@@ -1,7 +1,7 @@
 /*
  * MVKExtensions.def
  *
- * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,6 +37,7 @@ MVK_EXTENSION(KHR_dedicated_allocation, KHR_DEDICATED_ALLOCATION)
 MVK_EXTENSION(KHR_descriptor_update_template, KHR_DESCRIPTOR_UPDATE_TEMPLATE)
 MVK_EXTENSION(KHR_get_memory_requirements2, KHR_GET_MEMORY_REQUIREMENTS_2)
 MVK_EXTENSION(KHR_get_physical_device_properties2, KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2)
+MVK_EXTENSION(KHR_get_surface_capabilities2, KHR_GET_SURFACE_CAPABILITIES_2)
 MVK_EXTENSION(KHR_image_format_list, KHR_IMAGE_FORMAT_LIST)
 MVK_EXTENSION(KHR_maintenance1, KHR_MAINTENANCE1)
 MVK_EXTENSION(KHR_maintenance2, KHR_MAINTENANCE2)
@@ -50,13 +51,22 @@ MVK_EXTENSION(KHR_storage_buffer_storage_class, KHR_STORAGE_BUFFER_STORAGE_CLASS
 MVK_EXTENSION(KHR_surface, KHR_SURFACE)
 MVK_EXTENSION(KHR_swapchain, KHR_SWAPCHAIN)
 MVK_EXTENSION(KHR_swapchain_mutable_format, KHR_SWAPCHAIN_MUTABLE_FORMAT)
+MVK_EXTENSION(KHR_variable_pointers, KHR_VARIABLE_POINTERS)
+MVK_EXTENSION(EXT_debug_marker, EXT_DEBUG_MARKER)
+MVK_EXTENSION(EXT_debug_report, EXT_DEBUG_REPORT)
+MVK_EXTENSION(EXT_debug_utils, EXT_DEBUG_UTILS)
+MVK_EXTENSION(EXT_host_query_reset, EXT_HOST_QUERY_RESET)
+MVK_EXTENSION(EXT_memory_budget, EXT_MEMORY_BUDGET)
 MVK_EXTENSION(EXT_shader_viewport_index_layer, EXT_SHADER_VIEWPORT_INDEX_LAYER)
 MVK_EXTENSION(EXT_vertex_attribute_divisor, EXT_VERTEX_ATTRIBUTE_DIVISOR)
+MVK_EXTENSION(EXTX_portability_subset, EXTX_PORTABILITY_SUBSET)
 MVK_EXTENSION(MVK_ios_surface, MVK_IOS_SURFACE)
 MVK_EXTENSION(MVK_macos_surface, MVK_MACOS_SURFACE)
 MVK_EXTENSION(MVK_moltenvk, MVK_MOLTENVK)
+MVK_EXTENSION(AMD_gpu_shader_half_float, AMD_GPU_SHADER_HALF_FLOAT)
 MVK_EXTENSION(AMD_negative_viewport_height, AMD_NEGATIVE_VIEWPORT_HEIGHT)
-MVK_EXTENSION_LAST(IMG_format_pvrtc, IMG_FORMAT_PVRTC)
+MVK_EXTENSION(IMG_format_pvrtc, IMG_FORMAT_PVRTC)
+MVK_EXTENSION_LAST(NV_glsl_shader, NV_GLSL_SHADER)
 
 #undef MVK_EXTENSION
 #undef MVK_EXTENSION_LAST

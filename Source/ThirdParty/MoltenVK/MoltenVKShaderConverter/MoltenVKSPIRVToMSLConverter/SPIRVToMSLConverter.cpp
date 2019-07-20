@@ -1,7 +1,7 @@
 /*
  * SPIRVToMSLConverter.cpp
  *
- * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,9 +20,9 @@
 #include "MVKCommonEnvironment.h"
 #include "MVKStrings.h"
 #include "FileSupport.h"
-#include "spirv_msl.hpp"
-#include <spirv-tools/libspirv.h>
-#import <CoreFoundation/CFByteOrder.h>
+#include "SPIRVSupport.h"
+#include <SPIRV-Cross/spirv_msl.hpp>
+#include <fstream>
 
 using namespace mvk;
 using namespace std;
@@ -42,11 +42,50 @@ MVK_PUBLIC_SYMBOL bool SPIRVToMSLConverterOptions::matches(const SPIRVToMSLConve
 	if (entryPointStage != other.entryPointStage) { return false; }
     if (mslVersion != other.mslVersion) { return false; }
 	if (texelBufferTextureWidth != other.texelBufferTextureWidth) { return false; }
-	if (auxBufferIndex != other.auxBufferIndex) { return false; }
+	if (swizzleBufferIndex != other.swizzleBufferIndex) { return false; }
+	if (indirectParamsBufferIndex != other.indirectParamsBufferIndex) { return false; }
+	if (outputBufferIndex != other.outputBufferIndex) { return false; }
+	if (patchOutputBufferIndex != other.patchOutputBufferIndex) { return false; }
+	if (tessLevelBufferIndex != other.tessLevelBufferIndex) { return false; }
+	if (bufferSizeBufferIndex != other.bufferSizeBufferIndex) { return false; }
+	if (inputThreadgroupMemIndex != other.inputThreadgroupMemIndex) { return false; }
     if (!!shouldFlipVertexY != !!other.shouldFlipVertexY) { return false; }
     if (!!isRenderingPoints != !!other.isRenderingPoints) { return false; }
+	if (!!shouldSwizzleTextureSamples != !!other.shouldSwizzleTextureSamples) { return false; }
+	if (!!shouldCaptureOutput != !!other.shouldCaptureOutput) { return false; }
+	if (!!tessDomainOriginInLowerLeft != !!other.tessDomainOriginInLowerLeft) { return false; }
+	if (tessPatchKind != other.tessPatchKind) { return false; }
+	if (numTessControlPoints != other.numTessControlPoints) { return false; }
 	if (entryPointName != other.entryPointName) { return false; }
     return true;
+}
+
+MVK_PUBLIC_SYMBOL std::string SPIRVToMSLConverterOptions::printMSLVersion(uint32_t mslVersion, bool includePatch) {
+	string verStr;
+
+	uint32_t major = mslVersion / 10000;
+	verStr += to_string(major);
+
+	uint32_t minor = (mslVersion - makeMSLVersion(major)) / 100;
+	verStr += ".";
+	verStr += to_string(minor);
+
+	if (includePatch) {
+		uint32_t patch = mslVersion - makeMSLVersion(major, minor);
+		verStr += ".";
+		verStr += to_string(patch);
+	}
+
+	return verStr;
+}
+
+MVK_PUBLIC_SYMBOL mvk::SPIRVToMSLConverterOptions::Platform SPIRVToMSLConverterOptions::getNativePlatform() {
+#if MVK_MACOS
+	return SPIRVToMSLConverterOptions::macOS;
+#endif
+#if MVK_IOS
+	return SPIRVToMSLConverterOptions::iOS;
+#endif
 }
 
 MVK_PUBLIC_SYMBOL bool MSLVertexAttribute::matches(const MSLVertexAttribute& other) const {
@@ -55,6 +94,7 @@ MVK_PUBLIC_SYMBOL bool MSLVertexAttribute::matches(const MSLVertexAttribute& oth
     if (mslOffset != other.mslOffset) { return false; }
     if (mslStride != other.mslStride) { return false; }
     if (format != other.format) { return false; }
+	if (builtin != other.builtin) { return false; }
     if (!!isPerInstance != !!other.isPerInstance) { return false; }
     return true;
 }
@@ -67,6 +107,12 @@ MVK_PUBLIC_SYMBOL bool MSLResourceBinding::matches(const MSLResourceBinding& oth
     if (mslTexture != other.mslTexture) { return false; }
     if (mslSampler != other.mslSampler) { return false; }
     return true;
+}
+
+MVK_PUBLIC_SYMBOL bool SPIRVToMSLConverterContext::stageSupportsVertexAttributes() const {
+	return (options.entryPointStage == spv::ExecutionModelVertex ||
+			options.entryPointStage == spv::ExecutionModelTessellationControl ||
+			options.entryPointStage == spv::ExecutionModelTessellationEvaluation);
 }
 
 // Check them all in case inactive VA's duplicate locations used by active VA's.
@@ -85,11 +131,20 @@ MVK_PUBLIC_SYMBOL bool SPIRVToMSLConverterContext::isVertexBufferUsed(uint32_t m
     return false;
 }
 
+MVK_PUBLIC_SYMBOL void SPIRVToMSLConverterContext::markAllAttributesAndResourcesUsed() {
+
+	if (stageSupportsVertexAttributes()) {
+		for (auto& va : vertexAttributes) { va.isUsedByShader = true; }
+	}
+
+	for (auto& rb : resourceBindings) { rb.isUsedByShader = true; }
+}
+
 MVK_PUBLIC_SYMBOL bool SPIRVToMSLConverterContext::matches(const SPIRVToMSLConverterContext& other) const {
 
     if ( !options.matches(other.options) ) { return false; }
 
-	if (options.entryPointStage == spv::ExecutionModelVertex) {
+	if (stageSupportsVertexAttributes()) {
 		for (const auto& va : vertexAttributes) {
 			if (va.isUsedByShader && !contains(other.vertexAttributes, va)) { return false; }
 		}
@@ -105,9 +160,13 @@ MVK_PUBLIC_SYMBOL bool SPIRVToMSLConverterContext::matches(const SPIRVToMSLConve
 MVK_PUBLIC_SYMBOL void SPIRVToMSLConverterContext::alignWith(const SPIRVToMSLConverterContext& srcContext) {
 
 	options.isRasterizationDisabled = srcContext.options.isRasterizationDisabled;
-	options.needsAuxBuffer = srcContext.options.needsAuxBuffer;
+	options.needsSwizzleBuffer = srcContext.options.needsSwizzleBuffer;
+	options.needsOutputBuffer = srcContext.options.needsOutputBuffer;
+	options.needsPatchOutputBuffer = srcContext.options.needsPatchOutputBuffer;
+	options.needsBufferSizeBuffer = srcContext.options.needsBufferSizeBuffer;
+	options.needsInputThreadgroupMem = srcContext.options.needsInputThreadgroupMem;
 
-	if (options.entryPointStage == spv::ExecutionModelVertex) {
+	if (stageSupportsVertexAttributes()) {
 		for (auto& va : vertexAttributes) {
 			va.isUsedByShader = false;
 			for (auto& srcVA : srcContext.vertexAttributes) {
@@ -128,10 +187,11 @@ MVK_PUBLIC_SYMBOL void SPIRVToMSLConverterContext::alignWith(const SPIRVToMSLCon
 #pragma mark -
 #pragma mark SPIRVToMSLConverter
 
-// Populates the entry point with info extracted from the SPRI-V compiler.
-void populateEntryPoint(SPIRVEntryPoint& entryPoint, spirv_cross::Compiler* pCompiler, SPIRVToMSLConverterOptions& options);
+// Return the SPIRV-Cross platform enum corresponding to a SPIRVToMSLConverterOptions platform enum value.
+SPIRV_CROSS_NAMESPACE::CompilerMSL::Options::Platform getCompilerMSLPlatform(SPIRVToMSLConverterOptions::Platform platform);
 
-MVK_PUBLIC_SYMBOL void SPIRVToMSLConverter::setSPIRV(const vector<uint32_t>& spirv) { _spirv = spirv; }
+// Populates the entry point with info extracted from the SPRI-V compiler.
+void populateEntryPoint(SPIRVEntryPoint& entryPoint, SPIRV_CROSS_NAMESPACE::Compiler* pCompiler, SPIRVToMSLConverterOptions& options);
 
 MVK_PUBLIC_SYMBOL void SPIRVToMSLConverter::setSPIRV(const uint32_t* spirvCode, size_t length) {
 	_spirv.clear();			// Clear for reuse
@@ -141,96 +201,112 @@ MVK_PUBLIC_SYMBOL void SPIRVToMSLConverter::setSPIRV(const uint32_t* spirvCode, 
 	}
 }
 
-MVK_PUBLIC_SYMBOL const vector<uint32_t>& SPIRVToMSLConverter::getSPIRV() { return _spirv; }
-
 MVK_PUBLIC_SYMBOL bool SPIRVToMSLConverter::convert(SPIRVToMSLConverterContext& context,
 													bool shouldLogSPIRV,
 													bool shouldLogMSL,
                                                     bool shouldLogGLSL) {
+
+	// Uncomment to write SPIR-V to file as a debugging aid
+//	ofstream spvFile("spirv.spv", ios::binary);
+//	spvFile.write((char*)_spirv.data(), _spirv.size() << 2);
+//	spvFile.close();
+
 	_wasConverted = true;
 	_resultLog.clear();
 	_msl.clear();
 
 	if (shouldLogSPIRV) { logSPIRV("Converting"); }
 
-	// Add vertex attributes
-	vector<spirv_cross::MSLVertexAttr> vtxAttrs;
-	spirv_cross::MSLVertexAttr va;
-	for (auto& ctxVA : context.vertexAttributes) {
-		va.location = ctxVA.location;
-        va.msl_buffer = ctxVA.mslBuffer;
-        va.msl_offset = ctxVA.mslOffset;
-        va.msl_stride = ctxVA.mslStride;
-        va.per_instance = ctxVA.isPerInstance;
-        switch (ctxVA.format) {
-        case MSLVertexFormat::Other:
-            va.format = spirv_cross::MSL_VERTEX_FORMAT_OTHER;
-            break;
-        case MSLVertexFormat::UInt8:
-            va.format = spirv_cross::MSL_VERTEX_FORMAT_UINT8;
-            break;
-        case MSLVertexFormat::UInt16:
-            va.format = spirv_cross::MSL_VERTEX_FORMAT_UINT16;
-            break;
-        }
-        va.used_by_shader = ctxVA.isUsedByShader;
-		vtxAttrs.push_back(va);
-	}
-
-	// Add resource bindings
-	vector<spirv_cross::MSLResourceBinding> resBindings;
-	spirv_cross::MSLResourceBinding rb;
-	for (auto& ctxRB : context.resourceBindings) {
-		rb.desc_set = ctxRB.descriptorSet;
-		rb.binding = ctxRB.binding;
-		rb.stage = ctxRB.stage;
-		rb.msl_buffer = ctxRB.mslBuffer;
-		rb.msl_texture = ctxRB.mslTexture;
-		rb.msl_sampler = ctxRB.mslSampler;
-        rb.used_by_shader = ctxRB.isUsedByShader;
-		resBindings.push_back(rb);
-	}
-
-	spirv_cross::CompilerMSL* pMSLCompiler = nullptr;
+	SPIRV_CROSS_NAMESPACE::CompilerMSL* pMSLCompiler = nullptr;
 
 #ifndef SPIRV_CROSS_EXCEPTIONS_TO_ASSERTIONS
 	try {
 #endif
-		pMSLCompiler = new spirv_cross::CompilerMSL(_spirv);
+		pMSLCompiler = new SPIRV_CROSS_NAMESPACE::CompilerMSL(_spirv);
 
 		if (context.options.hasEntryPoint()) {
 			pMSLCompiler->set_entry_point(context.options.entryPointName, context.options.entryPointStage);
 		}
 
+		// Set up tessellation parameters if needed.
+		if (context.options.entryPointStage == spv::ExecutionModelTessellationControl ||
+			context.options.entryPointStage == spv::ExecutionModelTessellationEvaluation) {
+			if (context.options.tessPatchKind != spv::ExecutionModeMax) {
+				pMSLCompiler->set_execution_mode(context.options.tessPatchKind);
+			}
+			if (context.options.numTessControlPoints != 0) {
+				pMSLCompiler->set_execution_mode(spv::ExecutionModeOutputVertices, context.options.numTessControlPoints);
+			}
+		}
+
 		// Establish the MSL options for the compiler
 		// This needs to be done in two steps...for CompilerMSL and its superclass.
 		auto mslOpts = pMSLCompiler->get_msl_options();
-
-#if MVK_MACOS
-		mslOpts.platform = spirv_cross::CompilerMSL::Options::macOS;
-#endif
-#if MVK_IOS
-		mslOpts.platform = spirv_cross::CompilerMSL::Options::iOS;
-#endif
-
+		mslOpts.platform = getCompilerMSLPlatform(context.options.platform);
 		mslOpts.msl_version = context.options.mslVersion;
 		mslOpts.texel_buffer_texture_width = context.options.texelBufferTextureWidth;
-		mslOpts.aux_buffer_index = context.options.auxBufferIndex;
+		mslOpts.swizzle_buffer_index = context.options.swizzleBufferIndex;
+		mslOpts.indirect_params_buffer_index = context.options.indirectParamsBufferIndex;
+		mslOpts.shader_output_buffer_index = context.options.outputBufferIndex;
+		mslOpts.shader_patch_output_buffer_index = context.options.patchOutputBufferIndex;
+		mslOpts.shader_tess_factor_buffer_index = context.options.tessLevelBufferIndex;
+		mslOpts.buffer_size_buffer_index = context.options.bufferSizeBufferIndex;
+		mslOpts.shader_input_wg_index = context.options.inputThreadgroupMemIndex;
 		mslOpts.enable_point_size_builtin = context.options.isRenderingPoints;
 		mslOpts.disable_rasterization = context.options.isRasterizationDisabled;
-		mslOpts.swizzle_texture_samples = true;
+		mslOpts.swizzle_texture_samples = context.options.shouldSwizzleTextureSamples;
+		mslOpts.capture_output_to_buffer = context.options.shouldCaptureOutput;
+		mslOpts.tess_domain_origin_lower_left = context.options.tessDomainOriginInLowerLeft;
+		mslOpts.pad_fragment_output_components = true;
 		pMSLCompiler->set_msl_options(mslOpts);
 
 		auto scOpts = pMSLCompiler->get_common_options();
 		scOpts.vertex.flip_vert_y = context.options.shouldFlipVertexY;
 		pMSLCompiler->set_common_options(scOpts);
 
-		_msl = pMSLCompiler->compile(&vtxAttrs, &resBindings);
+		// Add vertex attributes
+		if (context.stageSupportsVertexAttributes()) {
+			SPIRV_CROSS_NAMESPACE::MSLVertexAttr va;
+			for (auto& ctxVA : context.vertexAttributes) {
+				va.location = ctxVA.location;
+				va.builtin = ctxVA.builtin;
+				va.msl_buffer = ctxVA.mslBuffer;
+				va.msl_offset = ctxVA.mslOffset;
+				va.msl_stride = ctxVA.mslStride;
+				va.per_instance = ctxVA.isPerInstance;
+				switch (ctxVA.format) {
+					case MSLVertexFormat::Other:
+						va.format = SPIRV_CROSS_NAMESPACE::MSL_VERTEX_FORMAT_OTHER;
+						break;
+					case MSLVertexFormat::UInt8:
+						va.format = SPIRV_CROSS_NAMESPACE::MSL_VERTEX_FORMAT_UINT8;
+						break;
+					case MSLVertexFormat::UInt16:
+						va.format = SPIRV_CROSS_NAMESPACE::MSL_VERTEX_FORMAT_UINT16;
+						break;
+				}
+				pMSLCompiler->add_msl_vertex_attribute(va);
+			}
+		}
+
+		// Add resource bindings
+		SPIRV_CROSS_NAMESPACE::MSLResourceBinding rb;
+		for (auto& ctxRB : context.resourceBindings) {
+			rb.desc_set = ctxRB.descriptorSet;
+			rb.binding = ctxRB.binding;
+			rb.stage = ctxRB.stage;
+			rb.msl_buffer = ctxRB.mslBuffer;
+			rb.msl_texture = ctxRB.mslTexture;
+			rb.msl_sampler = ctxRB.mslSampler;
+			pMSLCompiler->add_msl_resource_binding(rb);
+		}
+
+		_msl = pMSLCompiler->compile();
 
         if (shouldLogMSL) { logSource(_msl, "MSL", "Converted"); }
 
 #ifndef SPIRV_CROSS_EXCEPTIONS_TO_ASSERTIONS
-	} catch (spirv_cross::CompilerError& ex) {
+	} catch (SPIRV_CROSS_NAMESPACE::CompilerError& ex) {
 		string errMsg("MSL conversion error: ");
 		errMsg += ex.what();
 		logError(errMsg.data());
@@ -241,34 +317,43 @@ MVK_PUBLIC_SYMBOL bool SPIRVToMSLConverter::convert(SPIRVToMSLConverterContext& 
 	}
 #endif
 
-    // Populate content extracted from the SPRI-V compiler.
+	// Populate the shader context with info from the compilation run, including
+	// which vertex attributes and resource bindings are used by the shader
 	populateEntryPoint(_entryPoint, pMSLCompiler, context.options);
 	context.options.isRasterizationDisabled = pMSLCompiler && pMSLCompiler->get_is_rasterization_disabled();
-	context.options.needsAuxBuffer = pMSLCompiler && pMSLCompiler->needs_aux_buffer();
-	delete pMSLCompiler;
+	context.options.needsSwizzleBuffer = pMSLCompiler && pMSLCompiler->needs_swizzle_buffer();
+	context.options.needsOutputBuffer = pMSLCompiler && pMSLCompiler->needs_output_buffer();
+	context.options.needsPatchOutputBuffer = pMSLCompiler && pMSLCompiler->needs_patch_output_buffer();
+	context.options.needsBufferSizeBuffer = pMSLCompiler && pMSLCompiler->needs_buffer_size_buffer();
+	context.options.needsInputThreadgroupMem = pMSLCompiler && pMSLCompiler->needs_input_threadgroup_mem();
 
-	// Copy whether the vertex attributes and resource bindings are used by the shader
-	uint32_t vaCnt = (uint32_t)vtxAttrs.size();
-	for (uint32_t vaIdx = 0; vaIdx < vaCnt; vaIdx++) {
-		context.vertexAttributes[vaIdx].isUsedByShader = vtxAttrs[vaIdx].used_by_shader;
+	if (context.stageSupportsVertexAttributes()) {
+		for (auto& ctxVA : context.vertexAttributes) {
+			ctxVA.isUsedByShader = pMSLCompiler->is_msl_vertex_attribute_used(ctxVA.location);
+		}
 	}
-	uint32_t rbCnt = (uint32_t)resBindings.size();
-	for (uint32_t rbIdx = 0; rbIdx < rbCnt; rbIdx++) {
-		context.resourceBindings[rbIdx].isUsedByShader = resBindings[rbIdx].used_by_shader;
+	for (auto& ctxRB : context.resourceBindings) {
+		ctxRB.isUsedByShader = pMSLCompiler->is_msl_resource_binding_used(ctxRB.stage, ctxRB.descriptorSet, ctxRB.binding);
 	}
+
+	delete pMSLCompiler;
 
     // To check GLSL conversion
     if (shouldLogGLSL) {
-		spirv_cross::CompilerGLSL* pGLSLCompiler = nullptr;
+		SPIRV_CROSS_NAMESPACE::CompilerGLSL* pGLSLCompiler = nullptr;
 
 #ifndef SPIRV_CROSS_EXCEPTIONS_TO_ASSERTIONS
 		try {
 #endif
-			pGLSLCompiler = new spirv_cross::CompilerGLSL(_spirv);
+			pGLSLCompiler = new SPIRV_CROSS_NAMESPACE::CompilerGLSL(_spirv);
+			auto options = pGLSLCompiler->get_common_options();
+			options.vulkan_semantics = true;
+			options.separate_shader_objects = true;
+			pGLSLCompiler->set_common_options(options);
 			string glsl = pGLSLCompiler->compile();
             logSource(glsl, "GLSL", "Estimated original");
 #ifndef SPIRV_CROSS_EXCEPTIONS_TO_ASSERTIONS
-        } catch (spirv_cross::CompilerError& ex) {
+        } catch (SPIRV_CROSS_NAMESPACE::CompilerError& ex) {
             string errMsg("Original GLSL extraction error: ");
             errMsg += ex.what();
             logMsg(errMsg.data());
@@ -356,18 +441,26 @@ void SPIRVToMSLConverter::logSource(string& src, const char* srcLang, const char
 
 #pragma mark Support functions
 
+// Return the SPIRV-Cross platform enum corresponding to a SPIRVToMSLConverterOptions platform enum value.
+SPIRV_CROSS_NAMESPACE::CompilerMSL::Options::Platform getCompilerMSLPlatform(SPIRVToMSLConverterOptions::Platform platform) {
+	switch (platform) {
+		case SPIRVToMSLConverterOptions::macOS: return SPIRV_CROSS_NAMESPACE::CompilerMSL::Options::macOS;
+		case SPIRVToMSLConverterOptions::iOS: return SPIRV_CROSS_NAMESPACE::CompilerMSL::Options::iOS;
+	}
+}
+
 // Populate a workgroup size dimension.
-void populateWorkgroupDimension(SPIRVWorkgroupSizeDimension& wgDim, uint32_t size, spirv_cross::SpecializationConstant& spvSpecConst) {
+void populateWorkgroupDimension(SPIRVWorkgroupSizeDimension& wgDim, uint32_t size, SPIRV_CROSS_NAMESPACE::SpecializationConstant& spvSpecConst) {
 	wgDim.size = max(size, 1u);
 	wgDim.isSpecialized = (spvSpecConst.id != 0);
 	wgDim.specializationID = spvSpecConst.constant_id;
 }
 
-void populateEntryPoint(SPIRVEntryPoint& entryPoint, spirv_cross::Compiler* pCompiler, SPIRVToMSLConverterOptions& options) {
+void populateEntryPoint(SPIRVEntryPoint& entryPoint, SPIRV_CROSS_NAMESPACE::Compiler* pCompiler, SPIRVToMSLConverterOptions& options) {
 
 	if ( !pCompiler ) { return; }
 
-	spirv_cross::SPIREntryPoint spvEP;
+	SPIRV_CROSS_NAMESPACE::SPIREntryPoint spvEP;
 	if (options.hasEntryPoint()) {
 		spvEP = pCompiler->get_entry_point(options.entryPointName, options.entryPointStage);
 	} else {
@@ -378,7 +471,7 @@ void populateEntryPoint(SPIRVEntryPoint& entryPoint, spirv_cross::Compiler* pCom
 		}
 	}
 
-	spirv_cross::SpecializationConstant widthSC, heightSC, depthSC;
+	SPIRV_CROSS_NAMESPACE::SpecializationConstant widthSC, heightSC, depthSC;
 	pCompiler->get_work_group_size_specialization_constants(widthSC, heightSC, depthSC);
 
 	entryPoint.mtlFunctionName = spvEP.name;
@@ -386,54 +479,3 @@ void populateEntryPoint(SPIRVEntryPoint& entryPoint, spirv_cross::Compiler* pCom
 	populateWorkgroupDimension(entryPoint.workgroupSize.height, spvEP.workgroup_size.y, heightSC);
 	populateWorkgroupDimension(entryPoint.workgroupSize.depth, spvEP.workgroup_size.z, depthSC);
 }
-
-MVK_PUBLIC_SYMBOL void mvk::logSPIRV(vector<uint32_t>& spirv, string& spvLog) {
-	if ( !((spirv.size() > 4) &&
-		   (spirv[0] == spv::MagicNumber) &&
-		   (spirv[4] == 0)) ) { return; }
-
-	uint32_t options = (SPV_BINARY_TO_TEXT_OPTION_INDENT);
-	spv_text text;
-	spv_diagnostic diagnostic = nullptr;
-	spv_context context = spvContextCreate(SPV_ENV_VULKAN_1_0);
-	spv_result_t error = spvBinaryToText(context, spirv.data(), spirv.size(), options, &text, &diagnostic);
-	spvContextDestroy(context);
-	if (error) {
-		spvDiagnosticPrint(diagnostic);
-		spvDiagnosticDestroy(diagnostic);
-		return;
-	}
-	spvLog.append(text->str, text->length);
-	spvTextDestroy(text);
-}
-
-MVK_PUBLIC_SYMBOL void mvk::spirvToBytes(const vector<uint32_t>& spv, vector<char>& bytes) {
-	// Assumes desired endianness.
-	size_t byteCnt = spv.size() * sizeof(uint32_t);
-	char* cBytes = (char*)spv.data();
-	bytes.clear();
-	bytes.insert(bytes.end(), cBytes, cBytes + byteCnt);
-}
-
-MVK_PUBLIC_SYMBOL void mvk::bytesToSPIRV(const vector<char>& bytes, vector<uint32_t>& spv) {
-	size_t spvCnt = bytes.size() / sizeof(uint32_t);
-	uint32_t* cSPV = (uint32_t*)bytes.data();
-	spv.clear();
-	spv.insert(spv.end(), cSPV, cSPV + spvCnt);
-	ensureSPIRVEndianness(spv);
-}
-
-MVK_PUBLIC_SYMBOL bool mvk::ensureSPIRVEndianness(vector<uint32_t>& spv) {
-	if (spv.empty()) { return false; }					// Nothing to convert
-
-	uint32_t magNum = spv.front();
-	if (magNum == spv::MagicNumber) { return false; }	// No need to convert
-
-	if (CFSwapInt32(magNum) == spv::MagicNumber) {		// Yep, it's SPIR-V, but wrong endianness
-		for (auto& elem : spv) { elem = CFSwapInt32(elem); }
-		return true;
-	}
-	return false;		// Not SPIR-V, so don't convert
-}
-
-

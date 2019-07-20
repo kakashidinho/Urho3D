@@ -1,7 +1,7 @@
 /*
  * MVKMTLBufferAllocation.mm
  *
- * Copyright (c) 2014-2018 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2014-2019 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +22,8 @@
 
 #pragma mark -
 #pragma mark MVKMTLBufferAllocation
+
+MVKVulkanAPIObject* MVKMTLBufferAllocation::getVulkanAPIObject() { return _pool->getVulkanAPIObject(); };
 
 void MVKMTLBufferAllocation::returnToPool() { _pool->returnObjectSafely(this); }
 

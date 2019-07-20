@@ -168,7 +168,7 @@ angle::Result WindowSurfaceVkMacOS::getCurrentWindowSize(vk::Context *context, g
     if(mMetalView != NULL)
     {
         NSRect viewport = [mMetalView bounds];
-        *extentsOut = gl::Extents(viewport.size.width, viewport.size.height, 0);
+        *extentsOut = gl::Extents(viewport.size.width, viewport.size.height, 1);
     }
     
     return angle::Result::Continue;

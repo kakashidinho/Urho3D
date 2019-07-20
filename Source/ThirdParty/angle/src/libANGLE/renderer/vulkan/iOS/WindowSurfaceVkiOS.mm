@@ -160,7 +160,7 @@ angle::Result WindowSurfaceVkiOS::getCurrentWindowSize(vk::Context *context, gl:
     if(mMetalView != NULL)
     {
         CGRect viewport = [mMetalView bounds];
-        *extentsOut = gl::Extents(viewport.size.width, viewport.size.height, 0);
+        *extentsOut = gl::Extents(viewport.size.width, viewport.size.height, 1);
     }
     
     return angle::Result::Continue;

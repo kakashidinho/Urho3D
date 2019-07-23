@@ -729,11 +729,15 @@ void MVKPhysicalDevice::initMetalFeatures() {
 
     if ( [_mtlDevice supportsFeatureSet: MTLFeatureSet_iOS_GPUFamily1_v4] ) {
 		_metalFeatures.mslVersionEnum = MTLLanguageVersion2_0;
+         // TBD ELI
+        _metalFeatures.layeredRendering = true;
     }
 
 	if ( [_mtlDevice supportsFeatureSet: MTLFeatureSet_iOS_GPUFamily1_v5] ) {
 		_metalFeatures.mslVersionEnum = MTLLanguageVersion2_1;
 		MVK_SET_FROM_ENV_OR_BUILD_BOOL(_metalFeatures.events, MVK_ALLOW_METAL_EVENTS);
+         // TBD ELI
+        _metalFeatures.layeredRendering = true;
 	}
 
 	if ( [_mtlDevice supportsFeatureSet: MTLFeatureSet_iOS_GPUFamily3_v1] ) {
@@ -750,11 +754,26 @@ void MVKPhysicalDevice::initMetalFeatures() {
 	}
 	if ( [_mtlDevice supportsFeatureSet: MTLFeatureSet_iOS_GPUFamily3_v3] ) {
 		_metalFeatures.arrayOfSamplers = true;
+         // TBD ELI
+        _metalFeatures.layeredRendering = true;
 	}
 
+    if ( [_mtlDevice supportsFeatureSet: MTLFeatureSet_iOS_GPUFamily4_v1] ) {
+         // TBD ELI
+        _metalFeatures.layeredRendering = true;
+    }
+    
+    if ( [_mtlDevice supportsFeatureSet: MTLFeatureSet_iOS_GPUFamily4_v2] ) {
+         // TBD ELI
+        _metalFeatures.layeredRendering = true;
+    }
+    
 	if ( [_mtlDevice supportsFeatureSet: MTLFeatureSet_iOS_GPUFamily5_v1] ) {
+         // TBD ELI
 		_metalFeatures.layeredRendering = true;
 	}
+    
+    
 
 #endif
 

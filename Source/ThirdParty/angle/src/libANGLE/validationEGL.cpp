@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2016 The ANGLE Project Authors. All rights reserved.
+// Copyright 2016 The ANGLE Project Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -352,6 +352,13 @@ Error ValidatePlatformType(const ClientExtensions &clientExtensions, EGLAttrib p
             }
             break;
 
+        case EGL_PLATFORM_ANGLE_TYPE_METAL_ANGLE:
+            if (!clientExtensions.platformANGLEMetal)
+            {
+                return EglBadAttribute() << "Metal platform is unsupported.";
+            }
+            break;
+
         default:
             return EglBadAttribute() << "Unknown platform type.";
     }
@@ -468,6 +475,14 @@ Error ValidateGetPlatformDisplayCommon(EGLenum platform,
                             }
                             break;
 
+                        case EGL_PLATFORM_ANGLE_DEVICE_TYPE_SWIFTSHADER_ANGLE:
+                            if (!clientExtensions.platformANGLEDeviceTypeSwiftShader)
+                            {
+                                return EglBadAttribute() << "EGL_ANGLE_platform_angle_device_type_"
+                                                            "swiftshader is not supported";
+                            }
+                            break;
+
                         default:
                             return EglBadAttribute() << "Invalid value for "
                                                         "EGL_PLATFORM_ANGLE_DEVICE_TYPE_ANGLE "
@@ -563,6 +578,16 @@ Error ValidateGetPlatformDisplayCommon(EGLenum platform,
                                   "EGL_PLATFORM_ANGLE_TYPE_D3D9_ANGLE.";
                     }
                     break;
+
+                case EGL_PLATFORM_ANGLE_DEVICE_TYPE_SWIFTSHADER_ANGLE:
+                    if (platformType != EGL_PLATFORM_ANGLE_TYPE_VULKAN_ANGLE)
+                    {
+                        return EglBadAttribute()
+                               << "This device type requires a "
+                                  "platform type of EGL_PLATFORM_ANGLE_TYPE_VULKAN_ANGLE.";
+                    }
+                    break;
+
                 default:
                     break;
             }
@@ -968,7 +993,19 @@ Error ValidateCreateContext(Display *display,
                             gl::Context *shareContext,
                             const AttributeMap &attributes)
 {
-    ANGLE_TRY(ValidateConfig(display, configuration));
+    if (configuration)
+    {
+        ANGLE_TRY(ValidateConfig(display, configuration));
+    }
+    else
+    {
+        ANGLE_TRY(ValidateDisplay(display));
+        const DisplayExtensions &displayExtensions = display->getExtensions();
+        if (!displayExtensions.noConfigContext)
+        {
+            return EglBadConfig();
+        }
+    }
 
     // Get the requested client version (default is 1) and check it is 2 or 3.
     EGLAttrib clientMajorVersion = 1;
@@ -1164,6 +1201,21 @@ Error ValidateCreateContext(Display *display,
                 }
                 break;
 
+            case EGL_CONTEXT_OPENGL_BACKWARDS_COMPATIBLE_ANGLE:
+                if (!display->getExtensions().createContextBackwardsCompatible)
+                {
+                    return EglBadAttribute()
+                           << "Attribute EGL_CONTEXT_OPENGL_BACKWARDS_COMPATIBLE_ANGLE "
+                              "requires EGL_ANGLE_create_context_backwards_compatible.";
+                }
+                if (value != EGL_TRUE && value != EGL_FALSE)
+                {
+                    return EglBadAttribute()
+                           << "EGL_CONTEXT_OPENGL_BACKWARDS_COMPATIBLE_ANGLE must be "
+                              "either EGL_TRUE or EGL_FALSE.";
+                }
+                break;
+
             default:
                 return EglBadAttribute() << "Unknown attribute.";
         }
@@ -1174,34 +1226,49 @@ Error ValidateCreateContext(Display *display,
         case 1:
             if (clientMinorVersion != 0 && clientMinorVersion != 1)
             {
-                return EglBadConfig();
+                return EglBadAttribute();
+            }
+            if (configuration == EGL_NO_CONFIG_KHR)
+            {
+                return EglBadMatch();
+            }
+            if ((configuration != EGL_NO_CONFIG_KHR) &&
+                !(configuration->renderableType & EGL_OPENGL_ES_BIT))
+            {
+                return EglBadMatch();
             }
             break;
 
         case 2:
             if (clientMinorVersion != 0)
             {
-                return EglBadConfig();
+                return EglBadAttribute();
+            }
+            if ((configuration != EGL_NO_CONFIG_KHR) &&
+                !(configuration->renderableType & EGL_OPENGL_ES2_BIT))
+            {
+                return EglBadMatch();
             }
             break;
         case 3:
             if (clientMinorVersion != 0 && clientMinorVersion != 1)
             {
-                return EglBadConfig();
+                return EglBadAttribute();
             }
-            if (!(configuration->renderableType & EGL_OPENGL_ES3_BIT_KHR))
+            if ((configuration != EGL_NO_CONFIG_KHR) &&
+                !(configuration->renderableType & EGL_OPENGL_ES3_BIT))
             {
-                return EglBadConfig();
+                return EglBadMatch();
             }
             if (display->getMaxSupportedESVersion() <
                 gl::Version(static_cast<GLuint>(clientMajorVersion),
                             static_cast<GLuint>(clientMinorVersion)))
             {
-                return EglBadConfig() << "Requested GLES version is not supported.";
+                return EglBadAttribute() << "Requested GLES version is not supported.";
             }
             break;
         default:
-            return EglBadConfig();
+            return EglBadAttribute();
             break;
     }
 
@@ -1592,7 +1659,7 @@ Error ValidateCreatePbufferFromClientBuffer(Display *display,
                 break;
 
             case EGL_TEXTURE_INTERNAL_FORMAT_ANGLE:
-                if (buftype != EGL_IOSURFACE_ANGLE)
+                if (buftype != EGL_IOSURFACE_ANGLE && buftype != EGL_D3D_TEXTURE_ANGLE)
                 {
                     return EglBadAttribute() << "<buftype> doesn't support texture internal format";
                 }
@@ -1751,67 +1818,105 @@ Error ValidateMakeCurrent(Display *display, Surface *draw, Surface *read, gl::Co
     if (read != EGL_NO_SURFACE)
     {
         ANGLE_TRY(ValidateSurface(display, read));
-        ANGLE_TRY(ValidateCompatibleConfigs(display, read->getConfig(), read, context->getConfig(),
-                                            read->getType()));
+        ANGLE_TRY(ValidateCompatibleSurface(display, context, read));
     }
 
     if (draw != read)
     {
-        UNIMPLEMENTED();  // FIXME
-
         if (draw)
         {
-            ANGLE_TRY(ValidateCompatibleConfigs(display, draw->getConfig(), draw,
-                                                context->getConfig(), draw->getType()));
+            ANGLE_TRY(ValidateCompatibleSurface(display, context, draw));
+        }
+        if (read)
+        {
+            ANGLE_TRY(ValidateCompatibleSurface(display, context, read));
         }
     }
     return NoError();
 }
 
-Error ValidateCompatibleConfigs(const Display *display,
-                                const Config *config1,
-                                const Surface *surface,
-                                const Config *config2,
-                                EGLint surfaceType)
+Error ValidateCompatibleSurface(const Display *display,
+                                gl::Context *context,
+                                const Surface *surface)
 {
+    const Config *contextConfig = context->getConfig();
+    const Config *surfaceConfig = surface->getConfig();
+
+    // Surface compatible with client API - only OPENGL_ES supported
+    switch (context->getClientMajorVersion())
+    {
+        case 1:
+            if (!(surfaceConfig->renderableType & EGL_OPENGL_ES_BIT))
+            {
+                return EglBadMatch() << "Surface not compatible with OpenGL ES 1.x.";
+            }
+            break;
+        case 2:
+            if (!(surfaceConfig->renderableType & EGL_OPENGL_ES2_BIT))
+            {
+                return EglBadMatch() << "Surface not compatible with OpenGL ES 2.x.";
+            }
+            break;
+        case 3:
+            if (!(surfaceConfig->renderableType & (EGL_OPENGL_ES2_BIT | EGL_OPENGL_ES3_BIT)))
+            {
+                return EglBadMatch() << "Surface not compatible with OpenGL ES 3.x.";
+            }
+            break;
+        default:
+            return EglBadMatch() << "Surface not compatible with Context API.";
+    }
+
+    // EGL KHR no config context
+    if (context->getConfig() == EGL_NO_CONFIG_KHR)
+    {
+        const DisplayExtensions &displayExtensions = display->getExtensions();
+        if (displayExtensions.noConfigContext)
+        {
+            return NoError();
+        }
+        return EglBadMatch() << "Context with no config is not supported.";
+    }
 
     if (!surface->flexibleSurfaceCompatibilityRequested())
     {
         // Config compatibility is defined in section 2.2 of the EGL 1.5 spec
 
-        bool colorBufferCompat = config1->colorBufferType == config2->colorBufferType;
+        bool colorBufferCompat = surfaceConfig->colorBufferType == contextConfig->colorBufferType;
         if (!colorBufferCompat)
         {
             return EglBadMatch() << "Color buffer types are not compatible.";
         }
 
-        bool colorCompat =
-            config1->redSize == config2->redSize && config1->greenSize == config2->greenSize &&
-            config1->blueSize == config2->blueSize && config1->alphaSize == config2->alphaSize &&
-            config1->luminanceSize == config2->luminanceSize;
+        bool colorCompat = surfaceConfig->redSize == contextConfig->redSize &&
+                           surfaceConfig->greenSize == contextConfig->greenSize &&
+                           surfaceConfig->blueSize == contextConfig->blueSize &&
+                           surfaceConfig->alphaSize == contextConfig->alphaSize &&
+                           surfaceConfig->luminanceSize == contextConfig->luminanceSize;
         if (!colorCompat)
         {
             return EglBadMatch() << "Color buffer sizes are not compatible.";
         }
 
-        bool componentTypeCompat = config1->colorComponentType == config2->colorComponentType;
+        bool componentTypeCompat =
+            surfaceConfig->colorComponentType == contextConfig->colorComponentType;
         if (!componentTypeCompat)
         {
             return EglBadMatch() << "Color buffer component types are not compatible.";
         }
 
-        bool dsCompat = config1->depthSize == config2->depthSize &&
-                        config1->stencilSize == config2->stencilSize;
+        bool dsCompat = surfaceConfig->depthSize == contextConfig->depthSize &&
+                        surfaceConfig->stencilSize == contextConfig->stencilSize;
         if (!dsCompat)
         {
             return EglBadMatch() << "Depth-stencil buffer types are not compatible.";
         }
     }
 
-    bool surfaceTypeCompat = (config1->surfaceType & config2->surfaceType & surfaceType) != 0;
+    bool surfaceTypeCompat = (surfaceConfig->surfaceType & contextConfig->surfaceType) != 0;
     if (!surfaceTypeCompat)
     {
-        return EglBadMatch() << "Surface types are not compatible.";
+        return EglBadMatch() << "Surface type is not compatible.";
     }
 
     return NoError();
@@ -1875,6 +1980,15 @@ Error ValidateCreateImage(const Display *display,
                 }
                 break;
 
+            case EGL_TEXTURE_INTERNAL_FORMAT_ANGLE:
+                if (!displayExtensions.imageD3D11Texture)
+                {
+                    return EglBadParameter()
+                           << "EGL_TEXTURE_INTERNAL_FORMAT_ANGLE and EGL_TEXTURE_TYPE_ANGLE cannot "
+                              "be used without EGL_ANGLE_image_d3d11_texture support.";
+                }
+                break;
+
             default:
                 return EglBadParameter()
                        << "invalid attribute: 0x" << std::hex << std::uppercase << attribute;
@@ -1897,7 +2011,7 @@ Error ValidateCreateImage(const Display *display,
 
             ANGLE_TRY(ValidateContext(display, context));
             const gl::Texture *texture =
-                context->getTexture(egl_gl::EGLClientBufferToGLObjectHandle(buffer));
+                context->getTexture({egl_gl::EGLClientBufferToGLObjectHandle(buffer)});
             if (texture == nullptr || texture->getType() != gl::TextureType::_2D)
             {
                 return EglBadParameter() << "target is not a 2D texture.";
@@ -1940,7 +2054,7 @@ Error ValidateCreateImage(const Display *display,
 
             ANGLE_TRY(ValidateContext(display, context));
             const gl::Texture *texture =
-                context->getTexture(egl_gl::EGLClientBufferToGLObjectHandle(buffer));
+                context->getTexture({egl_gl::EGLClientBufferToGLObjectHandle(buffer)});
             if (texture == nullptr || texture->getType() != gl::TextureType::CubeMap)
             {
                 return EglBadParameter() << "target is not a cubemap texture.";
@@ -1986,7 +2100,7 @@ Error ValidateCreateImage(const Display *display,
 
             ANGLE_TRY(ValidateContext(display, context));
             const gl::Texture *texture =
-                context->getTexture(egl_gl::EGLClientBufferToGLObjectHandle(buffer));
+                context->getTexture({egl_gl::EGLClientBufferToGLObjectHandle(buffer)});
             if (texture == nullptr || texture->getType() != gl::TextureType::_3D)
             {
                 return EglBadParameter() << "target is not a 3D texture.";
@@ -2040,7 +2154,7 @@ Error ValidateCreateImage(const Display *display,
 
             ANGLE_TRY(ValidateContext(display, context));
             const gl::Renderbuffer *renderbuffer =
-                context->getRenderbuffer(egl_gl::EGLClientBufferToGLObjectHandle(buffer));
+                context->getRenderbuffer({egl_gl::EGLClientBufferToGLObjectHandle(buffer)});
             if (renderbuffer == nullptr)
             {
                 return EglBadParameter() << "target is not a renderbuffer.";
@@ -2501,7 +2615,7 @@ Error ValidateStreamConsumerGLTextureExternalKHR(const Display *display,
 
     // Lookup the texture and ensure it is correct
     gl::Texture *texture = context->getState().getTargetTexture(gl::TextureType::External);
-    if (texture == nullptr || texture->getId() == 0)
+    if (texture == nullptr || texture->id().value == 0)
     {
         return EglBadAccess() << "No external texture bound";
     }
@@ -2706,7 +2820,7 @@ Error ValidateStreamConsumerGLTextureExternalAttribsNV(const Display *display,
 
         // Lookup the texture and ensure it is correct
         gl::Texture *texture = context->getState().getTargetTexture(gl::TextureType::External);
-        if (texture == nullptr || texture->getId() == 0)
+        if (texture == nullptr || texture->id().value == 0)
         {
             return EglBadAccess() << "No external texture bound";
         }
@@ -2741,7 +2855,7 @@ Error ValidateStreamConsumerGLTextureExternalAttribsNV(const Display *display,
             {
                 gl::Texture *texture = context->getState().getSamplerTexture(
                     static_cast<unsigned int>(plane[i]), gl::TextureType::External);
-                if (texture == nullptr || texture->getId() == 0)
+                if (texture == nullptr || texture->id().value == 0)
                 {
                     return EglBadAccess()
                            << "No external texture bound at one or more specified texture units";
@@ -3834,6 +3948,7 @@ Error ValidateQueryStringiANGLE(const Display *display, EGLint name, EGLint inde
         case EGL_FEATURE_DESCRIPTION_ANGLE:
         case EGL_FEATURE_BUG_ANGLE:
         case EGL_FEATURE_STATUS_ANGLE:
+        case EGL_FEATURE_CONDITION_ANGLE:
             break;
         default:
             return EglBadParameter() << "name is not valid.";

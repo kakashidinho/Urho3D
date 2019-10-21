@@ -433,6 +433,7 @@ typedef enum {
   SPV_ENV_WEBGPU_0,       // Work in progress WebGPU 1.0.
   SPV_ENV_UNIVERSAL_1_4,  // SPIR-V 1.4 latest revision, no other restrictions.
   SPV_ENV_VULKAN_1_1_SPIRV_1_4,  // Vulkan 1.1 with SPIR-V 1.4 binary.
+  SPV_ENV_UNIVERSAL_1_5,  // SPIR-V 1.5 latest revision, no other restrictions.
 } spv_target_env;
 
 // SPIR-V Validator can be parameterized with the following Universal Limits.
@@ -574,6 +575,15 @@ SPIRV_TOOLS_EXPORT void spvOptimizerOptionsSetValidatorOptions(
 SPIRV_TOOLS_EXPORT void spvOptimizerOptionsSetMaxIdBound(
     spv_optimizer_options options, uint32_t val);
 
+// Records whether all bindings within the module should be preserved.
+SPIRV_TOOLS_EXPORT void spvOptimizerOptionsSetPreserveBindings(
+    spv_optimizer_options options, bool val);
+
+// Records whether all specialization constants within the module
+// should be preserved.
+SPIRV_TOOLS_EXPORT void spvOptimizerOptionsSetPreserveSpecConstants(
+    spv_optimizer_options options, bool val);
+
 // Creates a reducer options object with default options. Returns a valid
 // options object. The object remains valid until it is passed into
 // |spvReducerOptionsDestroy|.
@@ -601,6 +611,11 @@ SPIRV_TOOLS_EXPORT spv_fuzzer_options spvFuzzerOptionsCreate();
 
 // Destroys the given fuzzer options object.
 SPIRV_TOOLS_EXPORT void spvFuzzerOptionsDestroy(spv_fuzzer_options options);
+
+// Enables running the validator after every transformation is applied during
+// a replay.
+SPIRV_TOOLS_EXPORT void spvFuzzerOptionsEnableReplayValidation(
+    spv_fuzzer_options options);
 
 // Sets the seed with which the random number generator used by the fuzzer
 // should be initialized.

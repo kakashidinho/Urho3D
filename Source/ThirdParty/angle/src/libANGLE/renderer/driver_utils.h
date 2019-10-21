@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2016 The ANGLE Project Authors. All rights reserved.
+// Copyright 2016 The ANGLE Project Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -20,13 +20,12 @@ enum VendorID : uint32_t
     VENDOR_ID_UNKNOWN = 0x0,
     VENDOR_ID_AMD     = 0x1002,
     VENDOR_ID_ARM     = 0x13B5,
+    VENDOR_ID_GOOGLE  = 0x1AE0,
     VENDOR_ID_INTEL   = 0x8086,
     VENDOR_ID_NVIDIA  = 0x10DE,
     // This is Qualcomm PCI Vendor ID.
     // Android doesn't have a PCI bus, but all we need is a unique id.
     VENDOR_ID_QUALCOMM = 0x5143,
-    // ELIX22 - added apple vendor ID
-    VENDOR_ID_APPLE = 0x106B,
 };
 
 enum AndroidDeviceID : uint32_t
@@ -77,11 +76,6 @@ inline bool IsPixel2(uint32_t vendorId, uint32_t deviceId)
     return IsQualcomm(vendorId) && deviceId == ANDROID_DEVICE_ID_PIXEL2;
 }
 
-inline bool IsApple(uint32_t vendor_id)
-{
-    return vendor_id == VENDOR_ID_APPLE;
-}
-    
 const char *GetVendorString(uint32_t vendorId);
 
 // Intel

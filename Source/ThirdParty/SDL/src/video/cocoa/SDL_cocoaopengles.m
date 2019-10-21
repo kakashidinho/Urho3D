@@ -96,7 +96,11 @@ COCOA_GLES_SetupWindow(_THIS, SDL_Window * window)
     }
   
     /* Create the GLES window surface */
+#ifdef URHO3D_ANGLE_METAL
+    windowdata->egl_surface = SDL_EGL_CreateSurface(_this, (NativeWindowType)windowdata->nswindow.contentView.layer);
+#else
     windowdata->egl_surface = SDL_EGL_CreateSurface(_this, (NativeWindowType)windowdata->nswindow);
+#endif
 
     if (windowdata->egl_surface == EGL_NO_SURFACE) {
         return SDL_SetError("Could not create GLES window surface");

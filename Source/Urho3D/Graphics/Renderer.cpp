@@ -1377,7 +1377,7 @@ void Renderer::OptimizeLightByScissor(Light* light, Camera* camera)
  pending an fix from the Angle development team.
  https://bugs.chromium.org/p/angleproject/issues/detail?id=3143
 */
-#if defined(URHO3D_ANGLE_VULKAN)
+#if defined(URHO3D_ANGLE_VULKAN) || defined(URHO3D_ANGLE_METAL)
     graphics_->SetScissorTest(false);
 #else
     if (light && light->GetLightType() != LIGHT_DIRECTIONAL)

@@ -305,7 +305,7 @@ bool TextureCube::SetData(CubeMapFace face, Image* image, bool useAlpha)
             return false;
         }
 
-#ifdef URHO3D_ANGLE_VULKAN
+#if defined(URHO3D_ANGLE_VULKAN) || defined(URHO3D_ANGLE_METAL)
 		format = Graphics::GetRGBAFormat();
 		needDecompress = true;
 #else

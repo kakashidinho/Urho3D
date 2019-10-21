@@ -224,7 +224,7 @@ class ZipReader {
   bool reached_end_;
   std::unique_ptr<EntryInfo> current_entry_info_;
 
-  base::WeakPtrFactory<ZipReader> weak_ptr_factory_;
+  base::WeakPtrFactory<ZipReader> weak_ptr_factory_{this};
 
   DISALLOW_COPY_AND_ASSIGN(ZipReader);
 };
@@ -254,6 +254,9 @@ class FileWriterDelegate : public WriterDelegate {
 
   // Sets the last-modified time of the data.
   void SetTimeModified(const base::Time& time) override;
+
+  // Return the actual size of the file.
+  int64_t file_length() { return file_length_; }
 
  private:
   // The file the delegate modifies.

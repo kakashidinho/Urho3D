@@ -122,7 +122,7 @@ class InlinePass : public Pass {
                      UptrVectorIterator<BasicBlock> call_block_itr);
 
   // Return true if |inst| is a function call that can be inlined.
-  bool IsInlinableFunctionCall(Instruction* inst);
+  bool IsInlinableFunctionCall(const Instruction* inst);
 
   // Return true if |func| does not have a return that is
   // nested in a structured if, switch or loop.
@@ -138,6 +138,9 @@ class InlinePass : public Pass {
 
   // Return true if |func| is a function that can be inlined.
   bool IsInlinableFunction(Function* func);
+
+  // Returns true if |func| contains an OpKill instruction.
+  bool ContainsKill(Function* func) const;
 
   // Update phis in succeeding blocks to point to new last block
   void UpdateSucceedingPhis(
@@ -159,14 +162,15 @@ class InlinePass : public Pass {
   // Set of ids of functions with no returns in loop
   std::set<uint32_t> no_return_in_loop_;
 
-  // Set of ids of functions with no returns in loop
-  std::unordered_set<uint32_t> funcs_with_opkill_;
-
   // Set of ids of inlinable functions
   std::set<uint32_t> inlinable_;
 
   // result id for OpConstantFalse
   uint32_t false_id_;
+
+  // Set of functions that are originally called directly or indirectly from a
+  // continue construct.
+  std::unordered_set<uint32_t> funcs_called_from_continue_;
 };
 
 }  // namespace opt

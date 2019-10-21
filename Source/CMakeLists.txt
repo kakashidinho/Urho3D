@@ -139,13 +139,17 @@ endif ()
 if(URHO3D_ANGLE_VULKAN)
     add_subdirectory (ThirdParty/angle)
 if(APPLE)
-    add_subdirectory (ThirdParty/MoltenVK)
+add_subdirectory (ThirdParty/MoltenVK)
 endif()
 if (WIN32)
     add_subdirectory (ThirdParty/angle/third_party/vulkan-validation-layers)
     add_subdirectory (ThirdParty/angle/third_party/vulkan-loader)
 endif()
 endif ()
+
+if(URHO3D_ANGLE_METAL)
+add_subdirectory (ThirdParty/angle)
+endif()
 
 # Urho3D game engine library
 add_subdirectory (Urho3D)

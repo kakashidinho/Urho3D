@@ -541,6 +541,7 @@ TEST_P(BufferDataTestES3, NoBufferInitDataCopyBug)
 ANGLE_INSTANTIATE_TEST(BufferDataTest,
                        ES2_D3D9(),
                        ES2_D3D11(),
+                       ES2_METAL(),
                        ES2_OPENGL(),
                        ES2_OPENGLES(),
                        ES2_VULKAN());
@@ -566,6 +567,9 @@ class BufferDataOverflowTest : public ANGLETest
 // See description above.
 TEST_P(BufferDataOverflowTest, VertexBufferIntegerOverflow)
 {
+    // http://anglebug.com/3786: flaky timeout on Win10 FYI x64 Release (NVIDIA GeForce GTX 1660)
+    ANGLE_SKIP_TEST_IF(IsWindows() && IsNVIDIA() && IsD3D11());
+
     // These values are special, to trigger the rounding bug.
     unsigned int numItems       = 0x7FFFFFE;
     constexpr GLsizei bufferCnt = 8;

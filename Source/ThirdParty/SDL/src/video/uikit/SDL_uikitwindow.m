@@ -216,6 +216,9 @@ UIKit_CreateWindow(_THIS, SDL_Window *window)
         /* !!! FIXME: can we have a smaller view? */
         UIWindow *uiwindow = [[SDL_uikitwindow alloc] initWithFrame:data.uiscreen.bounds];
 
+#ifdef URHO3D_ANGLE_METAL
+            uiwindow.layer.contentsScale = 1;
+#endif
         /* put the window on an external display if appropriate. */
         if (data.uiscreen != [UIScreen mainScreen]) {
             [uiwindow setScreen:data.uiscreen];

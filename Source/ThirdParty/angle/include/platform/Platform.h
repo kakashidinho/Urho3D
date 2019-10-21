@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2015 The ANGLE Project Authors. All rights reserved.
+// Copyright 2015 The ANGLE Project Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -15,15 +15,10 @@
 #define EGL_PLATFORM_ANGLE_PLATFORM_METHODS_ANGLEX 0x3482
 
 #if defined(_WIN32)
-#    ifdef URHO3D_ANGLE_VULKAN
-#        define ANGLE_PLATFORM_EXPORT
-#        define ANGLE_APIENTRY
-#    else
 #    if !defined(LIBANGLE_IMPLEMENTATION)
 #        define ANGLE_PLATFORM_EXPORT __declspec(dllimport)
 #    else
 #        define ANGLE_PLATFORM_EXPORT __declspec(dllexport)
-#    endif
 #    endif
 #elif defined(__GNUC__) || defined(__clang__)
 #    define ANGLE_PLATFORM_EXPORT __attribute__((visibility("default")))

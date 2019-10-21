@@ -45,7 +45,7 @@
 
 #include <SDL/SDL.h>
 
-#if defined(URHO3D_ANGLE_VULKAN)
+#if defined(URHO3D_ANGLE_VULKAN) || defined(URHO3D_ANGLE_METAL)
 #include "../../../ThirdParty/angle/include/EGL/egl.h"
 #endif
 
@@ -68,7 +68,7 @@ extern "C"
 }
 #endif
 
-#if defined(URHO3D_ANGLE_VULKAN)
+#if defined(URHO3D_ANGLE_VULKAN) || defined(URHO3D_ANGLE_METAL)
 extern "C"
 {
 EGLDisplay EGLAPIENTRY eglGetCurrentDisplay(void);
@@ -241,7 +241,7 @@ Graphics::Graphics(Context* context) :
     shaderPath_("Shaders/GLSL/"),
     shaderExtension_(".glsl"),
     orientations_("LandscapeLeft LandscapeRight"),
-#ifdef URHO3D_ANGLE_VULKAN
+#if defined(URHO3D_ANGLE_VULKAN) || defined(URHO3D_ANGLE_METAL)
     #if defined(__APPLE__)
         apiName_("GLES2-METAL")
     #else
@@ -437,7 +437,7 @@ bool Graphics::SetMode(int width, int height, bool fullscreen, bool borderless, 
             flags |= SDL_WINDOW_ALLOW_HIGHDPI;
 
         SDL_SetHint(SDL_HINT_ORIENTATIONS, orientations_.CString());
-#ifdef URHO3D_ANGLE_VULKAN
+#if defined(URHO3D_ANGLE_VULKAN) || defined(URHO3D_ANGLE_METAL)
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
 		SDL_SetHint(SDL_HINT_OPENGL_ES_DRIVER, "1");
 #if defined(IOS) || defined(TVOS) || defined(__APPLE__)
@@ -567,7 +567,7 @@ bool Graphics::SetMode(int width, int height, bool fullscreen, bool borderless, 
      platofrms it will require flipping the Y axis on the Urho3D side*/
     if(vendor_string_intel != NULL  || vendor_string_apple != NULL )
     {
-        setFlipY(true);
+       setFlipY(true);
     }
 #endif
 
@@ -2488,7 +2488,7 @@ void Graphics::Restore()
     // Ensure first that the context exists
     if (!impl_->context_)
     {
-#ifdef URHO3D_ANGLE_VULKAN
+#if defined(URHO3D_ANGLE_VULKAN) || defined(URHO3D_ANGLE_METAL)
 		SDL_SetHint(SDL_HINT_OPENGL_ES_DRIVER, "1");
 #endif
         impl_->context_ = SDL_GL_CreateContext(window_);

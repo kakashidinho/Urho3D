@@ -70,6 +70,8 @@ enum Token
     kConfigGLDesktop,
     kConfigGLES,
     kConfigVulkan,
+    kConfigSwiftShader,
+    kConfigMetal,
     // Android devices
     kConfigNexus5X,
     kConfigPixel2,
@@ -144,6 +146,8 @@ const TokenInfo kTokenData[kNumberOfTokens] = {
     {"opengl", GPUTestConfig::kConditionGLDesktop},
     {"gles", GPUTestConfig::kConditionGLES},
     {"vulkan", GPUTestConfig::kConditionVulkan},
+    {"swiftshader", GPUTestConfig::kConditionSwiftShader},
+    {"metal", GPUTestConfig::kConditionMetal},
     {"nexus5x", GPUTestConfig::kConditionNexus5X},
     {"pixel2", GPUTestConfig::kConditionPixel2},
     {"quadrop400", GPUTestConfig::kConditionNVIDIAQuadroP400},
@@ -350,9 +354,9 @@ bool GPUTestExpectationsParser::parseLine(const GPUTestConfig &config,
         SplitString(lineData, kWhitespaceASCII, KEEP_WHITESPACE, SPLIT_WANT_NONEMPTY);
     int32_t stage = kLineParserBegin;
     GPUTestExpectationEntry entry;
-    entry.lineNumber  = lineNumber;
-    entry.used        = false;
-    bool skipLine     = false;
+    entry.lineNumber = lineNumber;
+    entry.used       = false;
+    bool skipLine    = false;
     for (size_t i = 0; i < tokens.size() && !skipLine; ++i)
     {
         Token token = ParseToken(tokens[i]);
@@ -392,6 +396,8 @@ bool GPUTestExpectationsParser::parseLine(const GPUTestConfig &config,
             case kConfigGLDesktop:
             case kConfigGLES:
             case kConfigVulkan:
+            case kConfigSwiftShader:
+            case kConfigMetal:
             case kConfigNexus5X:
             case kConfigPixel2:
             case kConfigNVIDIAQuadroP400:

@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2014 The ANGLE Project Authors. All rights reserved.
+// Copyright 2014 The ANGLE Project Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -17,7 +17,6 @@
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 
-#include "GLSLANG/ShaderLang.h"
 #include "angle_test_instantiate.h"
 #include "util/EGLPlatformParameters.h"
 
@@ -111,6 +110,7 @@ EGLPlatformParameters OPENGL_OR_GLES_NULL();
 
 EGLPlatformParameters VULKAN();
 EGLPlatformParameters VULKAN_NULL();
+EGLPlatformParameters VULKAN_SWIFTSHADER();
 
 }  // namespace egl_platform
 
@@ -176,10 +176,20 @@ PlatformParameters ES1_VULKAN();
 PlatformParameters ES1_VULKAN_NULL();
 PlatformParameters ES2_VULKAN();
 PlatformParameters ES2_VULKAN_NULL();
+PlatformParameters ES2_VULKAN_SWIFTSHADER();
 PlatformParameters ES3_VULKAN();
 PlatformParameters ES3_VULKAN_NULL();
 PlatformParameters ES31_VULKAN();
 PlatformParameters ES31_VULKAN_NULL();
+
+PlatformParameters ES1_METAL();
+PlatformParameters ES1_METAL_NULL();
+PlatformParameters ES2_METAL();
+PlatformParameters ES2_METAL_NULL();
+PlatformParameters ES3_METAL();
+PlatformParameters ES3_METAL_NULL();
+PlatformParameters ES31_METAL();
+PlatformParameters ES31_METAL_NULL();
 
 PlatformParameters ES2_WGL();
 PlatformParameters ES3_WGL();

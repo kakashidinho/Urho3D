@@ -984,7 +984,7 @@ void Engine::HandleExitRequested(StringHash eventType, VariantMap& eventData)
 
 void Engine::DoExit()
 {
-#ifdef URHO3D_ANGLE_VULKAN
+#if defined(URHO3D_ANGLE_VULKAN) || defined(URHO3D_ANGLE_METAL)
     exiting_ = true;
     Time::Sleep(250);
 #endif

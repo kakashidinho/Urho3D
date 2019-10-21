@@ -29,7 +29,7 @@
 #include "../../Graphics/Texture2D.h"
 #include "../../Math/Color.h"
 
-#if defined(URHO3D_ANGLE_VULKAN)
+#if defined(URHO3D_ANGLE_VULKAN) || defined(URHO3D_ANGLE_METAL)
 #include <angle/GLES2/gl2.h>
 #include <angle/GLES2/gl2ext.h>
 #elif defined(IOS) || defined(TVOS)

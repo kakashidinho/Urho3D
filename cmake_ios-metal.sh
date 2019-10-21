@@ -21,6 +21,6 @@
 # THE SOFTWARE.
 #
 
-$(dirname $0)/cmake_generic.sh build-ios-metal "$@"  -DURHO3D_LUA=0 -DURHO3D_ANGLE_VULKAN=1 -G Xcode -DIOS=1
+$(dirname $0)/cmake_generic.sh build-ios-metal "$@"  -DURHO3D_LUA=0 -DURHO3D_ANGLE_METAL=1 -G Xcode -DIOS=1
 
 # vi: set ts=4 sw=4 expandtab:

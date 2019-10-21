@@ -9,10 +9,10 @@
 
 #include "ANGLEPerfTest.h"
 #include "common/platform.h"
+#include "common/system_utils.h"
 #include "platform/Platform.h"
 #include "test_utils/angle_test_configs.h"
 #include "test_utils/angle_test_instantiate.h"
-#include "util/system_utils.h"
 
 #define ITERATIONS 20
 
@@ -40,7 +40,7 @@ class EGLMakeCurrentPerfTest : public ANGLEPerfTest,
 };
 
 EGLMakeCurrentPerfTest::EGLMakeCurrentPerfTest()
-    : ANGLEPerfTest("EGLMakeCurrent", "_run", ITERATIONS),
+    : ANGLEPerfTest("EGLMakeCurrent", "", "_run", ITERATIONS),
       mOSWindow(nullptr),
       mDisplay(EGL_NO_DISPLAY),
       mSurface(EGL_NO_SURFACE),
@@ -149,6 +149,7 @@ TEST_P(EGLMakeCurrentPerfTest, Run)
 ANGLE_INSTANTIATE_TEST(EGLMakeCurrentPerfTest,
                        angle::ES2_D3D9(),
                        angle::ES2_D3D11(),
+                       angle::ES2_METAL(),
                        angle::ES2_OPENGL(),
                        angle::ES2_OPENGLES(),
                        angle::ES2_VULKAN());

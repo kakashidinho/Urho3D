@@ -26,7 +26,7 @@
  */
 #include "SDL_config.h"
 
-#ifdef URHO3D_ANGLE_VULKAN
+#if defined(URHO3D_ANGLE_VULKAN) || defined(URHO3D_ANGLE_METAL)
 #include <GLES2/gl2platform.h>
 #include <GLES2/gl2.h>
 #include <GLES2/gl2ext.h>

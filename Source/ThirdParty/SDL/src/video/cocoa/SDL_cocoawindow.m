@@ -1340,6 +1340,10 @@ Cocoa_CreateWindow(_THIS, SDL_Window * window)
     /* Create a default view for this window */
     rect = [nswindow contentRectForFrameRect:[nswindow frame]];
     SDLView *contentView = [[SDLView alloc] initWithFrame:rect];
+#ifdef URHO3D_ANGLE_METAL
+    [contentView setWantsLayer:YES];
+    contentView.layer.contentsScale = 1;
+#endif
     [contentView setSDLWindow:window];
 
     if (window->flags & SDL_WINDOW_ALLOW_HIGHDPI) {

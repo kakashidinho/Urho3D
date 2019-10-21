@@ -1090,10 +1090,12 @@ ANGLE_INSTANTIATE_TEST(SimpleOperationTest,
                        ES2_D3D11(),
                        ES2_D3D11_PRESENT_PATH_FAST(),
                        ES3_D3D11(),
+                       ES2_METAL(),
                        ES2_OPENGL(),
                        ES3_OPENGL(),
                        ES2_OPENGLES(),
                        ES3_OPENGLES(),
-                       ES2_VULKAN());
+                       ES2_VULKAN(),
+                       ES2_VULKAN_SWIFTSHADER());
 
 }  // namespace

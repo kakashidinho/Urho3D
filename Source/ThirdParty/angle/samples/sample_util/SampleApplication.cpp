@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2013 The ANGLE Project Authors. All rights reserved.
+// Copyright 2013 The ANGLE Project Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -9,11 +9,16 @@
 #include "util/EGLWindow.h"
 #include "util/gles_loader_autogen.h"
 #include "util/random_utils.h"
-#include "util/system_utils.h"
+#include "util/test_utils.h"
 
 #include <string.h>
 #include <iostream>
 #include <utility>
+
+// Use environment variable if this variable is not compile time defined.
+#if !defined(ANGLE_EGL_LIBRARY_NAME)
+#    define ANGLE_EGL_LIBRARY_NAME angle::GetEnvironmentVar("ANGLE_EGL_LIBRARY_NAME").c_str()
+#endif
 
 namespace
 {
@@ -22,9 +27,14 @@ const char *kUseAngleArg = "--use-angle=";
 using DisplayTypeInfo = std::pair<const char *, EGLint>;
 
 const DisplayTypeInfo kDisplayTypes[] = {
-    {"d3d9", EGL_PLATFORM_ANGLE_TYPE_D3D9_ANGLE}, {"d3d11", EGL_PLATFORM_ANGLE_TYPE_D3D11_ANGLE},
-    {"gl", EGL_PLATFORM_ANGLE_TYPE_OPENGL_ANGLE}, {"gles", EGL_PLATFORM_ANGLE_TYPE_OPENGLES_ANGLE},
-    {"null", EGL_PLATFORM_ANGLE_TYPE_NULL_ANGLE}, {"vulkan", EGL_PLATFORM_ANGLE_TYPE_VULKAN_ANGLE}};
+    {"d3d9", EGL_PLATFORM_ANGLE_TYPE_D3D9_ANGLE},
+    {"d3d11", EGL_PLATFORM_ANGLE_TYPE_D3D11_ANGLE},
+    {"gl", EGL_PLATFORM_ANGLE_TYPE_OPENGL_ANGLE},
+    {"gles", EGL_PLATFORM_ANGLE_TYPE_OPENGLES_ANGLE},
+    {"null", EGL_PLATFORM_ANGLE_TYPE_NULL_ANGLE},
+    {"vulkan", EGL_PLATFORM_ANGLE_TYPE_VULKAN_ANGLE},
+    {"swiftshader", EGL_PLATFORM_ANGLE_TYPE_VULKAN_ANGLE},
+};
 
 EGLint GetDisplayTypeFromArg(const char *displayTypeArg)
 {
@@ -40,6 +50,18 @@ EGLint GetDisplayTypeFromArg(const char *displayTypeArg)
     std::cout << "Unknown ANGLE back-end API: " << displayTypeArg << std::endl;
     return EGL_PLATFORM_ANGLE_TYPE_DEFAULT_ANGLE;
 }
+
+EGLint GetDeviceTypeFromArg(const char *displayTypeArg)
+{
+    if (strcmp(displayTypeArg, "swiftshader") == 0)
+    {
+        return EGL_PLATFORM_ANGLE_DEVICE_TYPE_SWIFTSHADER_ANGLE;
+    }
+    else
+    {
+        return EGL_PLATFORM_ANGLE_DEVICE_TYPE_HARDWARE_ANGLE;
+    }
+}
 }  // anonymous namespace
 
 SampleApplication::SampleApplication(std::string name,
@@ -47,8 +69,8 @@ SampleApplication::SampleApplication(std::string name,
                                      char **argv,
                                      EGLint glesMajorVersion,
                                      EGLint glesMinorVersion,
-                                     size_t width,
-                                     size_t height)
+                                     uint32_t width,
+                                     uint32_t height)
     : mName(std::move(name)),
       mWidth(width),
       mHeight(height),
@@ -56,11 +78,13 @@ SampleApplication::SampleApplication(std::string name,
       mEGLWindow(nullptr),
       mOSWindow(nullptr)
 {
-    mPlatformParams.renderer     = EGL_PLATFORM_ANGLE_TYPE_DEFAULT_ANGLE;
+    mPlatformParams.renderer = EGL_PLATFORM_ANGLE_TYPE_DEFAULT_ANGLE;
 
     if (argc > 1 && strncmp(argv[1], kUseAngleArg, strlen(kUseAngleArg)) == 0)
     {
-        mPlatformParams.renderer = GetDisplayTypeFromArg(argv[1] + strlen(kUseAngleArg));
+        const char *arg            = argv[1] + strlen(kUseAngleArg);
+        mPlatformParams.renderer   = GetDisplayTypeFromArg(arg);
+        mPlatformParams.deviceType = GetDeviceTypeFromArg(arg);
     }
 
     // Load EGL library so we can initialize the display.
@@ -68,8 +92,7 @@ SampleApplication::SampleApplication(std::string name,
         angle::OpenSharedLibrary(ANGLE_EGL_LIBRARY_NAME, angle::SearchType::ApplicationDir));
 
     mEGLWindow = EGLWindow::New(glesMajorVersion, glesMinorVersion);
-    mTimer.reset(CreateTimer());
-    mOSWindow = OSWindow::New();
+    mOSWindow  = OSWindow::New();
 }
 
 SampleApplication::~SampleApplication()
@@ -119,13 +142,12 @@ EGLContext SampleApplication::getContext() const
     return mEGLWindow->getContext();
 }
 
-int SampleApplication::run()
+int SampleApplication::prepareToRun()
 {
-    if (!mOSWindow->initialize(mName, mWidth, mHeight))
-    {
-        return -1;
-    }
-
+     // tbd eli
+    static bool is_init = false;
+    if(is_init == true)return 0;
+    
     mOSWindow->setVisible(true);
 
     ConfigParameters configParams;
@@ -149,47 +171,82 @@ int SampleApplication::run()
 
     angle::LoadGLES(eglGetProcAddress);
 
-    mRunning   = true;
-    int result = 0;
+    mRunning = true;
 
     if (!initialize())
     {
         mRunning = false;
-        result   = -1;
+        return -1;
     }
 
-    mTimer->start();
-    double prevTime = 0.0;
+    mTimer.start();
+    mPrevTime = 0.0;
+    
+     // tbd eli
+    is_init = true;
 
-    while (mRunning)
+    return 0;
+}
+
+int SampleApplication::runIteration()
+{
+    double elapsedTime = mTimer.getElapsedTime();
+    double deltaTime   = elapsedTime - mPrevTime;
+
+    step(static_cast<float>(deltaTime), elapsedTime);
+
+    // Clear events that the application did not process from this frame
+    Event event;
+    while (popEvent(&event))
     {
-        double elapsedTime = mTimer->getElapsedTime();
-        double deltaTime   = elapsedTime - prevTime;
-
-        step(static_cast<float>(deltaTime), elapsedTime);
-
-        // Clear events that the application did not process from this frame
-        Event event;
-        while (popEvent(&event))
+        // If the application did not catch a close event, close now
+        if (event.Type == Event::EVENT_CLOSED)
         {
-            // If the application did not catch a close event, close now
-            if (event.Type == Event::EVENT_CLOSED)
-            {
-                exit();
-            }
+            exit();
+        }
+    }
+
+    if (!mRunning)
+    {
+        return 0;
+    }
+
+    draw();
+    swap();
+
+    mOSWindow->messageLoop();
+
+    mPrevTime = elapsedTime;
+
+    return 0;
+}
+
+int SampleApplication::run()
+{
+    if (!mOSWindow->initialize(mName, mWidth, mHeight))
+    {
+        return -1;
+    }
+
+    int result = 0;
+    if (mOSWindow->hasOwnLoop())
+    {
+        // The Window platform has its own message loop, so let it run its own
+        // using our delegates.
+        result = mOSWindow->runOwnLoop([this] { return prepareToRun(); },
+                                       [this] { return runIteration(); });
+    }
+    else
+    {
+        if ((result = prepareToRun()))
+        {
+            return result;
         }
 
-        if (!mRunning)
+        while (mRunning)
         {
-            break;
+            runIteration();
         }
-
-        draw();
-        swap();
-
-        mOSWindow->messageLoop();
-
-        prevTime = elapsedTime;
     }
 
     destroy();

@@ -260,7 +260,7 @@ bool Texture2D::SetData(Image* image, bool useAlpha)
         unsigned format = graphics_->GetFormat(image->GetCompressedFormat());
         bool needDecompress = false;
 
-#ifdef URHO3D_ANGLE_VULKAN
+#if defined(URHO3D_ANGLE_VULKAN) || defined(URHO3D_ANGLE_METAL)
 		format = Graphics::GetRGBAFormat();
 		needDecompress = true;
 #else

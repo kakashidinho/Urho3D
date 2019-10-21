@@ -81,6 +81,9 @@ _this->egl_data->NAME = (void *)NAME;
 #elif  URHO3D_ANGLE_VULKAN
 #define LOAD_FUNC(NAME) \
 _this->egl_data->NAME = (void *)NAME;
+#elif  URHO3D_ANGLE_METAL
+#define LOAD_FUNC(NAME) \
+_this->egl_data->NAME = (void *)NAME;
 #else
 #define LOAD_FUNC(NAME) \
 _this->egl_data->NAME = SDL_LoadFunction(_this->egl_data->dll_handle, #NAME); \
@@ -288,6 +291,7 @@ SDL_EGL_LoadLibrary(_THIS, const char *egl_path, NativeDisplayType native_displa
 
 #ifndef SDL_VIDEO_STATIC_ANGLE
 #ifndef URHO3D_ANGLE_VULKAN
+#ifndef URHO3D_ANGLE_METAL
     /* A funny thing, loading EGL.so first does not work on the Raspberry, so we load libGL* first */
     path = SDL_getenv("SDL_VIDEO_GL_DRIVER");
     if (path != NULL) {
@@ -358,12 +362,13 @@ SDL_EGL_LoadLibrary(_THIS, const char *egl_path, NativeDisplayType native_displa
         }
         SDL_ClearError();
     }
+#endif // URHO3D_ANGLE_METAL
 #endif // URHO3D_ANGLE_VULKAN
 #endif
 
     _this->egl_data->dll_handle = dll_handle;
 
-#ifdef URHO3D_ANGLE_VULKAN
+#if defined(URHO3D_ANGLE_VULKAN) || defined(URHO3D_ANGLE_METAL)
     EGLDisplay EGLAPIENTRY eglGetDisplay(EGLNativeDisplayType display_id);
     EGLBoolean EGLAPIENTRY eglInitialize(EGLDisplay dpy, EGLint *major, EGLint *minor);
     EGLBoolean EGLAPIENTRY eglTerminate(EGLDisplay dpy);
@@ -422,7 +427,7 @@ SDL_EGL_LoadLibrary(_THIS, const char *egl_path, NativeDisplayType native_displa
     LOAD_FUNC(eglBindAPI);
     LOAD_FUNC(eglQueryString);
     LOAD_FUNC(eglGetError);
-#ifdef URHO3D_ANGLE_VULKAN
+#if defined(URHO3D_ANGLE_VULKAN) || defined(URHO3D_ANGLE_METAL)
 	LOAD_FUNC(eglGetPlatformDisplay);
 #endif
 
@@ -463,12 +468,24 @@ SDL_EGL_LoadLibrary(_THIS, const char *egl_path, NativeDisplayType native_displa
 			int attr_index = 0;
 			EGLAttrib attribs[64];
 			attribs[attr_index++] = EGL_PLATFORM_ANGLE_TYPE_ANGLE;
-			attribs[attr_index++] = EGL_PLATFORM_ANGLE_TYPE_VULKAN_ANGLE;
+			attribs[attr_index++] = EGL_PLATFORM_ANGLE_TYPE_VULKAN_ANGLE; // TBD ELI 5
 			attribs[attr_index++] = EGL_NONE;
 			attribs[attr_index++] = EGL_NONE;
 			_this->egl_data->egl_display = _this->egl_data->eglGetPlatformDisplay(EGL_PLATFORM_ANGLE_ANGLE, (void *)(size_t)native_display, attribs);
 
 		}
+        else
+#elif URHO3D_ANGLE_METAL
+        if (_this->egl_data->eglGetPlatformDisplay) {
+            int attr_index = 0;
+            EGLAttrib attribs[64];
+            attribs[attr_index++] = EGL_PLATFORM_ANGLE_TYPE_ANGLE;
+            attribs[attr_index++] = EGL_PLATFORM_ANGLE_TYPE_METAL_ANGLE; // TBD ELI 5
+            attribs[attr_index++] = EGL_NONE;
+            attribs[attr_index++] = EGL_NONE;
+            _this->egl_data->egl_display = _this->egl_data->eglGetPlatformDisplay(EGL_PLATFORM_ANGLE_ANGLE, (void *)(size_t)native_display, attribs);
+
+        }
 		else
 #endif
         _this->egl_data->egl_display = _this->egl_data->eglGetDisplay(native_display);

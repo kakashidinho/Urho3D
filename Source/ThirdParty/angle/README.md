@@ -6,22 +6,23 @@ to continue operate on Apple platforms by translating OpenGL ES draw calls to Me
 ### Current Metal backend implementation status
 - MetalANGLE is being migrated into official ANGLE repo. So this repo might not get updated for a while.
 - Almost all basic samples has been tested to work fine.
-- Not all ANGLE tests passed yet.
-- No `GL_TRIANGLE_FAN` & `GL_LINE_LOOP` support in draw calls yet.
+- __Over 90% of ANGLE end2end tests have been passed__. See [List of failed tests](src/libANGLE/renderer/metal/README.md#Failed-ANGLE-end2end-tests).
+- [MGLKit](src/libANGLE/renderer/metal/DevSetup.md#MGLKit) utilities classes have been added. Proving kind of similar functionalies to Apples's GLKit.
+- ~~No `GL_TRIANGLE_FAN` & `GL_LINE_LOOP` support in draw calls yet.~~
 - Metal doesn't allow buffer offset not being multiple of 4 bytes. Hence, draw calls that use unsupported offsets, strides,
 and vertex formats will force MetalANGLE to do software conversions on CPU.
 - MSAA is not supported yet.
 - MetalANGLE only supports __MacOS 10.13+__ and __iOS 11.0+__.
 #### TODO lists
 - Make sure it passes all ANGLE's unit tests.
-- Support `GL_TRIANGLE_FAN` & `GL_LINE_LOOP` by generating index buffer on the fly using Metal compute shader.
+- ~~Support `GL_TRIANGLE_FAN` & `GL_LINE_LOOP` by generating index buffer on the fly using Metal compute shader.~~
 - Use compute shader to convert unsupported offsets, strides & vertex formats.
 - Support MSAA.
 - Support OpenGL ES 3.0.
 
 ## How to build Metal ANGLE for MacOS & iOS
 View the [Metal backend's Dev setup instructions](src/libANGLE/renderer/metal/DevSetup.md).
-Currently, for convenience, iOS version can be built using Xcode project provided in `ios/xcode` folder.
+Currently, for convenience, iOS version can be built using Xcode project provided in `ios/xcode` folder. The Xcode project also builds [MGLKit](src/libANGLE/renderer/metal/DevSetup.md#MGLKit) utilities wrapper library which provides `MGLContext`, `MGLLayer`, `MGLKView`, `MGLKViewController`, similar to Apple's provided GLKit classes such as `CAEAGLContext`, `CAEAGLLayer`, `GLKView`, `GLKViewController`. Please open `MGLKitSamples.xcodeproj` for example iOS app using this MGLKit library.
 
 ------
 # Google's ANGLE - Almost Native Graphics Layer Engine

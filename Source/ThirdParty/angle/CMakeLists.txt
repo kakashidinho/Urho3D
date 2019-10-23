@@ -382,8 +382,8 @@ set(libangle_metal_sources
    src/libANGLE/renderer/metal/DisplayMtl.mm
    src/libANGLE/renderer/metal/FrameBufferMtl.h
    src/libANGLE/renderer/metal/FrameBufferMtl.mm
-   src/libANGLE/renderer/metal/GlslangWrapper.h
-   src/libANGLE/renderer/metal/GlslangWrapper.mm
+   src/libANGLE/renderer/metal/GlslangWrapperMtl.h
+   src/libANGLE/renderer/metal/GlslangWrapperMtl.mm
    src/libANGLE/renderer/metal/ProgramMtl.h
    src/libANGLE/renderer/metal/ProgramMtl.mm
    src/libANGLE/renderer/metal/RenderBufferMtl.h

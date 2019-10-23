@@ -20,6 +20,7 @@
 #include "common/Optional.h"
 #include "common/PackedEnums.h"
 #include "common/angleutils.h"
+#include "common/apple_platform_utils.h"
 #include "libANGLE/Constants.h"
 #include "libANGLE/Version.h"
 #include "libANGLE/angletypes.h"
@@ -43,6 +44,12 @@
 
 #define ANGLE_MTL_UNUSED __attribute__((unused))
 
+#if defined(ANGLE_MTL_ENABLE_TRACE)
+#    define ANGLE_MTL_LOG(...) NSLog(@__VA_ARGS__)
+#else
+#    define ANGLE_MTL_LOG(...) (void)0
+#endif
+
 // TODO(hqle): support variable max number of vertex attributes
 constexpr uint32_t kMaxVertexAttribs = gl::MAX_VERTEX_ATTRIBS;
 // TODO(hqle): support variable max number of render targets
@@ -59,7 +66,7 @@ constexpr uint32_t kMaxViewports         = 1;
 constexpr uint32_t kVertexAttribBufferOffsetAlignment = 4;
 constexpr uint32_t kVertexAttribBufferStrideAlignment = 4;
 // Alignment requirement for offset passed to setVertex|FragmentBuffer
-#if TARGET_OS_OSX
+#if TARGET_OS_OSX || TARGET_OS_MACCATALYST
 constexpr uint32_t kBufferSettingOffsetAlignment = 256;
 #else
 constexpr uint32_t kBufferSettingOffsetAlignment = 4;
@@ -73,8 +80,6 @@ constexpr uint32_t kVboBindingIndexStart = 0;
 constexpr uint32_t kDefaultAttribsBindingIndex = kVboBindingIndexStart + kMaxVertexAttribs;
 // Binding index for driver uniforms:
 constexpr uint32_t kDriverUniformsBindingIndex = kDefaultAttribsBindingIndex + 1;
-// Binding index for unused uniforms, they will be groupped into an argument buffer
-constexpr uint32_t kUnusedUniformsArgumentBufferBindingIndex = kDefaultAttribsBindingIndex + 2;
 // Binding index for default uniforms:
 constexpr uint32_t kDefaultUniformsBindingIndex = kDefaultAttribsBindingIndex + 3;
 

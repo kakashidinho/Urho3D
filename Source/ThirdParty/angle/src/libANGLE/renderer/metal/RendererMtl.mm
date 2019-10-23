@@ -9,8 +9,8 @@
 
 #include "libANGLE/renderer/metal/RendererMtl.h"
 
+#include "libANGLE/renderer/glslang_wrapper_utils.h"
 #include "libANGLE/renderer/metal/ContextMtl.h"
-#include "libANGLE/renderer/metal/GlslangWrapper.h"
 #include "libANGLE/renderer/metal/mtl_common.h"
 
 namespace rx
@@ -23,17 +23,17 @@ angle::Result RendererMtl::initialize(egl::Display *display)
 {
     ANGLE_MTL_OBJC_SCOPE
     {
-        mMetalDevice = MTLCreateSystemDefaultDevice();
+        mMetalDevice = [MTLCreateSystemDefaultDevice() ANGLE_MTL_AUTORELEASE];
         if (!mMetalDevice)
         {
             return angle::Result::Stop;
         }
 
-        mCmdQueue.set([mMetalDevice.get() newCommandQueue]);
+        mCmdQueue.set([[mMetalDevice.get() newCommandQueue] ANGLE_MTL_AUTORELEASE]);
 
         mCapsInitialized = false;
 
-        GlslangWrapperMtl::Initialize();
+        GlslangInitialize();
 
         ANGLE_TRY(mFormatTable.initialize(this));
 
@@ -51,7 +51,7 @@ void RendererMtl::onDestroy()
     mMetalDevice     = nil;
     mCapsInitialized = false;
 
-    GlslangWrapperMtl::Release();
+    GlslangRelease();
 }
 
 std::string RendererMtl::getVendorString() const
@@ -59,7 +59,7 @@ std::string RendererMtl::getVendorString() const
     std::string vendorString = "Google Inc.";
     if (mMetalDevice)
     {
-        vendorString += " ";
+        vendorString += " Metal Renderer: ";
         vendorString += mMetalDevice.get().name.UTF8String;
     }
 
@@ -160,14 +160,10 @@ void RendererMtl::ensureCapsInitialized() const
     // https://developer.apple.com/metal/Metal-Feature-Set-Tables.pdf
     mNativeCaps.maxElementIndex  = std::numeric_limits<GLuint>::max() - 1;
     mNativeCaps.max3DTextureSize = 2048;
-#if TARGET_OS_OSX
-    if ([getMetalDevice() supportsFeatureSet:MTLFeatureSet_macOS_GPUFamily1_v1])
-    {
-        mNativeCaps.max2DTextureSize          = 16384;
-        mNativeCaps.maxVaryingVectors         = 31;
-        mNativeCaps.maxVertexOutputComponents = 124;
-    }
-    else
+#if TARGET_OS_OSX || TARGET_OS_MACCATALYST
+    mNativeCaps.max2DTextureSize          = 16384;
+    mNativeCaps.maxVaryingVectors         = 31;
+    mNativeCaps.maxVertexOutputComponents = 124;
 #else
     if ([getMetalDevice() supportsFeatureSet:MTLFeatureSet_iOS_GPUFamily3_v1])
     {
@@ -176,12 +172,12 @@ void RendererMtl::ensureCapsInitialized() const
         mNativeCaps.maxVaryingVectors         = mNativeCaps.maxVertexOutputComponents / 4;
     }
     else
-#endif
     {
         mNativeCaps.max2DTextureSize          = 8192;
         mNativeCaps.maxVertexOutputComponents = 60;
         mNativeCaps.maxVaryingVectors         = mNativeCaps.maxVertexOutputComponents / 4;
     }
+#endif
 
     mNativeCaps.maxArrayTextureLayers = 2048;
     mNativeCaps.maxLODBias            = 0;

@@ -144,10 +144,6 @@ EGLContext SampleApplication::getContext() const
 
 int SampleApplication::prepareToRun()
 {
-     // tbd eli
-    static bool is_init = false;
-    if(is_init == true)return 0;
-    
     mOSWindow->setVisible(true);
 
     ConfigParameters configParams;
@@ -181,9 +177,6 @@ int SampleApplication::prepareToRun()
 
     mTimer.start();
     mPrevTime = 0.0;
-    
-     // tbd eli
-    is_init = true;
 
     return 0;
 }

@@ -215,8 +215,6 @@ angle::Result VertexArrayMtl::syncState(const gl::Context *context,
                     mCurrentElementArrayBufferOffset = 0;
                 }
 
-                // TODO(hqle): line loop handle
-
                 break;
             }
 
@@ -270,8 +268,7 @@ angle::Result VertexArrayMtl::setupDraw(const gl::Context *glContext,
 
     if (dirty)
     {
-        mVertexArrayDirty         = false;
-        uint32_t currentBufferIdx = kVboBindingIndexStart;
+        mVertexArrayDirty = false;
 
         const std::vector<gl::VertexAttribute> &attribs = mState.getVertexAttributes();
 
@@ -310,13 +307,13 @@ angle::Result VertexArrayMtl::setupDraw(const gl::Context *glContext,
 
             if (attribEnabled)
             {
-                auto bufferIdx = currentBufferIdx++;
-
+                uint32_t bufferIdx             = kVboBindingIndexStart + v;
                 desc.attributes[v].bufferIndex = bufferIdx;
 
-                desc.layouts[v].stepFunction = MTLVertexStepFunctionPerVertex;
-                desc.layouts[v].stepRate     = 1;
-                desc.layouts[v].stride       = mCurrentArrayBufferStrides[v];
+                ASSERT(bufferIdx < kMaxVertexAttribs);
+                desc.layouts[bufferIdx].stepFunction = MTLVertexStepFunctionPerVertex;
+                desc.layouts[bufferIdx].stepRate     = 1;
+                desc.layouts[bufferIdx].stride       = mCurrentArrayBufferStrides[v];
 
                 cmdEncoder->setVertexBuffer(mCurrentArrayBuffers[v]->getCurrentBuffer(glContext), 0,
                                             bufferIdx);
@@ -466,20 +463,25 @@ angle::Result VertexArrayMtl::syncDirtyAttrib(const gl::Context *glContext,
 
 angle::Result VertexArrayMtl::convertIndexBuffer(const gl::Context *glContext,
                                                  gl::DrawElementsType indexType,
-                                                 BufferMtl *idxBuffer,
                                                  size_t offset)
 {
-    ASSERT(idxBuffer);
 #if not defined(URHO3D_ANGLE_METAL)
     ASSERT((offset % kIndexBufferOffsetAlignment) != 0 ||
            indexType == gl::DrawElementsType::UnsignedByte);
 #endif
-    ConversionBufferMtl *conversion =
+    
+    BufferMtl *idxBuffer = mtl::GetImpl(getState().getElementArrayBuffer());
+
+    IndexConversionBufferMtl *conversion =
         idxBuffer->getIndexConversionBuffer(glContext, indexType, offset);
 
     // Has the content of the buffer has changed since last conversion?
     if (!conversion->dirty)
     {
+        // reuse the converted buffer
+        mConvertedElementArrayBufferHolder.set(conversion->convertedBuffer);
+        mCurrentElementArrayBuffer       = &mConvertedElementArrayBufferHolder;
+        mCurrentElementArrayBufferOffset = conversion->convertedOffset;
         return angle::Result::Continue;
     }
 
@@ -501,29 +503,30 @@ angle::Result VertexArrayMtl::convertIndexBufferGPU(const gl::Context *glContext
                                                     BufferMtl *idxBuffer,
                                                     size_t offset,
                                                     size_t indexCount,
-                                                    ConversionBufferMtl *conversion)
+                                                    IndexConversionBufferMtl *conversion)
 {
     ContextMtl *contextMtl = mtl::GetImpl(glContext);
     RendererMtl *renderer  = contextMtl->getRenderer();
 
     const size_t amount = GetIndexConvertedBufferSize(indexType, indexCount);
 
-    // Allocate new buffer
-    mtl::BufferRef newBuffer;
+    // Allocate new buffer, save it in conversion struct so that we can reuse it when the content
+    // of the original buffer is not dirty.
     conversion->data.releaseInFlightBuffers(contextMtl);
-    ANGLE_TRY(conversion->data.allocate(contextMtl, amount, nullptr, &newBuffer,
-                                        &mCurrentElementArrayBufferOffset));
-    mConvertedElementArrayBufferHolder.set(newBuffer);
+    ANGLE_TRY(conversion->data.allocate(contextMtl, amount, nullptr, &conversion->convertedBuffer,
+                                        &conversion->convertedOffset));
+    mConvertedElementArrayBufferHolder.set(conversion->convertedBuffer);
 
     // Do the conversion on GPU.
     ANGLE_TRY(renderer->getUtils().convertIndexBuffer(
         glContext, indexType, static_cast<uint32_t>(indexCount),
-        idxBuffer->getCurrentBuffer(glContext), static_cast<uint32_t>(offset), newBuffer,
-        static_cast<uint32_t>(mCurrentElementArrayBufferOffset)));
+        idxBuffer->getCurrentBuffer(glContext), static_cast<uint32_t>(offset),
+        conversion->convertedBuffer, static_cast<uint32_t>(conversion->convertedOffset)));
 
     ANGLE_TRY(conversion->data.commit(contextMtl));
 
-    mCurrentElementArrayBuffer = &mConvertedElementArrayBufferHolder;
+    mCurrentElementArrayBuffer       = &mConvertedElementArrayBufferHolder;
+    mCurrentElementArrayBufferOffset = conversion->convertedOffset;
     ASSERT(conversion->dirty);
     conversion->dirty = false;
 
@@ -535,7 +538,7 @@ angle::Result VertexArrayMtl::convertIndexBufferCPU(const gl::Context *glContext
                                                     BufferMtl *idxBuffer,
                                                     size_t offset,
                                                     size_t indexCount,
-                                                    ConversionBufferMtl *conversion)
+                                                    IndexConversionBufferMtl *conversion)
 {
     ContextMtl *contextMtl = mtl::GetImpl(glContext);
 
@@ -543,6 +546,10 @@ angle::Result VertexArrayMtl::convertIndexBufferCPU(const gl::Context *glContext
     ANGLE_TRY(StreamIndexData(contextMtl, &conversion->data, srcData, indexType, indexCount,
                               &mConvertedElementArrayBufferHolder,
                               &mCurrentElementArrayBufferOffset));
+
+    // Save the buffer and offset, so that we can reuse if when the buffer's content is not dirty
+    conversion->convertedBuffer = mConvertedElementArrayBufferHolder.getCurrentBuffer(glContext);
+    conversion->convertedOffset = mCurrentElementArrayBufferOffset;
 
     mCurrentElementArrayBuffer = &mConvertedElementArrayBufferHolder;
     ASSERT(conversion->dirty);

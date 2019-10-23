@@ -20,12 +20,12 @@
 #include "libANGLE/Context.h"
 #include "libANGLE/Display.h"
 #include "libANGLE/renderer/driver_utils.h"
+#include "libANGLE/renderer/glslang_wrapper_utils.h"
 #include "libANGLE/renderer/vulkan/CommandGraph.h"
 #include "libANGLE/renderer/vulkan/CompilerVk.h"
 #include "libANGLE/renderer/vulkan/ContextVk.h"
 #include "libANGLE/renderer/vulkan/DisplayVk.h"
 #include "libANGLE/renderer/vulkan/FramebufferVk.h"
-#include "libANGLE/renderer/vulkan/GlslangWrapper.h"
 #include "libANGLE/renderer/vulkan/ProgramVk.h"
 #include "libANGLE/renderer/vulkan/VertexArrayVk.h"
 #include "libANGLE/renderer/vulkan/vk_caps_utils.h"
@@ -368,7 +368,6 @@ class ScopedVkLoaderEnvironment : angle::NonCopyable
 // since this code is a part of Java application there.
 // Android Vulkan loader doesn't need this either.
 #if !defined(ANGLE_PLATFORM_ANDROID) && !defined(ANGLE_PLATFORM_FUCHSIA)
-        /* TBD ELI
         if (icd == vk::ICD::Mock)
         {
             if (!setICDEnvironment(ANGLE_VK_MOCK_ICD_JSON))
@@ -383,7 +382,6 @@ class ScopedVkLoaderEnvironment : angle::NonCopyable
                 ERR() << "Error setting environment for SwiftShader.";
             }
         }
-         */
         if (mEnableValidationLayers || icd != vk::ICD::Default)
         {
             const auto &cwd = angle::GetCWD();
@@ -408,7 +406,6 @@ class ScopedVkLoaderEnvironment : angle::NonCopyable
         }
 
         // Override environment variable to use the ANGLE layers.
-        /* TBD ELI
         if (mEnableValidationLayers)
         {
             if (!angle::PrependPathToEnvironmentVar(vk::gLoaderLayersPathEnv, ANGLE_VK_LAYERS_DIR))
@@ -417,7 +414,6 @@ class ScopedVkLoaderEnvironment : angle::NonCopyable
                 mEnableValidationLayers = false;
             }
         }
-         */
 #endif  // !defined(ANGLE_PLATFORM_ANDROID)
     }
 
@@ -563,7 +559,7 @@ void RendererVk::onDestroy(vk::Context *context)
 
     mPipelineCache.destroy(mDevice);
 
-    GlslangWrapper::Release();
+    GlslangRelease();
 
     if (mDevice)
     {
@@ -882,7 +878,7 @@ angle::Result RendererVk::initialize(DisplayVk *displayVk,
     // Store the physical device memory properties so we can find the right memory pools.
     mMemoryProperties.init(mPhysicalDevice);
 
-    GlslangWrapper::Initialize();
+    GlslangInitialize();
 
     // Initialize the format table.
     mFormatTable.initialize(this, &mNativeTextureCaps, &mNativeCaps.compressedTextureFormats);

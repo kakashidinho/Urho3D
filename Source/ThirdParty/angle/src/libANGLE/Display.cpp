@@ -72,12 +72,6 @@
 #        include "libANGLE/renderer/vulkan/xcb/DisplayVkXcb.h"
 #    elif defined(ANGLE_PLATFORM_ANDROID)
 #        include "libANGLE/renderer/vulkan/android/DisplayVkAndroid.h"
-#    elif defined(ANGLE_PLATFORM_APPLE)  // ELIX22 - added MoltenVK support
-#       if VK_USE_PLATFORM_IOS_MVK
-#           include "libANGLE/renderer/vulkan/ios/DisplayVkiOS.h"
-#       else
-#           include "libANGLE/renderer/vulkan/macOS/DisplayVkMacOS.h"
-#       endif
 #    elif defined(ANGLE_PLATFORM_FUCHSIA)
 #        include "libANGLE/renderer/vulkan/fuchsia/DisplayVkFuchsia.h"
 #    else
@@ -296,12 +290,6 @@ rx::DisplayImpl *CreateDisplayFromAttribs(const AttributeMap &attribMap, const D
             impl = new rx::DisplayVkXcb(state);
 #    elif defined(ANGLE_PLATFORM_ANDROID)
             impl = new rx::DisplayVkAndroid(state);
-#    elif defined(ANGLE_PLATFORM_APPLE)  // ELIX22 - added MoltenVK  support
-    #       if VK_USE_PLATFORM_IOS_MVK
-            impl  =  new rx::DisplayVkiOS(state);
-    #       else
-            impl  =  new rx::DisplayVkMacOS(state);
-    #       endif //  VK_USE_PLATFORM_IOS_MVK
 #    elif defined(ANGLE_PLATFORM_FUCHSIA)
             impl = new rx::DisplayVkFuchsia(state);
 #    else

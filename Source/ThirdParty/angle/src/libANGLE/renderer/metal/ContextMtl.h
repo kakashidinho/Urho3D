@@ -16,6 +16,7 @@
 #include "libANGLE/Context.h"
 #include "libANGLE/renderer/ContextImpl.h"
 #include "libANGLE/renderer/metal/StateCacheMtl.h"
+#include "libANGLE/renderer/metal/mtl_buffer_pool.h"
 #include "libANGLE/renderer/metal/mtl_command_buffer.h"
 #include "libANGLE/renderer/metal/mtl_resources.h"
 #include "libANGLE/renderer/metal/mtl_utils.h"
@@ -269,6 +270,23 @@ class ContextMtl : public ContextImpl, public mtl::Context
                             GLsizei instanceCount,
                             gl::DrawElementsType indexTypeOrNone,
                             const void *indices);
+    angle::Result genLineLoopLastSegment(const gl::Context *context,
+                                         GLint firstVertex,
+                                         GLsizei vertexOrIndexCount,
+                                         GLsizei instanceCount,
+                                         gl::DrawElementsType indexTypeOrNone,
+                                         const void *indices,
+                                         mtl::BufferRef *lastSegmentIndexBufferOut);
+
+    angle::Result drawTriFanArrays(const gl::Context *context, GLint first, GLsizei count);
+    angle::Result drawTriFanArraysWithBaseVertex(const gl::Context *context,
+                                                 GLint first,
+                                                 GLsizei count);
+    angle::Result drawTriFanArraysLegacy(const gl::Context *context, GLint first, GLsizei count);
+    angle::Result drawTriFanElements(const gl::Context *context,
+                                     GLsizei count,
+                                     gl::DrawElementsType type,
+                                     const void *indices);
 
     void updateViewport(FramebufferMtl *framebufferMtl,
                         const gl::Rectangle &viewport,
@@ -336,6 +354,12 @@ class ContextMtl : public ContextImpl, public mtl::Context
     MTLWinding mWinding;
     MTLCullMode mCullMode;
     bool mCullAllPolygons = false;
+
+    // Lineloop and TriFan index buffer
+    mtl::BufferPool mLineLoopIndexBuffer;
+    mtl::BufferPool mTriFanIndexBuffer;
+    // one buffer can be reused for any starting vertex in DrawArrays()
+    mtl::BufferRef mTriFanArraysIndexBuffer;
 
     // See compiler/translator/TranslatorVulkan.cpp: AddDriverUniformsToShader()
     struct DriverUniforms

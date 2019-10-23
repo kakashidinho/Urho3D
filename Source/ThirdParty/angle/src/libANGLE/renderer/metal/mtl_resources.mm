@@ -30,8 +30,8 @@ void SetTextureSwizzle(ContextMtl *context,
                        const Format &format,
                        MTLTextureDescriptor *textureDescOut)
 {
-#if TARGET_OS_OSX && defined(__MAC_10_15)
-    if (@available(macOS 10.15, *))
+#if (TARGET_OS_OSX || TARGET_OS_MACCATALYST) && defined(__MAC_10_15)
+    if (ANGLE_APPLE_AVAILABLE_XC(10.15, 13.0))
     {
         if ([context->getMetalDevice() supportsFamily:MTLGPUFamilyMac2])
         {
@@ -98,11 +98,19 @@ angle::Result Texture::Make2DTexture(ContextMtl *context,
 {
     ANGLE_MTL_OBJC_SCOPE
     {
+#if defined(URHO3D_ANGLE_METAL)
+        MTLTextureDescriptor *desc =
+            [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:format.metalFormat
+                                                               width:width
+                                                              height:height
+                                                           mipmapped:YES];
+#else
         MTLTextureDescriptor *desc =
             [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:format.metalFormat
                                                                width:width
                                                               height:height
                                                            mipmapped:mips == 0 || mips > 1];
+#endif
 
         SetTextureSwizzle(context, format, desc);
         refOut->reset(new Texture(context, desc, mips, renderTargetOnly, false));
@@ -205,7 +213,7 @@ Texture::Texture(Texture *original, MTLTextureType type, NSRange mipmapLevelRang
 
 void Texture::syncContent(ContextMtl *context)
 {
-#if TARGET_OS_OSX
+#if TARGET_OS_OSX || TARGET_OS_MACCATALYST
     // Make sure GPU & CPU contents are synchronized
     if (this->isCPUReadMemDirty())
     {

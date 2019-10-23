@@ -164,7 +164,7 @@ AutoObjCPtr<id<MTLLibrary>> CreateShaderLibrary(id<MTLDevice> metalDevice,
 
         *errorOut = std::move(nsError);
 
-        return library;
+        return [library ANGLE_MTL_AUTORELEASE];
     }
 }
 
@@ -187,7 +187,7 @@ AutoObjCPtr<id<MTLLibrary>> CreateShaderLibraryFromBinary(id<MTLDevice> metalDev
 
         *errorOut = std::move(nsError);
 
-        return library;
+        return [library ANGLE_MTL_AUTORELEASE];
     }
 }
 
@@ -443,13 +443,12 @@ MTLPrimitiveType GetPrimitiveType(gl::PrimitiveMode mode)
         case gl::PrimitiveMode::Lines:
             return MTLPrimitiveTypeLine;
         case gl::PrimitiveMode::LineStrip:
+        case gl::PrimitiveMode::LineLoop:
             return MTLPrimitiveTypeLineStrip;
         case gl::PrimitiveMode::TriangleStrip:
             return MTLPrimitiveTypeTriangleStrip;
         case gl::PrimitiveMode::TriangleFan:
             // TODO(hqle): Emulate triangle fan.
-        case gl::PrimitiveMode::LineLoop:
-            // TODO(hqle): Emulate line loop.
         default:
             return MTLPrimitiveTypeInvalid;
     }

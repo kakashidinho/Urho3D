@@ -19,6 +19,7 @@
 namespace rx
 {
 
+class BufferMtl;
 class ContextMtl;
 class RendererMtl;
 
@@ -56,6 +57,24 @@ class UtilsMtl : public mtl::Context, angle::NonCopyable
         bool dstLuminance           = false;
     };
 
+    struct TriFanFromArrayParams
+    {
+        uint32_t firstVertex;
+        uint32_t vertexCount;
+        mtl::BufferRef dstBuffer;
+        // Must be multiples of kBufferSettingOffsetAlignment
+        uint32_t dstOffset;
+    };
+
+    struct IndexConversionParams
+    {
+        gl::DrawElementsType srcType;
+        GLsizei indexCount;
+        const void *indices;
+        mtl::BufferRef dstBuffer;
+        uint32_t dstOffset;
+    };
+
     angle::Result initialize();
     void onDestroy();
 
@@ -76,6 +95,23 @@ class UtilsMtl : public mtl::Context, angle::NonCopyable
                                      mtl::BufferRef dstBuffer,
                                      // Must be multiples of kBufferSettingOffsetAlignment
                                      uint32_t dstOffset);
+    angle::Result generateTriFanBufferFromArrays(const gl::Context *context,
+                                                 const TriFanFromArrayParams &params);
+    angle::Result generateTriFanBufferFromElementsArray(const gl::Context *context,
+                                                        const IndexConversionParams &params);
+
+    angle::Result generateLineLoopLastSegment(const gl::Context *context,
+                                              uint32_t firstVertex,
+                                              uint32_t lastVertex,
+                                              mtl::BufferRef dstBuffer,
+                                              uint32_t dstOffset);
+    angle::Result generateLineLoopLastSegmentFromElementsArray(const gl::Context *context,
+                                                               const IndexConversionParams &params);
+
+    angle::Result dispatchCompute(const gl::Context *context,
+                                  mtl::ComputeCommandEncoder *encoder,
+                                  id<MTLComputePipelineState> pipelineState,
+                                  size_t numThreads);
 
   private:
     // override mtl::ErrorHandler
@@ -115,6 +151,25 @@ class UtilsMtl : public mtl::Context, angle::NonCopyable
         ContextMtl *context,
         gl::DrawElementsType srcType,
         uint32_t srcOffset);
+    mtl::AutoObjCPtr<id<MTLComputePipelineState>> getTriFanFromElemArrayGeneratorPipeline(
+        ContextMtl *context,
+        gl::DrawElementsType srcType,
+        uint32_t srcOffset);
+    angle::Result ensureTriFanFromArrayGeneratorInitialized(ContextMtl *context);
+    angle::Result generateTriFanBufferFromElementsArrayGPU(
+        const gl::Context *context,
+        gl::DrawElementsType srcType,
+        uint32_t indexCount,
+        mtl::BufferRef srcBuffer,
+        uint32_t srcOffset,
+        mtl::BufferRef dstBuffer,
+        // Must be multiples of kBufferSettingOffsetAlignment
+        uint32_t dstOffset);
+    angle::Result generateTriFanBufferFromElementsArrayCPU(const gl::Context *context,
+                                                           const IndexConversionParams &params);
+    angle::Result generateLineLoopLastSegmentFromElementsArrayCPU(
+        const gl::Context *context,
+        const IndexConversionParams &params);
 
     mtl::AutoObjCPtr<id<MTLLibrary>> mDefaultShaders = nil;
     RenderPipelineCacheMtl mClearRenderPipelineCache;
@@ -132,6 +187,9 @@ class UtilsMtl : public mtl::Context, angle::NonCopyable
     };
     std::map<IndexConvesionPipelineCacheKey, mtl::AutoObjCPtr<id<MTLComputePipelineState>>>
         mIndexConversionPipelineCaches;
+    std::map<IndexConvesionPipelineCacheKey, mtl::AutoObjCPtr<id<MTLComputePipelineState>>>
+        mTriFanFromElemArrayGeneratorPipelineCaches;
+    mtl::AutoObjCPtr<id<MTLComputePipelineState>> mTriFanFromArraysGeneratorPipeline;
 };
 
 }  // namespace rx

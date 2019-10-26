@@ -19,9 +19,9 @@
 #include "libANGLE/Context.h"
 #include "libANGLE/ProgramLinkedResources.h"
 #include "libANGLE/renderer/metal/ContextMtl.h"
-#include "libANGLE/renderer/metal/GlslangWrapperMtl.h"
-#include "libANGLE/renderer/metal/RendererMtl.h"
+#include "libANGLE/renderer/metal/DisplayMtl.h"
 #include "libANGLE/renderer/metal/TextureMtl.h"
+#include "libANGLE/renderer/metal/mtl_glslang_utils.h"
 #include "libANGLE/renderer/metal/mtl_utils.h"
 #include "libANGLE/renderer/renderer_utils.h"
 
@@ -47,7 +47,7 @@ spv::ExecutionModel ShaderTypeToSpvExecutionModel(gl::ShaderType shaderType)
     }
 }
 
-typedef uint32_t(spirv_cross::MSLResourceBinding::*BindingField);
+using BindingField = uint32_t(spirv_cross::MSLResourceBinding::*);
 template <BindingField bindingField1, BindingField bindingField2>
 angle::Result BindResources2(spirv_cross::CompilerMSL *compiler,
                              const spirv_cross::SmallVector<spirv_cross::Resource> &resources,
@@ -74,7 +74,7 @@ angle::Result BindResources2(spirv_cross::CompilerMSL *compiler,
         resBinding.binding = compilerMsl.get_decoration(resource.id, spv::DecorationBinding);
 
         uint32_t bindingPoint;
-        // TODO(hqle): We use separate discrete binding point for now, in future, we should use
+        // NOTE(hqle): We use separate discrete binding point for now, in future, we should use
         // one argument buffer for each descriptor set.
         switch (resBinding.desc_set)
         {
@@ -82,13 +82,13 @@ angle::Result BindResources2(spirv_cross::CompilerMSL *compiler,
                 // Use resBinding.binding as binding point.
                 bindingPoint = resBinding.binding;
                 break;
-            case kDriverUniformsBindingIndex:
-                bindingPoint = kDriverUniformsBindingIndex;
+            case mtl::kDriverUniformsBindingIndex:
+                bindingPoint = mtl::kDriverUniformsBindingIndex;
                 break;
-            case kDefaultUniformsBindingIndex:
-                // TODO(hqle): Properly handle transform feedbacks and UBO binding once ES 3.0 is
+            case mtl::kDefaultUniformsBindingIndex:
+                // NOTE(hqle): Properly handle transform feedbacks and UBO binding once ES 3.0 is
                 // implemented.
-                bindingPoint = kDefaultUniformsBindingIndex;
+                bindingPoint = mtl::kDefaultUniformsBindingIndex;
                 break;
             default:
                 // We don't support this descriptor set.
@@ -117,8 +117,6 @@ angle::Result BindResources(spirv_cross::CompilerMSL *compiler,
     return BindResources2<bindingField, bindingField>(compiler, resources, shaderType);
 }
 
-// TODO(hqle): some of the code here are duplicated from Vulkan's ProgramMtl.cpp
-// In future, we should move common code to a dedicated file
 void InitDefaultUniformBlock(const std::vector<sh::Uniform> &uniforms,
                              gl::Shader *shader,
                              sh::BlockLayoutMap *blockLayoutMapOut,
@@ -189,10 +187,11 @@ void BindNullSampler(const gl::Context *glContext,
 {
     ContextMtl *contextMtl = mtl::GetImpl(glContext);
 
-    mtl::TextureRef nullTex = contextMtl->getRenderer()->getNullTexture(glContext, textureType);
+    const mtl::TextureRef &nullTex =
+        contextMtl->getDisplay()->getNullTexture(glContext, textureType);
 
     mtl::AutoObjCPtr<id<MTLSamplerState>> nullSampler =
-        contextMtl->getRenderer()->getStateCache().getNullSamplerState(contextMtl);
+        contextMtl->getDisplay()->getStateCache().getNullSamplerState(contextMtl);
 
     switch (shaderType)
     {
@@ -273,14 +272,14 @@ std::unique_ptr<rx::LinkEvent> ProgramMtl::load(const gl::Context *context,
                                                 gl::BinaryInputStream *stream,
                                                 gl::InfoLog &infoLog)
 {
-    // TODO(hqle): support binary shader
+    // NOTE(hqle): support binary shader
     UNIMPLEMENTED();
     return std::make_unique<LinkEventDone>(angle::Result::Stop);
 }
 
 void ProgramMtl::save(const gl::Context *context, gl::BinaryOutputStream *stream)
 {
-    // TODO(hqle): support binary shader
+    // NOTE(hqle): support binary shader
     UNIMPLEMENTED();
 }
 
@@ -302,16 +301,16 @@ std::unique_ptr<LinkEvent> ProgramMtl::link(const gl::Context *context,
     // assignment done in that function.
     linkResources(resources);
 
-    GlslangWrapperMtl::GetShaderSource(mState, resources, &mShaderSource);
+    mtl::GlslangUtils::GetShaderSource(mState, resources, &mShaderSource);
 
-    // TODO(hqle): Parallelize linking.
+    // NOTE(hqle): Parallelize linking.
     return std::make_unique<LinkEventDone>(linkImpl(context, infoLog));
 }
 
 angle::Result ProgramMtl::linkImpl(const gl::Context *glContext, gl::InfoLog &infoLog)
 {
     ContextMtl *contextMtl = mtl::GetImpl(glContext);
-    // TODO(hqle): No transform feedbacks for now, since we only support ES 2.0 atm
+    // NOTE(hqle): No transform feedbacks for now, since we only support ES 2.0 atm
 
     reset(contextMtl);
 
@@ -319,7 +318,7 @@ angle::Result ProgramMtl::linkImpl(const gl::Context *glContext, gl::InfoLog &in
 
     // Convert GLSL to spirv code
     gl::ShaderMap<std::vector<uint32_t>> shaderCodes;
-    ANGLE_TRY(GlslangWrapperMtl::GetShaderCode(contextMtl, contextMtl->getCaps(), false,
+    ANGLE_TRY(mtl::GlslangUtils::GetShaderCode(contextMtl, contextMtl->getCaps(), false,
                                                mShaderSource, &shaderCodes));
 
     // Convert spirv code to MSL
@@ -405,7 +404,7 @@ angle::Result ProgramMtl::initDefaultUniformBlocks(const gl::Context *glContext)
     {
         if (requiredBufferSize[shaderType] > 0)
         {
-            ASSERT(requiredBufferSize[shaderType] <= kDefaultUniformsMaxSize);
+            ASSERT(requiredBufferSize[shaderType] <= mtl::kDefaultUniformsMaxSize);
 
             if (!mDefaultUniformBlocks[shaderType].uniformData.resize(
                     requiredBufferSize[shaderType]))
@@ -462,7 +461,7 @@ angle::Result ProgramMtl::convertToMsl(const gl::Context *glContext,
         &compilerMsl, mslRes.sampled_images, shaderType);
     ANGLE_MTL_TRY(contextMtl, !IsError(bindingErr));
 
-    // TODO(hqle): spirv-cross uses exceptions to report error, what should we do here
+    // NOTE(hqle): spirv-cross uses exceptions to report error, what should we do here
     // in case of error?
     std::string translatedMsl = compilerMsl.compile();
     if (translatedMsl.size() == 0)
@@ -484,8 +483,8 @@ angle::Result ProgramMtl::createMslShader(const gl::Context *glContext,
     ANGLE_MTL_OBJC_SCOPE
     {
         ContextMtl *contextMtl  = mtl::GetImpl(glContext);
-        RendererMtl *renderer   = contextMtl->getRenderer();
-        id<MTLDevice> mtlDevice = renderer->getMetalDevice();
+        DisplayMtl *display     = contextMtl->getDisplay();
+        id<MTLDevice> mtlDevice = display->getMetalDevice();
 
         // Convert to actual binary shader
         mtl::AutoObjCPtr<NSError *> err = nil;
@@ -505,6 +504,7 @@ angle::Result ProgramMtl::createMslShader(const gl::Context *glContext,
         }
 
         auto mtlShader = [mtlShaderLib.get() newFunctionWithName:SHADER_ENTRY_NAME];
+        [mtlShader ANGLE_MTL_AUTORELEASE];
         ASSERT(mtlShader);
         if (shaderType == gl::ShaderType::Vertex)
         {
@@ -856,12 +856,12 @@ angle::Result ProgramMtl::commitUniforms(ContextMtl *context, mtl::RenderCommand
             case gl::ShaderType::Vertex:
                 cmdEncoder->setVertexBytes(uniformBlock.uniformData.data(),
                                            uniformBlock.uniformData.size(),
-                                           kDefaultUniformsBindingIndex);
+                                           mtl::kDefaultUniformsBindingIndex);
                 break;
             case gl::ShaderType::Fragment:
                 cmdEncoder->setFragmentBytes(uniformBlock.uniformData.data(),
                                              uniformBlock.uniformData.size(),
-                                             kDefaultUniformsBindingIndex);
+                                             mtl::kDefaultUniformsBindingIndex);
                 break;
             default:
                 UNREACHABLE();

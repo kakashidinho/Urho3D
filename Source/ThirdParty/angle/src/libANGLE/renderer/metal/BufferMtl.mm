@@ -27,8 +27,13 @@ angle::Result GetFirstLastIndices(const IndexType *indices,
                                   size_t count,
                                   std::pair<uint32_t, uint32_t> *outIndices)
 {
-    outIndices->first  = indices[0];
-    outIndices->second = indices[count - 1];
+    IndexType first, last;
+    // Use memcpy to avoid unaligned memory access crash:
+    memcpy(&first, &indices[0], sizeof(first));
+    memcpy(&last, &indices[count - 1], sizeof(last));
+
+    outIndices->first  = first;
+    outIndices->second = last;
 
     return angle::Result::Continue;
 }
@@ -53,7 +58,7 @@ IndexConversionBufferMtl::IndexConversionBufferMtl(const gl::Context *context,
                                                    size_t offsetIn)
     : ConversionBufferMtl(context,
                           kConvertedElementArrayBufferInitialSize,
-                          kBufferSettingOffsetAlignment),
+                          mtl::kBufferSettingOffsetAlignment),
       type(typeIn),
       offset(offsetIn),
       convertedBuffer(nullptr),
@@ -65,7 +70,7 @@ BufferMtl::VertexConversionBuffer::VertexConversionBuffer(const gl::Context *con
                                                           angle::FormatID formatIDIn,
                                                           GLuint strideIn,
                                                           size_t offsetIn)
-    : ConversionBufferMtl(context, 0, kVertexAttribBufferStrideAlignment),
+    : ConversionBufferMtl(context, 0, mtl::kVertexAttribBufferStrideAlignment),
       formatID(formatIDIn),
       stride(strideIn),
       offset(offsetIn)
@@ -87,6 +92,7 @@ void BufferMtl::destroy(const gl::Context *context)
     ContextMtl *contextMtl = mtl::GetImpl(context);
     mShadowCopy.resize(0);
     mBufferPool.destroy(contextMtl);
+    mBuffer = nullptr;
 }
 
 angle::Result BufferMtl::setData(const gl::Context *context,
@@ -164,7 +170,7 @@ angle::Result BufferMtl::copySubData(const gl::Context *context,
 
     auto srcMtl = GetAs<BufferMtl>(source);
 
-    // TODO(hqle): use blit command.
+    // NOTE(hqle): use blit command.
     return setSubDataImpl(context, srcMtl->getClientShadowCopyData(context) + sourceOffset, size,
                           destOffset);
 }
@@ -183,7 +189,7 @@ angle::Result BufferMtl::mapRange(const gl::Context *context,
 {
     ASSERT(mShadowCopy.size());
 
-    // TODO(hqle): use access flags
+    // NOTE(hqle): use access flags
     if (mapPtr)
     {
         *mapPtr = mShadowCopy.data() + offset;
@@ -247,15 +253,9 @@ angle::Result BufferMtl::getFirstLastIndices(const gl::Context *context,
     return angle::Result::Continue;
 }
 
-mtl::BufferRef BufferMtl::getCurrentBuffer(const gl::Context *context)
-{
-    (void)context;
-    return mBuffer;
-}
-
 const uint8_t *BufferMtl::getClientShadowCopyData(const gl::Context *context)
 {
-    // TODO(hqle): Support buffer update from GPU.
+    // NOTE(hqle): Support buffer update from GPU.
     // Which mean we have to stall the GPU by calling finish and copy
     // data back to shadow copy.
     return mShadowCopy.data();
@@ -348,6 +348,12 @@ angle::Result BufferMtl::commitShadowCopy(const gl::Context *context)
     ANGLE_TRY(mBufferPool.commit(contextMtl));
 
     return angle::Result::Continue;
+}
+
+// SimpleWeakBufferHolderMtl implementation
+SimpleWeakBufferHolderMtl::SimpleWeakBufferHolderMtl()
+{
+    mIsWeak = true;
 }
 
 }  // namespace rx

@@ -15,15 +15,15 @@
 #include "common/Optional.h"
 #include "libANGLE/Context.h"
 #include "libANGLE/renderer/ContextImpl.h"
-#include "libANGLE/renderer/metal/StateCacheMtl.h"
 #include "libANGLE/renderer/metal/mtl_buffer_pool.h"
 #include "libANGLE/renderer/metal/mtl_command_buffer.h"
 #include "libANGLE/renderer/metal/mtl_resources.h"
+#include "libANGLE/renderer/metal/mtl_state_cache.h"
 #include "libANGLE/renderer/metal/mtl_utils.h"
 
 namespace rx
 {
-class RendererMtl;
+class DisplayMtl;
 class FramebufferMtl;
 class VertexArrayMtl;
 class ProgramMtl;
@@ -31,7 +31,7 @@ class ProgramMtl;
 class ContextMtl : public ContextImpl, public mtl::Context
 {
   public:
-    ContextMtl(const gl::State &state, gl::ErrorSet *errorSet, RendererMtl *renderer);
+    ContextMtl(const gl::State &state, gl::ErrorSet *errorSet, DisplayMtl *display);
     ~ContextMtl() override;
 
     angle::Result initialize() override;
@@ -222,10 +222,8 @@ class ContextMtl : public ContextImpl, public mtl::Context
     // Recommended to call these methods to end encoding instead of invoking the encoder's
     // endEncoding() directly.
     void endEncoding(mtl::RenderCommandEncoder *encoder);
-    void endEncoding(mtl::BlitCommandEncoder *encoder);
-    void endEncoding(mtl::ComputeCommandEncoder *encoder);
     // Ends any active command encoder
-    void endEncoding(bool forceSaveRenderPassContent = false);
+    void endEncoding(bool forceSaveRenderPassContent);
 
     void flushCommandBufer();
     void present(const gl::Context *context, id<CAMetalDrawable> presentationDrawable);
@@ -246,11 +244,11 @@ class ContextMtl : public ContextImpl, public mtl::Context
 
     // Utilities to quickly create render command enconder to a specific texture:
     // The previous content of texture will be loaded if clearColor is not provided
-    mtl::RenderCommandEncoder *getRenderCommandEncoder(mtl::TextureRef textureTarget,
+    mtl::RenderCommandEncoder *getRenderCommandEncoder(const mtl::TextureRef &textureTarget,
                                                        const gl::ImageIndex &index,
                                                        const Optional<MTLClearColor> &clearColor);
     // The previous content of texture will be loaded
-    mtl::RenderCommandEncoder *getRenderCommandEncoder(mtl::TextureRef textureTarget,
+    mtl::RenderCommandEncoder *getRenderCommandEncoder(const mtl::TextureRef &textureTarget,
                                                        const gl::ImageIndex &index);
 
     // Will end current command encoder and start new blit command encoder. Unless a blit comamnd
@@ -370,7 +368,7 @@ class ContextMtl : public ContextImpl, public mtl::Context
         float viewportYScale;
         float negViewportYScale;
 
-        // TODO(hqle): Transform feedsback is not supported yet.
+        // NOTE(hqle): Transform feedsback is not supported yet.
         uint32_t xfbActiveUnpaused;
 
         int32_t xfbBufferOffsets[4];
@@ -378,13 +376,17 @@ class ContextMtl : public ContextImpl, public mtl::Context
 
         // We'll use x, y, z for near / far / diff respectively.
         float depthRange[4];
-    } mDriverUniforms;
+    };
+
+    DriverUniforms mDriverUniforms;
 
     struct DefaultAttribute
     {
-        // TODO(hqle): Support integer default attributes in ES 3.0
+        // NOTE(hqle): Support integer default attributes in ES 3.0
         float values[4];
-    } mDefaultAttributes[kMaxVertexAttribs];
+    };
+
+    DefaultAttribute mDefaultAttributes[mtl::kMaxVertexAttribs];
 };
 
 }  // namespace rx

@@ -16,29 +16,36 @@
 #include "libANGLE/renderer/metal/ContextMtl.h"
 #include "libANGLE/renderer/metal/DisplayMtl.h"
 #include "libANGLE/renderer/metal/FrameBufferMtl.h"
-#include "libANGLE/renderer/metal/RendererMtl.h"
 #include "libANGLE/renderer/metal/mtl_format_utils.h"
+
+// Compiler can turn on programmatical frame capture in release build by defining
+// ANGLE_METAL_FRAME_CAPTURE flag.
+#if defined(NDEBUG) && !defined(ANGLE_METAL_FRAME_CAPTURE)
+#    define ANGLE_METAL_FRAME_CAPTURE_ENABLED 0
+#else
+#    define ANGLE_METAL_FRAME_CAPTURE_ENABLED 1
+#endif
 
 namespace rx
 {
 
 namespace
 {
-constexpr angle::FormatID kDefaultFrameBufferColorFormatId = angle::FormatID::B8G8R8A8_UNORM;
-ANGLE_MTL_UNUSED
-constexpr angle::FormatID kDefaultFrameBufferDepthFormatId = angle::FormatID::D32_FLOAT;
-ANGLE_MTL_UNUSED
+constexpr angle::FormatID kDefaultFrameBufferColorFormatId   = angle::FormatID::B8G8R8A8_UNORM;
+constexpr angle::FormatID kDefaultFrameBufferDepthFormatId   = angle::FormatID::D32_FLOAT;
 constexpr angle::FormatID kDefaultFrameBufferStencilFormatId = angle::FormatID::S8_UINT;
-ANGLE_MTL_UNUSED
 constexpr angle::FormatID kDefaultFrameBufferDepthStencilFormatId =
     angle::FormatID::D24_UNORM_S8_UINT;
 
 ANGLE_MTL_UNUSED
 bool IsFrameCaptureEnabled()
 {
-#if defined(NDEBUG)
+#if !ANGLE_METAL_FRAME_CAPTURE_ENABLED
     return false;
 #else
+    // We only support frame capture programmatically if the ANGLE_METAL_FRAME_CAPTURE
+    // environment flag is set. Otherwise, it will slow down the rendering. This allows user to
+    // finely control whether he wants to capture the frame for particular application or not.
     auto var                  = std::getenv("ANGLE_METAL_FRAME_CAPTURE");
     static const bool enabled = var ? (strcmp(var, "1") == 0) : false;
 
@@ -49,7 +56,7 @@ bool IsFrameCaptureEnabled()
 ANGLE_MTL_UNUSED
 size_t MaxAllowedFrameCapture()
 {
-#if defined(NDEBUG)
+#if !ANGLE_METAL_FRAME_CAPTURE_ENABLED
     return 0;
 #else
     auto var                      = std::getenv("ANGLE_METAL_FRAME_CAPTURE_MAX");
@@ -62,7 +69,7 @@ size_t MaxAllowedFrameCapture()
 ANGLE_MTL_UNUSED
 size_t MinAllowedFrameCapture()
 {
-#if defined(NDEBUG)
+#if !ANGLE_METAL_FRAME_CAPTURE_ENABLED
     return 0;
 #else
     auto var                     = std::getenv("ANGLE_METAL_FRAME_CAPTURE_MIN");
@@ -75,7 +82,7 @@ size_t MinAllowedFrameCapture()
 ANGLE_MTL_UNUSED
 bool FrameCaptureDeviceScope()
 {
-#if defined(NDEBUG)
+#if !ANGLE_METAL_FRAME_CAPTURE_ENABLED
     return false;
 #else
     auto var                      = std::getenv("ANGLE_METAL_FRAME_CAPTURE_SCOPE");
@@ -91,7 +98,7 @@ std::atomic<size_t> gFrameCaptured(0);
 ANGLE_MTL_UNUSED
 void StartFrameCapture(id<MTLDevice> metalDevice, id<MTLCommandQueue> metalCmdQueue)
 {
-#if !defined(NDEBUG)
+#if ANGLE_METAL_FRAME_CAPTURE_ENABLED
     if (!IsFrameCaptureEnabled())
     {
         return;
@@ -139,7 +146,7 @@ void StartFrameCapture(id<MTLDevice> metalDevice, id<MTLCommandQueue> metalCmdQu
             [captureManager startCaptureWithCommandQueue:metalCmdQueue];
         }
     }
-#endif  // NDEBUG
+#endif  // ANGLE_METAL_FRAME_CAPTURE_ENABLED
 }
 
 void StartFrameCapture(ContextMtl *context)
@@ -149,7 +156,7 @@ void StartFrameCapture(ContextMtl *context)
 
 void StopFrameCapture()
 {
-#if !defined(NDEBUG)
+#if ANGLE_METAL_FRAME_CAPTURE_ENABLED
     if (!IsFrameCaptureEnabled())
     {
         return;
@@ -163,16 +170,14 @@ void StopFrameCapture()
 }
 }
 
-SurfaceMtl::SurfaceMtl(DisplayMtl *displayMtl,
+SurfaceMtl::SurfaceMtl(DisplayMtl *display,
                        const egl::SurfaceState &state,
                        EGLNativeWindowType window,
                        const egl::AttributeMap &attribs)
     : SurfaceImpl(state), mLayer((__bridge CALayer *)(window))
 {
-    RendererMtl *renderer = displayMtl->getRenderer();
-
-    // TODO(hqle): Width and height attributes is ignored for now.
-    mColorFormat = renderer->getPixelFormat(kDefaultFrameBufferColorFormatId);
+    // NOTE(hqle): Width and height attributes is ignored for now.
+    mColorFormat = display->getPixelFormat(kDefaultFrameBufferColorFormatId);
 
     int depthBits   = 0;
     int stencilBits = 0;
@@ -184,23 +189,26 @@ SurfaceMtl::SurfaceMtl(DisplayMtl *displayMtl,
 
     if (depthBits && stencilBits)
     {
-#if ANGLE_MTL_ALLOW_SEPARATED_DEPTH_STENCIL
-        mDepthFormat   = renderer->getPixelFormat(kDefaultFrameBufferDepthFormatId);
-        mStencilFormat = renderer->getPixelFormat(kDefaultFrameBufferStencilFormatId);
-#else
-        // We must use packed depth stencil
-        mUsePackedDepthStencil = true;
-        mDepthFormat           = renderer->getPixelFormat(kDefaultFrameBufferDepthStencilFormatId);
-        mStencilFormat         = mDepthFormat;
-#endif
+        if (display->getNativeLimitations().allowSeparatedDepthStencilBuffers)
+        {
+            mDepthFormat   = display->getPixelFormat(kDefaultFrameBufferDepthFormatId);
+            mStencilFormat = display->getPixelFormat(kDefaultFrameBufferStencilFormatId);
+        }
+        else
+        {
+            // We must use packed depth stencil
+            mUsePackedDepthStencil = true;
+            mDepthFormat   = display->getPixelFormat(kDefaultFrameBufferDepthStencilFormatId);
+            mStencilFormat = mDepthFormat;
+        }
     }
     else if (depthBits)
     {
-        mDepthFormat = renderer->getPixelFormat(kDefaultFrameBufferDepthFormatId);
+        mDepthFormat = display->getPixelFormat(kDefaultFrameBufferDepthFormatId);
     }
     else if (stencilBits)
     {
-        mStencilFormat = renderer->getPixelFormat(kDefaultFrameBufferStencilFormatId);
+        mStencilFormat = display->getPixelFormat(kDefaultFrameBufferStencilFormatId);
     }
 }
 
@@ -218,10 +226,9 @@ void SurfaceMtl::destroy(const egl::Display *display)
 egl::Error SurfaceMtl::initialize(const egl::Display *display)
 {
     DisplayMtl *displayMtl    = mtl::GetImpl(display);
-    RendererMtl *renderer     = displayMtl->getRenderer();
-    id<MTLDevice> metalDevice = renderer->getMetalDevice();
+    id<MTLDevice> metalDevice = displayMtl->getMetalDevice();
 
-    StartFrameCapture(metalDevice, renderer->cmdQueue().get());
+    StartFrameCapture(metalDevice, displayMtl->cmdQueue().get());
 
     ANGLE_MTL_OBJC_SCOPE
     {
@@ -236,11 +243,7 @@ egl::Error SurfaceMtl::initialize(const egl::Display *display)
         }
 
         mMetalLayer.get().device          = metalDevice;
-#if defined(URHO3D_ANGLE_METAL)
-        mMetalLayer.get().pixelFormat     = MTLPixelFormatBGRA8Unorm;
-#else
         mMetalLayer.get().pixelFormat     = mColorFormat.metalFormat;
-#endif
         mMetalLayer.get().framebufferOnly = NO;  // This to allow readPixels
 
 #if TARGET_OS_OSX || TARGET_OS_MACCATALYST
@@ -323,20 +326,15 @@ egl::Error SurfaceMtl::getSyncValues(EGLuint64KHR *ust, EGLuint64KHR *msc, EGLui
     return egl::EglBadAccess();
 }
 
-void SurfaceMtl::setSwapInterval(EGLint interval)
-{
-    // TODO(hqle)
-}
+void SurfaceMtl::setSwapInterval(EGLint interval) {}
 
 void SurfaceMtl::setFixedWidth(EGLint width)
 {
-    // TODO(hqle)
     UNIMPLEMENTED();
 }
 
 void SurfaceMtl::setFixedHeight(EGLint height)
 {
-    // TODO(hqle)
     UNIMPLEMENTED();
 }
 
@@ -385,7 +383,7 @@ angle::Result SurfaceMtl::getAttachmentRenderTarget(const gl::Context *context,
                                                     GLsizei samples,
                                                     FramebufferAttachmentRenderTarget **rtOut)
 {
-    // TODO(hqle): Support MSAA.
+    // NOTE(hqle): Support MSAA.
     ANGLE_TRY(ensureRenderTargetsCreated(context));
 
     switch (binding)
@@ -400,7 +398,7 @@ angle::Result SurfaceMtl::getAttachmentRenderTarget(const gl::Context *context,
             *rtOut = mStencilFormat.valid() ? &mStencilRenderTarget : nullptr;
             break;
         case GL_DEPTH_STENCIL:
-            // TODO(hqle): ES 3.0 feature
+            // NOTE(hqle): ES 3.0 feature
             UNREACHABLE();
             break;
     }

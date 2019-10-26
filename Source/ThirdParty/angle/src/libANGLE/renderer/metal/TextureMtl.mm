@@ -10,11 +10,12 @@
 
 #include "libANGLE/renderer/metal/TextureMtl.h"
 
+#include "common/MemoryBuffer.h"
 #include "common/debug.h"
 #include "common/mathutil.h"
 #include "libANGLE/renderer/metal/ContextMtl.h"
+#include "libANGLE/renderer/metal/DisplayMtl.h"
 #include "libANGLE/renderer/metal/FrameBufferMtl.h"
-#include "libANGLE/renderer/metal/RendererMtl.h"
 #include "libANGLE/renderer/metal/mtl_common.h"
 #include "libANGLE/renderer/metal/mtl_format_utils.h"
 #include "libANGLE/renderer/metal/mtl_utils.h"
@@ -191,7 +192,6 @@ angle::Result TextureMtl::copyTexture(const gl::Context *context,
                                       bool unpackUnmultiplyAlpha,
                                       const gl::Texture *source)
 {
-    // TODO(hqle)
     UNIMPLEMENTED();
 
     return angle::Result::Stop;
@@ -207,7 +207,6 @@ angle::Result TextureMtl::copySubTexture(const gl::Context *context,
                                          bool unpackUnmultiplyAlpha,
                                          const gl::Texture *source)
 {
-    // TODO(hqle)
     UNIMPLEMENTED();
 
     return angle::Result::Stop;
@@ -216,7 +215,6 @@ angle::Result TextureMtl::copySubTexture(const gl::Context *context,
 angle::Result TextureMtl::copyCompressedTexture(const gl::Context *context,
                                                 const gl::Texture *source)
 {
-    // TODO(hqle)
     UNIMPLEMENTED();
 
     return angle::Result::Stop;
@@ -245,7 +243,6 @@ angle::Result TextureMtl::setStorageExternalMemory(const gl::Context *context,
                                                    gl::MemoryObject *memoryObject,
                                                    GLuint64 offset)
 {
-    // TODO(hqle)
     UNIMPLEMENTED();
 
     return angle::Result::Stop;
@@ -258,7 +255,6 @@ angle::Result TextureMtl::setStorageMultisample(const gl::Context *context,
                                                 const gl::Extents &size,
                                                 bool fixedSampleLocations)
 {
-    // TODO(hqle)
     UNIMPLEMENTED();
 
     return angle::Result::Stop;
@@ -268,7 +264,6 @@ angle::Result TextureMtl::setEGLImageTarget(const gl::Context *context,
                                             gl::TextureType type,
                                             egl::Image *image)
 {
-    // TODO(hqle)
     UNIMPLEMENTED();
 
     return angle::Result::Stop;
@@ -318,7 +313,7 @@ angle::Result TextureMtl::generateMipmapCPU(const gl::Context *context)
     // This format must have mip generation function.
     ANGLE_MTL_TRY(contextMtl, angleFormat.mipGenerationFunction);
 
-    // TODO(hqle): Support base level of ES 3.0.
+    // NOTE(hqle): Support base level of ES 3.0.
     for (uint32_t layer = 0; layer < layers; ++layer)
     {
         int maxMipLevel = static_cast<int>(mTexture->mipmapLevels()) - 1;
@@ -373,7 +368,7 @@ angle::Result TextureMtl::generateMipmapCPU(const gl::Context *context)
 
 angle::Result TextureMtl::setBaseLevel(const gl::Context *context, GLuint baseLevel)
 {
-    // TODO(hqle): ES 3.0
+    // NOTE(hqle): ES 3.0
     UNIMPLEMENTED();
 
     return angle::Result::Stop;
@@ -381,7 +376,6 @@ angle::Result TextureMtl::setBaseLevel(const gl::Context *context, GLuint baseLe
 
 angle::Result TextureMtl::bindTexImage(const gl::Context *context, egl::Surface *surface)
 {
-    // TODO(hqle)
     UNIMPLEMENTED();
 
     return angle::Result::Stop;
@@ -389,7 +383,6 @@ angle::Result TextureMtl::bindTexImage(const gl::Context *context, egl::Surface 
 
 angle::Result TextureMtl::releaseTexImage(const gl::Context *context)
 {
-    // TODO(hqle)
     UNIMPLEMENTED();
 
     return angle::Result::Stop;
@@ -401,7 +394,7 @@ angle::Result TextureMtl::getAttachmentRenderTarget(const gl::Context *context,
                                                     GLsizei samples,
                                                     FramebufferAttachmentRenderTarget **rtOut)
 {
-    // TODO(hqle): Support MSAA.
+    // NOTE(hqle): Support MSAA.
     // Non-zero mip level attachments are an ES 3.0 feature.
     ASSERT(imageIndex.getLevelIndex() == 0);
 
@@ -436,18 +429,18 @@ angle::Result TextureMtl::syncState(const gl::Context *context,
         return angle::Result::Continue;
     }
 
-    RendererMtl *renderer = contextMtl->getRenderer();
+    DisplayMtl *display = contextMtl->getDisplay();
 
     if (dirtyBits.test(gl::Texture::DIRTY_BIT_SWIZZLE_RED) ||
         dirtyBits.test(gl::Texture::DIRTY_BIT_SWIZZLE_GREEN) ||
         dirtyBits.test(gl::Texture::DIRTY_BIT_SWIZZLE_BLUE) ||
         dirtyBits.test(gl::Texture::DIRTY_BIT_SWIZZLE_ALPHA))
     {
-        // TODO(hqle): Metal doesn't support swizzle on many devices. Skip for now.
+        // NOTE(hqle): Metal doesn't support swizzle on many devices. Skip for now.
     }
 
-    mMetalSamplerState = renderer->getStateCache().getSamplerState(
-        renderer->getMetalDevice(), mtl::SamplerDesc(mState.getSamplerState()));
+    mMetalSamplerState = display->getStateCache().getSamplerState(
+        display->getMetalDevice(), mtl::SamplerDesc(mState.getSamplerState()));
 
     return angle::Result::Continue;
 }
@@ -717,10 +710,9 @@ angle::Result TextureMtl::convertAndSetSubImage(const gl::Context *context,
 
     // Create scratch buffer
     const angle::Format &dstFormat = angle::Format::Get(mFormat.actualFormatId);
-    uint8_t *conversionRow;
+    angle::MemoryBuffer conversionRow;
     const size_t dstRowPitch = dstFormat.pixelBytes * mtlArea.size.width;
-    ANGLE_CHECK_GL_ALLOC(contextMtl,
-                         (conversionRow = new (std::nothrow) uint8_t[dstRowPitch]) != nullptr);
+    ANGLE_CHECK_GL_ALLOC(contextMtl, conversionRow.resize(dstRowPitch));
 
     MTLRegion mtlRow    = mtlArea;
     mtlRow.size.height  = 1;
@@ -731,18 +723,16 @@ angle::Result TextureMtl::convertAndSetSubImage(const gl::Context *context,
 
         // Convert pixels
         CopyImageCHROMIUM(psrc, pixelsRowPitch, pixelsFormat.pixelBytes, 0,
-                          pixelsFormat.pixelReadFunction, conversionRow, dstRowPitch,
+                          pixelsFormat.pixelReadFunction, conversionRow.data(), dstRowPitch,
                           dstFormat.pixelBytes, 0, dstFormat.pixelWriteFunction,
                           internalFormat.format, dstFormat.componentType, mtlRow.size.width, 1, 1,
                           false, false, false);
 
         // Upload to texture
         mTexture->replaceRegion(contextMtl, mtlRow, index.getLevelIndex(),
-                                index.hasLayer() ? index.cubeMapFaceIndex() : 0, conversionRow,
-                                dstRowPitch);
+                                index.hasLayer() ? index.cubeMapFaceIndex() : 0,
+                                conversionRow.data(), dstRowPitch);
     }
-
-    delete[] conversionRow;
 
     return angle::Result::Continue;
 }
@@ -782,7 +772,7 @@ angle::Result TextureMtl::copySubImageImpl(const gl::Context *context,
                                internalFormat, source);
     }
 
-    // TODO(hqle): Use compute shader.
+    // NOTE(hqle): Use compute shader.
     return copySubImageWithDraw(context, index, modifiedDestOffset, clippedSourceArea,
                                 internalFormat, source);
 }
@@ -795,7 +785,7 @@ angle::Result TextureMtl::copySubImageWithDraw(const gl::Context *context,
                                                gl::Framebuffer *source)
 {
     ContextMtl *contextMtl         = mtl::GetImpl(context);
-    RendererMtl *rendererMtl       = contextMtl->getRenderer();
+    DisplayMtl *displayMtl         = contextMtl->getDisplay();
     FramebufferMtl *framebufferMtl = mtl::GetImpl(source);
 
     RenderTargetMtl *colorReadRT = framebufferMtl->getColorReadRenderTarget();
@@ -807,7 +797,7 @@ angle::Result TextureMtl::copySubImageWithDraw(const gl::Context *context,
     }
 
     mtl::RenderCommandEncoder *cmdEncoder = contextMtl->getRenderCommandEncoder(mTexture, index);
-    UtilsMtl::BlitParams blitParams;
+    mtl::BlitParams blitParams;
 
     blitParams.dstOffset    = modifiedDestOffset;
     blitParams.dstColorMask = mTexture->getColorWritableMask();
@@ -817,7 +807,7 @@ angle::Result TextureMtl::copySubImageWithDraw(const gl::Context *context,
     blitParams.srcYFlipped  = framebufferMtl->flipY();
     blitParams.dstLuminance = internalFormat.isLUMA();
 
-    rendererMtl->getUtils().blitWithDraw(context, cmdEncoder, blitParams);
+    displayMtl->getUtils().blitWithDraw(context, cmdEncoder, blitParams);
 
     return angle::Result::Continue;
 }
@@ -834,8 +824,8 @@ angle::Result TextureMtl::copySubImageCPU(const gl::Context *context,
 
     const angle::Format &dstFormat = angle::Format::Get(mFormat.actualFormatId);
     const int dstRowPitch          = dstFormat.pixelBytes * clippedSourceArea.width;
-    std::unique_ptr<uint8_t[]> conversionRow(new (std::nothrow) uint8_t[dstRowPitch]);
-    ANGLE_CHECK_GL_ALLOC(contextMtl, conversionRow);
+    angle::MemoryBuffer conversionRow;
+    ANGLE_CHECK_GL_ALLOC(contextMtl, conversionRow.resize(dstRowPitch));
 
     MTLRegion mtlDstRowArea  = MTLRegionMake2D(clippedSourceArea.x, 0, clippedSourceArea.width, 1);
     gl::Rectangle srcRowArea = gl::Rectangle(clippedSourceArea.x, 0, clippedSourceArea.width, 1);
@@ -850,12 +840,12 @@ angle::Result TextureMtl::copySubImageCPU(const gl::Context *context,
         // Read pixels from framebuffer to memory:
         ANGLE_TRY(framebufferMtl->readPixelsImpl(context, srcRowArea, packParams,
                                                  framebufferMtl->getColorReadRenderTarget(),
-                                                 conversionRow.get()));
+                                                 conversionRow.data()));
 
         // Upload to texture
         mTexture->replaceRegion(contextMtl, mtlDstRowArea, index.getLevelIndex(),
                                 index.hasLayer() ? index.cubeMapFaceIndex() : 0,
-                                conversionRow.get(), dstRowPitch);
+                                conversionRow.data(), dstRowPitch);
     }
 
     return angle::Result::Continue;

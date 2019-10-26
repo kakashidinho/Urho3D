@@ -3,12 +3,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
-// StateCacheMtl.mm:
-//    Implements StateCacheMtl, RenderPipelineCacheMtl and various
+// mtl_state_cache.mm:
+//    Implements StateCache, RenderPipelineCache and various
 //    C struct versions of Metal sampler, depth stencil, render pass, render pipeline descriptors.
 //
 
-#include "libANGLE/renderer/metal/StateCacheMtl.h"
+#include "libANGLE/renderer/metal/mtl_state_cache.h"
 
 #include <sstream>
 
@@ -241,6 +241,11 @@ void StencilDesc::reset()
 }
 
 // DepthStencilDesc implementation
+DepthStencilDesc::DepthStencilDesc()
+{
+    memset(this, 0, sizeof(*this));
+}
+
 bool DepthStencilDesc::operator==(const DepthStencilDesc &rhs) const
 {
     return ANGLE_PROP_EQ(*this, rhs, backFaceStencil) &&
@@ -283,7 +288,7 @@ void DepthStencilDesc::updateDepthCompareFunc(const gl::DepthStencilState &dsSta
     {
         return;
     }
-    depthCompareFunction = mtl::GetCompareFunc(dsState.depthFunc);
+    depthCompareFunction = GetCompareFunc(dsState.depthFunc);
 }
 
 void DepthStencilDesc::updateStencilTestEnabled(const gl::DepthStencilState &dsState)
@@ -317,9 +322,9 @@ void DepthStencilDesc::updateStencilFrontOps(const gl::DepthStencilState &dsStat
     {
         return;
     }
-    frontFaceStencil.stencilFailureOperation   = mtl::GetStencilOp(dsState.stencilFail);
-    frontFaceStencil.depthFailureOperation     = mtl::GetStencilOp(dsState.stencilPassDepthFail);
-    frontFaceStencil.depthStencilPassOperation = mtl::GetStencilOp(dsState.stencilPassDepthPass);
+    frontFaceStencil.stencilFailureOperation   = GetStencilOp(dsState.stencilFail);
+    frontFaceStencil.depthFailureOperation     = GetStencilOp(dsState.stencilPassDepthFail);
+    frontFaceStencil.depthStencilPassOperation = GetStencilOp(dsState.stencilPassDepthPass);
 }
 
 void DepthStencilDesc::updateStencilBackOps(const gl::DepthStencilState &dsState)
@@ -328,9 +333,9 @@ void DepthStencilDesc::updateStencilBackOps(const gl::DepthStencilState &dsState
     {
         return;
     }
-    backFaceStencil.stencilFailureOperation   = mtl::GetStencilOp(dsState.stencilBackFail);
-    backFaceStencil.depthFailureOperation     = mtl::GetStencilOp(dsState.stencilBackPassDepthFail);
-    backFaceStencil.depthStencilPassOperation = mtl::GetStencilOp(dsState.stencilBackPassDepthPass);
+    backFaceStencil.stencilFailureOperation   = GetStencilOp(dsState.stencilBackFail);
+    backFaceStencil.depthFailureOperation     = GetStencilOp(dsState.stencilBackPassDepthFail);
+    backFaceStencil.depthStencilPassOperation = GetStencilOp(dsState.stencilBackPassDepthPass);
 }
 
 void DepthStencilDesc::updateStencilFrontFuncs(const gl::DepthStencilState &dsState)
@@ -339,7 +344,7 @@ void DepthStencilDesc::updateStencilFrontFuncs(const gl::DepthStencilState &dsSt
     {
         return;
     }
-    frontFaceStencil.stencilCompareFunction = mtl::GetCompareFunc(dsState.stencilFunc);
+    frontFaceStencil.stencilCompareFunction = GetCompareFunc(dsState.stencilFunc);
     frontFaceStencil.readMask               = dsState.stencilMask;
 }
 
@@ -349,7 +354,7 @@ void DepthStencilDesc::updateStencilBackFuncs(const gl::DepthStencilState &dsSta
     {
         return;
     }
-    backFaceStencil.stencilCompareFunction = mtl::GetCompareFunc(dsState.stencilBackFunc);
+    backFaceStencil.stencilCompareFunction = GetCompareFunc(dsState.stencilBackFunc);
     backFaceStencil.readMask               = dsState.stencilBackMask;
 }
 
@@ -377,6 +382,11 @@ size_t DepthStencilDesc::hash() const
 }
 
 // SamplerDesc implementation
+SamplerDesc::SamplerDesc()
+{
+    memset(this, 0, sizeof(*this));
+}
+
 SamplerDesc::SamplerDesc(const gl::SamplerState &glState) : SamplerDesc()
 {
     rAddressMode = GetSamplerAddressMode(glState.getWrapR());
@@ -440,9 +450,9 @@ void BlendDesc::reset()
     reset(MTLColorWriteMaskAll);
 }
 
-void BlendDesc::reset(MTLColorWriteMask writeMask)
+void BlendDesc::reset(MTLColorWriteMask _writeMask)
 {
-    this->writeMask = writeMask;
+    writeMask = _writeMask;
 
     blendingEnabled     = false;
     alphaBlendOperation = rgbBlendOperation = MTLBlendOperationAdd;
@@ -512,11 +522,11 @@ void RenderPipelineColorAttachmentDesc::reset(MTLPixelFormat format)
     reset(format, MTLColorWriteMaskAll);
 }
 
-void RenderPipelineColorAttachmentDesc::reset(MTLPixelFormat format, MTLColorWriteMask writeMask)
+void RenderPipelineColorAttachmentDesc::reset(MTLPixelFormat format, MTLColorWriteMask _writeMask)
 {
     this->pixelFormat = format;
 
-    BlendDesc::reset(writeMask);
+    BlendDesc::reset(_writeMask);
 }
 
 void RenderPipelineColorAttachmentDesc::reset(MTLPixelFormat format, const BlendDesc &blendState)
@@ -552,6 +562,12 @@ bool RenderPipelineOutputDesc::operator==(const RenderPipelineOutputDesc &rhs) c
 }
 
 // RenderPipelineDesc implementation
+RenderPipelineDesc::RenderPipelineDesc()
+{
+    memset(this, 0, sizeof(*this));
+    rasterizationEnabled = true;
+}
+
 bool RenderPipelineDesc::operator==(const RenderPipelineDesc &rhs) const
 {
     return ANGLE_PROP_EQ(*this, rhs, vertexDescriptor) &&
@@ -566,6 +582,11 @@ size_t RenderPipelineDesc::hash() const
 }
 
 // RenderPassDesc implementation
+RenderPassAttachmentDesc::RenderPassAttachmentDesc()
+{
+    reset();
+}
+
 void RenderPassAttachmentDesc::reset()
 {
     texture.reset();
@@ -707,14 +728,12 @@ AutoObjCObj<MTLRenderPassDescriptor> ToMetalObj(const RenderPassDesc &desc)
     }
 }
 
-}  // namespace mtl
+// RenderPipelineCache implementation
+RenderPipelineCache::RenderPipelineCache() {}
 
-// RenderPipelineCacheMtl implementation
-RenderPipelineCacheMtl::RenderPipelineCacheMtl() {}
+RenderPipelineCache::~RenderPipelineCache() {}
 
-RenderPipelineCacheMtl::~RenderPipelineCacheMtl() {}
-
-void RenderPipelineCacheMtl::setVertexShader(mtl::Context *context, id<MTLFunction> shader)
+void RenderPipelineCache::setVertexShader(Context *context, id<MTLFunction> shader)
 {
     mVertexShader.retainAssign(shader);
 
@@ -727,7 +746,7 @@ void RenderPipelineCacheMtl::setVertexShader(mtl::Context *context, id<MTLFuncti
     recreatePipelineStates(context);
 }
 
-void RenderPipelineCacheMtl::setFragmentShader(mtl::Context *context, id<MTLFunction> shader)
+void RenderPipelineCache::setFragmentShader(Context *context, id<MTLFunction> shader)
 {
     mFragmentShader.retainAssign(shader);
 
@@ -740,9 +759,9 @@ void RenderPipelineCacheMtl::setFragmentShader(mtl::Context *context, id<MTLFunc
     recreatePipelineStates(context);
 }
 
-bool RenderPipelineCacheMtl::hasDefaultAttribs(const mtl::RenderPipelineDesc &rpdesc) const
+bool RenderPipelineCache::hasDefaultAttribs(const RenderPipelineDesc &rpdesc) const
 {
-    const mtl::VertexDesc &desc = rpdesc.vertexDescriptor;
+    const VertexDesc &desc = rpdesc.vertexDescriptor;
     for (uint8_t i = 0; i < desc.numAttribs; ++i)
     {
         if (desc.attributes[i].bufferIndex == kDefaultAttribsBindingIndex)
@@ -754,9 +773,9 @@ bool RenderPipelineCacheMtl::hasDefaultAttribs(const mtl::RenderPipelineDesc &rp
     return false;
 }
 
-mtl::AutoObjCPtr<id<MTLRenderPipelineState>> RenderPipelineCacheMtl::getRenderPipelineState(
+AutoObjCPtr<id<MTLRenderPipelineState>> RenderPipelineCache::getRenderPipelineState(
     ContextMtl *context,
-    const mtl::RenderPipelineDesc &desc)
+    const RenderPipelineDesc &desc)
 {
     auto insertDefaultAttribLayout = hasDefaultAttribs(desc);
     int tableIdx                   = insertDefaultAttribLayout ? 1 : 0;
@@ -770,12 +789,12 @@ mtl::AutoObjCPtr<id<MTLRenderPipelineState>> RenderPipelineCacheMtl::getRenderPi
     return ite->second;
 }
 
-mtl::AutoObjCPtr<id<MTLRenderPipelineState>> RenderPipelineCacheMtl::insertRenderPipelineState(
-    mtl::Context *context,
-    const mtl::RenderPipelineDesc &desc,
+AutoObjCPtr<id<MTLRenderPipelineState>> RenderPipelineCache::insertRenderPipelineState(
+    Context *context,
+    const RenderPipelineDesc &desc,
     bool insertDefaultAttribLayout)
 {
-    mtl::AutoObjCPtr<id<MTLRenderPipelineState>> newState =
+    AutoObjCPtr<id<MTLRenderPipelineState>> newState =
         createRenderPipelineState(context, desc, insertDefaultAttribLayout);
 
     int tableIdx = insertDefaultAttribLayout ? 1 : 0;
@@ -788,16 +807,16 @@ mtl::AutoObjCPtr<id<MTLRenderPipelineState>> RenderPipelineCacheMtl::insertRende
     return re.first->second;
 }
 
-mtl::AutoObjCPtr<id<MTLRenderPipelineState>> RenderPipelineCacheMtl::createRenderPipelineState(
-    mtl::Context *context,
-    const mtl::RenderPipelineDesc &desc,
+AutoObjCPtr<id<MTLRenderPipelineState>> RenderPipelineCache::createRenderPipelineState(
+    Context *context,
+    const RenderPipelineDesc &desc,
     bool insertDefaultAttribLayout)
 {
     ANGLE_MTL_OBJC_SCOPE
     {
         auto metalDevice = context->getMetalDevice();
-        mtl::AutoObjCObj<MTLRenderPipelineDescriptor> objCDesc =
-            mtl::ToObjC(mVertexShader, mFragmentShader, desc);
+        AutoObjCObj<MTLRenderPipelineDescriptor> objCDesc =
+            ToObjC(mVertexShader, mFragmentShader, desc);
 
         // special attribute slot for default attribute
         if (insertDefaultAttribLayout)
@@ -825,7 +844,7 @@ mtl::AutoObjCPtr<id<MTLRenderPipelineState>> RenderPipelineCacheMtl::createRende
     }
 }
 
-void RenderPipelineCacheMtl::recreatePipelineStates(mtl::Context *context)
+void RenderPipelineCache::recreatePipelineStates(Context *context)
 {
     for (int hasDefaultAttrib = 0; hasDefaultAttrib <= 1; ++hasDefaultAttrib)
     {
@@ -841,30 +860,29 @@ void RenderPipelineCacheMtl::recreatePipelineStates(mtl::Context *context)
     }
 }
 
-void RenderPipelineCacheMtl::clear()
+void RenderPipelineCache::clear()
 {
     mVertexShader   = nil;
     mFragmentShader = nil;
     clearPipelineStates();
 }
 
-void RenderPipelineCacheMtl::clearPipelineStates()
+void RenderPipelineCache::clearPipelineStates()
 {
     mRenderPipelineStates[0].clear();
     mRenderPipelineStates[1].clear();
 }
 
-// StateCacheMtl implementation
-StateCacheMtl::StateCacheMtl() {}
+// StateCache implementation
+StateCache::StateCache() {}
 
-StateCacheMtl::~StateCacheMtl() {}
+StateCache::~StateCache() {}
 
-mtl::AutoObjCPtr<id<MTLDepthStencilState>> StateCacheMtl::getNullDepthStencilState(
-    id<MTLDevice> device)
+AutoObjCPtr<id<MTLDepthStencilState>> StateCache::getNullDepthStencilState(id<MTLDevice> device)
 {
     if (!mNullDepthStencilState)
     {
-        mtl::DepthStencilDesc desc;
+        DepthStencilDesc desc;
         desc.reset();
         ASSERT(desc.frontFaceStencil.stencilCompareFunction == MTLCompareFunctionAlways);
         desc.depthWriteEnabled = false;
@@ -873,17 +891,16 @@ mtl::AutoObjCPtr<id<MTLDepthStencilState>> StateCacheMtl::getNullDepthStencilSta
     return mNullDepthStencilState;
 }
 
-mtl::AutoObjCPtr<id<MTLDepthStencilState>> StateCacheMtl::getDepthStencilState(
-    id<MTLDevice> metalDevice,
-    const mtl::DepthStencilDesc &desc)
+AutoObjCPtr<id<MTLDepthStencilState>> StateCache::getDepthStencilState(id<MTLDevice> metalDevice,
+                                                                       const DepthStencilDesc &desc)
 {
     ANGLE_MTL_OBJC_SCOPE
     {
         auto ite = mDepthStencilStates.find(desc);
         if (ite == mDepthStencilStates.end())
         {
-            mtl::AutoObjCObj<MTLDepthStencilDescriptor> objCDesc = mtl::ToObjC(desc);
-            mtl::AutoObjCPtr<id<MTLDepthStencilState>> newState =
+            AutoObjCObj<MTLDepthStencilDescriptor> objCDesc = ToObjC(desc);
+            AutoObjCPtr<id<MTLDepthStencilState>> newState =
                 [[metalDevice newDepthStencilStateWithDescriptor:objCDesc] ANGLE_MTL_AUTORELEASE];
 
             auto re = mDepthStencilStates.insert(std::make_pair(desc, newState));
@@ -899,16 +916,16 @@ mtl::AutoObjCPtr<id<MTLDepthStencilState>> StateCacheMtl::getDepthStencilState(
     }
 }
 
-mtl::AutoObjCPtr<id<MTLSamplerState>> StateCacheMtl::getSamplerState(id<MTLDevice> metalDevice,
-                                                                     const mtl::SamplerDesc &desc)
+AutoObjCPtr<id<MTLSamplerState>> StateCache::getSamplerState(id<MTLDevice> metalDevice,
+                                                             const SamplerDesc &desc)
 {
     ANGLE_MTL_OBJC_SCOPE
     {
         auto ite = mSamplerStates.find(desc);
         if (ite == mSamplerStates.end())
         {
-            mtl::AutoObjCObj<MTLSamplerDescriptor> objCDesc = mtl::ToObjC(desc);
-            mtl::AutoObjCPtr<id<MTLSamplerState>> newState =
+            AutoObjCObj<MTLSamplerDescriptor> objCDesc = ToObjC(desc);
+            AutoObjCPtr<id<MTLSamplerState>> newState =
                 [[metalDevice newSamplerStateWithDescriptor:objCDesc] ANGLE_MTL_AUTORELEASE];
 
             auto re = mSamplerStates.insert(std::make_pair(desc, newState));
@@ -922,23 +939,24 @@ mtl::AutoObjCPtr<id<MTLSamplerState>> StateCacheMtl::getSamplerState(id<MTLDevic
     }
 }
 
-mtl::AutoObjCPtr<id<MTLSamplerState>> StateCacheMtl::getNullSamplerState(mtl::Context *context)
+AutoObjCPtr<id<MTLSamplerState>> StateCache::getNullSamplerState(Context *context)
 {
     return getNullSamplerState(context->getMetalDevice());
 }
 
-mtl::AutoObjCPtr<id<MTLSamplerState>> StateCacheMtl::getNullSamplerState(id<MTLDevice> device)
+AutoObjCPtr<id<MTLSamplerState>> StateCache::getNullSamplerState(id<MTLDevice> device)
 {
-    mtl::SamplerDesc desc;
+    SamplerDesc desc;
     desc.reset();
 
     return getSamplerState(device, desc);
 }
 
-void StateCacheMtl::clear()
+void StateCache::clear()
 {
     mNullDepthStencilState = nil;
     mDepthStencilStates.clear();
     mSamplerStates.clear();
 }
-}
+}  // namespace mtl
+}  // namespace rx

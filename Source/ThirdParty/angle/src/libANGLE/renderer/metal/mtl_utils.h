@@ -17,9 +17,9 @@
 #include "common/PackedEnums.h"
 #include "libANGLE/Context.h"
 #include "libANGLE/Texture.h"
-#include "libANGLE/renderer/metal/StateCacheMtl.h"
 #include "libANGLE/renderer/metal/mtl_format_utils.h"
 #include "libANGLE/renderer/metal/mtl_resources.h"
+#include "libANGLE/renderer/metal/mtl_state_cache.h"
 
 namespace rx
 {
@@ -29,7 +29,7 @@ namespace mtl
 NS_ASSUME_NONNULL_BEGIN
 
 angle::Result InitializeTextureContents(const gl::Context *context,
-                                        TextureRef texture,
+                                        const TextureRef &texture,
                                         const Format &textureObjFormat,
                                         const gl::ImageIndex &index);
 
@@ -86,10 +86,8 @@ MTLBlendOperation GetBlendOp(GLenum op);
 MTLCompareFunction GetCompareFunc(GLenum func);
 MTLStencilOperation GetStencilOp(GLenum op);
 
-MTLCullMode GetCullMode(GLenum mode);
 MTLWinding GetFontfaceWinding(GLenum frontFaceMode, bool invert);
 
-bool IsPolygonPrimitiveType(gl::PrimitiveMode mode);
 PrimitiveTopologyClass GetPrimitiveTopologyClass(gl::PrimitiveMode mode);
 MTLPrimitiveType GetPrimitiveType(gl::PrimitiveMode mode);
 MTLIndexType GetIndexType(gl::DrawElementsType type);

@@ -85,6 +85,7 @@ set (libangle_common_sources
   src/common/android_util.h
   src/common/angleutils.cpp
   src/common/angleutils.h
+  src/common/apple_platform_utils.h
   src/common/bitset_utils.h
   src/common/debug.cpp
   src/common/debug.h
@@ -343,6 +344,8 @@ set (libangle_sources
   src/libANGLE/renderer/VertexArrayImpl.h
   src/libANGLE/renderer/copyvertex.h
   src/libANGLE/renderer/copyvertex.inc
+  src/libANGLE/renderer/glslang_wrapper_utils.h
+  src/libANGLE/renderer/glslang_wrapper_utils.cpp
   src/libANGLE/renderer/load_functions_table.h
   src/libANGLE/renderer/load_functions_table_autogen.cpp
   src/libANGLE/renderer/renderer_utils.cpp
@@ -373,50 +376,51 @@ list (APPEND SOURCE_FILES ${libangle_sources})
 if(APPLE)
 set(libangle_metal_sources
   src/libANGLE/renderer/metal/BufferMtl.h
-   src/libANGLE/renderer/metal/BufferMtl.mm
-   src/libANGLE/renderer/metal/CompilerMtl.h
-   src/libANGLE/renderer/metal/CompilerMtl.mm
-   src/libANGLE/renderer/metal/ContextMtl.h
-   src/libANGLE/renderer/metal/ContextMtl.mm
-   src/libANGLE/renderer/metal/DisplayMtl.h
-   src/libANGLE/renderer/metal/DisplayMtl.mm
-   src/libANGLE/renderer/metal/FrameBufferMtl.h
-   src/libANGLE/renderer/metal/FrameBufferMtl.mm
-   src/libANGLE/renderer/metal/GlslangWrapperMtl.h
-   src/libANGLE/renderer/metal/GlslangWrapperMtl.mm
-   src/libANGLE/renderer/metal/ProgramMtl.h
-   src/libANGLE/renderer/metal/ProgramMtl.mm
-   src/libANGLE/renderer/metal/RenderBufferMtl.h
-   src/libANGLE/renderer/metal/RenderBufferMtl.mm
-   src/libANGLE/renderer/metal/RenderTargetMtl.h
-   src/libANGLE/renderer/metal/RenderTargetMtl.mm
-   src/libANGLE/renderer/metal/RendererMtl.h
-   src/libANGLE/renderer/metal/RendererMtl.mm
-   src/libANGLE/renderer/metal/ShaderMtl.h
-   src/libANGLE/renderer/metal/ShaderMtl.mm
-   src/libANGLE/renderer/metal/StateCacheMtl.h
-   src/libANGLE/renderer/metal/StateCacheMtl.mm
-   src/libANGLE/renderer/metal/SurfaceMtl.h
-   src/libANGLE/renderer/metal/SurfaceMtl.mm
-   src/libANGLE/renderer/metal/TextureMtl.h
-   src/libANGLE/renderer/metal/TextureMtl.mm
-   src/libANGLE/renderer/metal/UtilsMtl.h
-   src/libANGLE/renderer/metal/UtilsMtl.mm
-   src/libANGLE/renderer/metal/VertexArrayMtl.h
-   src/libANGLE/renderer/metal/VertexArrayMtl.mm
-   src/libANGLE/renderer/metal/mtl_buffer_pool.h
-   src/libANGLE/renderer/metal/mtl_buffer_pool.mm
-   src/libANGLE/renderer/metal/mtl_command_buffer.h
-   src/libANGLE/renderer/metal/mtl_command_buffer.mm
-   src/libANGLE/renderer/metal/mtl_common.h
-   src/libANGLE/renderer/metal/mtl_common.mm
-   src/libANGLE/renderer/metal/mtl_format_table_autogen.mm
-   src/libANGLE/renderer/metal/mtl_format_utils.h
-   src/libANGLE/renderer/metal/mtl_format_utils.mm
-   src/libANGLE/renderer/metal/mtl_resources.h
-   src/libANGLE/renderer/metal/mtl_resources.mm
-   src/libANGLE/renderer/metal/mtl_utils.h
-   src/libANGLE/renderer/metal/mtl_utils.mm
+  src/libANGLE/renderer/metal/BufferMtl.mm
+  src/libANGLE/renderer/metal/CompilerMtl.h
+  src/libANGLE/renderer/metal/CompilerMtl.mm
+  src/libANGLE/renderer/metal/ContextMtl.h
+  src/libANGLE/renderer/metal/ContextMtl.mm
+  src/libANGLE/renderer/metal/DisplayMtl.h
+  src/libANGLE/renderer/metal/DisplayMtl_api.h
+  src/libANGLE/renderer/metal/DisplayMtl.mm
+  src/libANGLE/renderer/metal/FrameBufferMtl.h
+  src/libANGLE/renderer/metal/FrameBufferMtl.mm
+  src/libANGLE/renderer/metal/ProgramMtl.h
+  src/libANGLE/renderer/metal/ProgramMtl.mm
+  src/libANGLE/renderer/metal/RenderBufferMtl.h
+  src/libANGLE/renderer/metal/RenderBufferMtl.mm
+  src/libANGLE/renderer/metal/RenderTargetMtl.h
+  src/libANGLE/renderer/metal/RenderTargetMtl.mm
+  src/libANGLE/renderer/metal/ShaderMtl.h
+  src/libANGLE/renderer/metal/ShaderMtl.mm
+  src/libANGLE/renderer/metal/SurfaceMtl.h
+  src/libANGLE/renderer/metal/SurfaceMtl.mm
+  src/libANGLE/renderer/metal/TextureMtl.h
+  src/libANGLE/renderer/metal/TextureMtl.mm
+  src/libANGLE/renderer/metal/VertexArrayMtl.h
+  src/libANGLE/renderer/metal/VertexArrayMtl.mm
+  src/libANGLE/renderer/metal/mtl_buffer_pool.h
+  src/libANGLE/renderer/metal/mtl_buffer_pool.mm
+  src/libANGLE/renderer/metal/mtl_command_buffer.h
+  src/libANGLE/renderer/metal/mtl_command_buffer.mm
+  src/libANGLE/renderer/metal/mtl_common.h
+  src/libANGLE/renderer/metal/mtl_common.mm
+  src/libANGLE/renderer/metal/mtl_format_table_autogen.mm
+  src/libANGLE/renderer/metal/mtl_format_utils.h
+  src/libANGLE/renderer/metal/mtl_format_utils.mm
+  src/libANGLE/renderer/metal/mtl_glslang_utils.h
+  src/libANGLE/renderer/metal/mtl_glslang_utils.mm
+  src/libANGLE/renderer/metal/mtl_render_utils.h
+  src/libANGLE/renderer/metal/mtl_render_utils.mm
+  src/libANGLE/renderer/metal/mtl_resources.h
+  src/libANGLE/renderer/metal/mtl_resources.mm
+  src/libANGLE/renderer/metal/mtl_state_cache.h
+  src/libANGLE/renderer/metal/mtl_state_cache.mm
+  src/libANGLE/renderer/metal/mtl_utils.h
+  src/libANGLE/renderer/metal/mtl_utils.mm
+  src/libANGLE/renderer/metal/shaders/mtl_default_shaders_src_autogen.inc
+  src/libANGLE/renderer/metal/shaders/compiled/mtl_default_shaders.inc
 )
 
 source_group("libangle-Metal"            FILES ${libangle_metal_sources})

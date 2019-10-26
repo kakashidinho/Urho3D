@@ -31,9 +31,6 @@
 #    endif
 #endif
 
-// Don't allow separated depth stencil buffers
-#define ANGLE_MTL_ALLOW_SEPARATED_DEPTH_STENCIL 0
-
 #define ANGLE_MTL_OBJC_SCOPE @autoreleasepool
 
 #if !__has_feature(objc_arc)
@@ -50,9 +47,52 @@
 #    define ANGLE_MTL_LOG(...) (void)0
 #endif
 
-// TODO(hqle): support variable max number of vertex attributes
+namespace egl
+{
+class Display;
+class Image;
+}  // namespace egl
+
+#define ANGLE_GL_OBJECTS_X(PROC) \
+    PROC(Buffer)                 \
+    PROC(Context)                \
+    PROC(Framebuffer)            \
+    PROC(MemoryObject)           \
+    PROC(Query)                  \
+    PROC(Program)                \
+    PROC(Semaphore)              \
+    PROC(Texture)                \
+    PROC(TransformFeedback)      \
+    PROC(VertexArray)
+
+#define ANGLE_PRE_DECLARE_OBJECT(OBJ) class OBJ;
+
+namespace gl
+{
+struct Rectangle;
+ANGLE_GL_OBJECTS_X(ANGLE_PRE_DECLARE_OBJECT)
+}  // namespace gl
+
+#define ANGLE_PRE_DECLARE_MTL_OBJECT(OBJ) class OBJ##Mtl;
+
+namespace rx
+{
+class DisplayMtl;
+class ContextMtl;
+class FramebufferMtl;
+class BufferMtl;
+class VertexArrayMtl;
+class TextureMtl;
+class ProgramMtl;
+
+ANGLE_GL_OBJECTS_X(ANGLE_PRE_DECLARE_MTL_OBJECT)
+
+namespace mtl
+{
+
+// NOTE(hqle): support variable max number of vertex attributes
 constexpr uint32_t kMaxVertexAttribs = gl::MAX_VERTEX_ATTRIBS;
-// TODO(hqle): support variable max number of render targets
+// NOTE(hqle): support variable max number of render targets
 constexpr uint32_t kMaxRenderTargets = 1;
 
 constexpr size_t kDefaultAttributeSize = 4 * sizeof(float);
@@ -87,52 +127,8 @@ constexpr uint32_t kStencilMaskAll = 0xff;  // Only 8 bits stencil is supported
 
 constexpr float kEmulatedAlphaValue = 1.0f;
 
-// TODO(hqle): Support ES 3.0.
-static constexpr gl::Version kMaxSupportedGLVersion = gl::Version(2, 0);
-
-namespace egl
-{
-class Display;
-class Image;
-}  // namespace egl
-
-#define ANGLE_GL_OBJECTS_X(PROC) \
-    PROC(Buffer)                 \
-    PROC(Context)                \
-    PROC(Framebuffer)            \
-    PROC(MemoryObject)           \
-    PROC(Query)                  \
-    PROC(Program)                \
-    PROC(Semaphore)              \
-    PROC(Texture)                \
-    PROC(TransformFeedback)      \
-    PROC(VertexArray)
-
-#define ANGLE_PRE_DECLARE_OBJECT(OBJ) class OBJ;
-
-namespace gl
-{
-struct Rectangle;
-ANGLE_GL_OBJECTS_X(ANGLE_PRE_DECLARE_OBJECT)
-}  // namespace gl
-
-#define ANGLE_PRE_DECLARE_MTL_OBJECT(OBJ) class OBJ##Mtl;
-
-namespace rx
-{
-class RendererMtl;
-class DisplayMtl;
-class ContextMtl;
-class FramebufferMtl;
-class BufferMtl;
-class VertexArrayMtl;
-class TextureMtl;
-class ProgramMtl;
-
-ANGLE_GL_OBJECTS_X(ANGLE_PRE_DECLARE_MTL_OBJECT)
-
-namespace mtl
-{
+// NOTE(hqle): Support ES 3.0.
+constexpr gl::Version kMaxSupportedGLVersion = gl::Version(2, 0);
 
 template <typename T>
 struct ImplTypeHelper;
@@ -210,7 +206,7 @@ template <typename T>
 class AutoObjCPtr : public WrappedObject<T>
 {
   public:
-    typedef WrappedObject<T> ParentType;
+    using ParentType = WrappedObject<T>;
 
     AutoObjCPtr() {}
 
@@ -305,14 +301,14 @@ class ErrorHandler
 class Context : public ErrorHandler
 {
   public:
-    Context(RendererMtl *rendererMtl);
+    Context(DisplayMtl *displayMtl);
     _Nullable id<MTLDevice> getMetalDevice() const;
     mtl::CommandQueue &cmdQueue();
 
-    RendererMtl *getRenderer() const { return mRendererMtl; }
+    DisplayMtl *getDisplay() const { return mDisplay; }
 
   protected:
-    RendererMtl *mRendererMtl;
+    DisplayMtl *mDisplay;
 };
 
 #define ANGLE_MTL_CHECK(context, test, error)                                \

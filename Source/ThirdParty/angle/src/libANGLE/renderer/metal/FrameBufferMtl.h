@@ -14,7 +14,7 @@
 
 #include "libANGLE/renderer/FramebufferImpl.h"
 #include "libANGLE/renderer/metal/RenderTargetMtl.h"
-#include "libANGLE/renderer/metal/UtilsMtl.h"
+#include "libANGLE/renderer/metal/mtl_render_utils.h"
 
 namespace rx
 {
@@ -25,8 +25,8 @@ class FramebufferMtl : public FramebufferImpl
 {
   public:
     explicit FramebufferMtl(const gl::FramebufferState &state,
-                            bool flipY                     = false,
-                            bool alwaysDiscardDepthStencil = false);
+                            bool flipY,
+                            bool alwaysDiscardDepthStencil);
     ~FramebufferMtl() override;
     void destroy(const gl::Context *context) override;
 
@@ -106,15 +106,15 @@ class FramebufferMtl : public FramebufferImpl
     angle::Result invalidateImpl(ContextMtl *contextMtl, size_t count, const GLenum *attachments);
     angle::Result clearImpl(const gl::Context *context,
                             gl::DrawBufferMask clearColorBuffers,
-                            UtilsMtl::ClearParams *clearOpts);
+                            mtl::ClearRectParams *clearOpts);
 
     angle::Result clearWithLoadOp(const gl::Context *context,
                                   gl::DrawBufferMask clearColorBuffers,
-                                  const UtilsMtl::ClearParams &clearOpts);
+                                  const mtl::ClearRectParams &clearOpts);
 
     angle::Result clearWithDraw(const gl::Context *context,
                                 gl::DrawBufferMask clearColorBuffers,
-                                const UtilsMtl::ClearParams &clearOpts);
+                                const mtl::ClearRectParams &clearOpts);
 
     angle::Result prepareRenderPass(const gl::Context *context,
                                     gl::DrawBufferMask drawColorBuffers,
@@ -131,8 +131,8 @@ class FramebufferMtl : public FramebufferImpl
                                            const gl::FramebufferAttachment *attachment,
                                            RenderTargetMtl **cachedRenderTarget);
 
-    std::array<RenderTargetMtl *, kMaxRenderTargets> mColorRenderTargets;
-    std::array<bool, kMaxRenderTargets> mDiscardColors;
+    std::array<RenderTargetMtl *, mtl::kMaxRenderTargets> mColorRenderTargets;
+    std::array<bool, mtl::kMaxRenderTargets> mDiscardColors;
     RenderTargetMtl *mDepthRenderTarget   = nullptr;
     bool mDiscardDepth                    = false;
     RenderTargetMtl *mStencilRenderTarget = nullptr;

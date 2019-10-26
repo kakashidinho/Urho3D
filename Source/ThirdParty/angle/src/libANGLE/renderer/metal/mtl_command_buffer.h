@@ -23,9 +23,9 @@
 
 #include "common/FixedVector.h"
 #include "common/angleutils.h"
-#include "libANGLE/renderer/metal/StateCacheMtl.h"
 #include "libANGLE/renderer/metal/mtl_common.h"
 #include "libANGLE/renderer/metal/mtl_resources.h"
+#include "libANGLE/renderer/metal/mtl_state_cache.h"
 
 namespace rx
 {
@@ -44,8 +44,15 @@ class CommandQueue final : public WrappedObject<id<MTLCommandQueue>>, angle::Non
 
     void finishAllCommands();
 
+    // This method will ensure that every GPU command buffer using this resource will finish before
+    // returning. Note: this doesn't include the "in-progress" command buffer, i.e. the one hasn't
+    // been commmitted yet. It's the responsibility of caller to make sure that command buffer is
+    // commited/flushed first before calling this method.
     void ensureResourceReadyForCPU(const ResourceRef &resource);
     void ensureResourceReadyForCPU(Resource *resource);
+
+    // Check whether the resource is being used by any command buffer still running on GPU.
+    // This must be called before attempting to read the content of resource on CPU side.
     bool isResourceBeingUsedByGPU(const ResourceRef &resource) const
     {
         return isResourceBeingUsedByGPU(resource.get());
@@ -62,15 +69,15 @@ class CommandQueue final : public WrappedObject<id<MTLCommandQueue>>, angle::Non
 
   private:
     void onCommandBufferCompleted(id<MTLCommandBuffer> buf, uint64_t serial);
-    typedef WrappedObject<id<MTLCommandQueue>> ParentClass;
+    using ParentClass = WrappedObject<id<MTLCommandQueue>>;
 
     struct CmdBufferQueueEntry
     {
         AutoObjCPtr<id<MTLCommandBuffer>> buffer;
         uint64_t serial;
     };
-    std::deque<CmdBufferQueueEntry> mQueuedMetalCmdBuffers;
-    std::deque<CmdBufferQueueEntry> mQueuedMetalCmdBuffersTmp;
+    std::deque<CmdBufferQueueEntry> mMetalCmdBuffers;
+    std::deque<CmdBufferQueueEntry> mMetalCmdBuffersTmp;
 
     uint64_t mQueueSerialCounter = 1;
     std::atomic<uint64_t> mCompletedBufferSerial{0};
@@ -107,7 +114,7 @@ class CommandBuffer final : public WrappedObject<id<MTLCommandBuffer>>, angle::N
     bool validImpl() const;
     void commitImpl();
 
-    typedef WrappedObject<id<MTLCommandBuffer>> ParentClass;
+    using ParentClass = WrappedObject<id<MTLCommandBuffer>>;
 
     CommandQueue &mCmdQueue;
 
@@ -137,11 +144,11 @@ class CommandEncoder : public WrappedObject<id<MTLCommandEncoder>>, angle::NonCo
     void reset();
     Type getType() const { return mType; }
 
-    CommandEncoder &markResourceBeingWrittenByGPU(BufferRef buffer);
-    CommandEncoder &markResourceBeingWrittenByGPU(TextureRef texture);
+    CommandEncoder &markResourceBeingWrittenByGPU(const BufferRef &buffer);
+    CommandEncoder &markResourceBeingWrittenByGPU(const TextureRef &texture);
 
   protected:
-    typedef WrappedObject<id<MTLCommandEncoder>> ParentClass;
+    using ParentClass = WrappedObject<id<MTLCommandEncoder>>;
 
     CommandEncoder(CommandBuffer *cmdBuffer, Type type);
 
@@ -158,56 +165,12 @@ class CommandEncoder : public WrappedObject<id<MTLCommandEncoder>>, angle::NonCo
 class RenderCommandEncoder final : public CommandEncoder
 {
   public:
-    struct StateCache
-    {
-        AutoObjCPtr<id<MTLRenderPipelineState>> renderPipelineState    = nil;
-        MTLTriangleFillMode triangleFillMode                           = MTLTriangleFillModeFill;
-        MTLWinding frontFace                                           = MTLWindingClockwise;
-        MTLCullMode cullMode                                           = MTLCullModeNone;
-        AutoObjCPtr<id<MTLDepthStencilState>> depthStencilState        = nil;
-        float depthBias                                                = 0;
-        float slopeScale                                               = 0;
-        float clamp                                                    = 0;
-        uint32_t frontStencilRef                                       = 0;
-        uint32_t backStencilRef                                        = 0;
-        angle::FixedVector<MTLViewport, kMaxViewports> viewports       = {};
-        angle::FixedVector<MTLScissorRect, kMaxViewports> scissorRects = {};
-        uint32_t numViewports                                          = 0;
-        uint32_t numScissorRects                                       = 0;
-
-        float blendR = 0;
-        float blendG = 0;
-        float blendB = 0;
-        float blendA = 0;
-
-        struct BufferBinding
-        {
-            BufferRef buffer;
-            uint32_t offset = 0;
-        };
-
-        struct SamplerState
-        {
-            AutoObjCPtr<id<MTLSamplerState>> stateObject;
-            float lodMinClamp = 0;
-            float lodMaxClamp = FLT_MAX;
-        };
-
-        angle::FixedVector<BufferBinding, kMaxShaderBuffers> vertexBuffers    = {};
-        angle::FixedVector<TextureRef, kMaxShaderSamplers> vertexTextures     = {};
-        angle::FixedVector<SamplerState, kMaxShaderSamplers> vertexSamplers   = {};
-        angle::FixedVector<BufferBinding, kMaxShaderBuffers> fragmentBuffers  = {};
-        angle::FixedVector<TextureRef, kMaxShaderSamplers> fragmentTextures   = {};
-        angle::FixedVector<SamplerState, kMaxShaderSamplers> fragmentSamplers = {};
-    };
-
     RenderCommandEncoder(CommandBuffer *cmdBuffer);
-    ~RenderCommandEncoder();
+    ~RenderCommandEncoder() override;
 
     void endEncoding() override;
 
     RenderCommandEncoder &restart(const RenderPassDesc &desc);
-    RenderCommandEncoder &restart(const RenderPassDesc &desc, const StateCache &retainedState);
 
     RenderCommandEncoder &setRenderPipelineState(id<MTLRenderPipelineState> state);
     RenderCommandEncoder &setTriangleFillMode(MTLTriangleFillMode mode);
@@ -224,7 +187,7 @@ class RenderCommandEncoder final : public CommandEncoder
 
     RenderCommandEncoder &setBlendColor(float r, float g, float b, float a);
 
-    RenderCommandEncoder &setVertexBuffer(BufferRef buffer, uint32_t offset, uint32_t index);
+    RenderCommandEncoder &setVertexBuffer(const BufferRef &buffer, uint32_t offset, uint32_t index);
     RenderCommandEncoder &setVertexBytes(const uint8_t *bytes, size_t size, uint32_t index);
     template <typename T>
     RenderCommandEncoder &setVertexData(const T &data, uint32_t index)
@@ -235,9 +198,11 @@ class RenderCommandEncoder final : public CommandEncoder
                                                 float lodMinClamp,
                                                 float lodMaxClamp,
                                                 uint32_t index);
-    RenderCommandEncoder &setVertexTexture(TextureRef texture, uint32_t index);
+    RenderCommandEncoder &setVertexTexture(const TextureRef &texture, uint32_t index);
 
-    RenderCommandEncoder &setFragmentBuffer(BufferRef buffer, uint32_t offset, uint32_t index);
+    RenderCommandEncoder &setFragmentBuffer(const BufferRef &buffer,
+                                            uint32_t offset,
+                                            uint32_t index);
     RenderCommandEncoder &setFragmentBytes(const uint8_t *bytes, size_t size, uint32_t index);
     template <typename T>
     RenderCommandEncoder &setFragmentData(const T &data, uint32_t index)
@@ -248,7 +213,7 @@ class RenderCommandEncoder final : public CommandEncoder
                                                   float lodMinClamp,
                                                   float lodMaxClamp,
                                                   uint32_t index);
-    RenderCommandEncoder &setFragmentTexture(TextureRef texture, uint32_t index);
+    RenderCommandEncoder &setFragmentTexture(const TextureRef &texture, uint32_t index);
 
     RenderCommandEncoder &draw(MTLPrimitiveType primitiveType,
                                uint32_t vertexStart,
@@ -256,12 +221,12 @@ class RenderCommandEncoder final : public CommandEncoder
     RenderCommandEncoder &drawIndexed(MTLPrimitiveType primitiveType,
                                       uint32_t indexCount,
                                       MTLIndexType indexType,
-                                      BufferRef indexBuffer,
+                                      const BufferRef &indexBuffer,
                                       size_t bufferOffset);
     RenderCommandEncoder &drawIndexedBaseVertex(MTLPrimitiveType primitiveType,
                                                 uint32_t indexCount,
                                                 MTLIndexType indexType,
-                                                BufferRef indexBuffer,
+                                                const BufferRef &indexBuffer,
                                                 size_t bufferOffset,
                                                 uint32_t baseVertex);
 
@@ -273,42 +238,41 @@ class RenderCommandEncoder final : public CommandEncoder
                                                      MTLStoreAction stencilStoreAction);
 
     const RenderPassDesc &renderPassDesc() const { return mRenderPassDesc; }
-    const StateCache &getStateCache() const { return mStateCache; }
 
   private:
     id<MTLRenderCommandEncoder> get()
     {
         return static_cast<id<MTLRenderCommandEncoder>>(CommandEncoder::get());
     }
+    inline void initWriteDependencyAndStoreAction(const TextureRef &texture,
+                                                  MTLStoreAction *storeActionOut);
 
     RenderPassDesc mRenderPassDesc;
     MTLStoreAction mColorInitialStoreActions[kMaxRenderTargets];
     MTLStoreAction mDepthInitialStoreAction;
     MTLStoreAction mStencilInitialStoreAction;
-
-    StateCache mStateCache;
 };
 
 class BlitCommandEncoder final : public CommandEncoder
 {
   public:
     BlitCommandEncoder(CommandBuffer *cmdBuffer);
-    ~BlitCommandEncoder();
+    ~BlitCommandEncoder() override;
 
     BlitCommandEncoder &restart();
 
-    BlitCommandEncoder &copyTexture(TextureRef dst,
+    BlitCommandEncoder &copyTexture(const TextureRef &dst,
                                     uint32_t dstSlice,
                                     uint32_t dstLevel,
                                     MTLOrigin dstOrigin,
                                     MTLSize dstSize,
-                                    TextureRef src,
+                                    const TextureRef &src,
                                     uint32_t srcSlice,
                                     uint32_t srcLevel,
                                     MTLOrigin srcOrigin);
 
-    BlitCommandEncoder &generateMipmapsForTexture(TextureRef texture);
-    BlitCommandEncoder &synchronizeResource(TextureRef texture);
+    BlitCommandEncoder &generateMipmapsForTexture(const TextureRef &texture);
+    BlitCommandEncoder &synchronizeResource(const TextureRef &texture);
 
   private:
     id<MTLBlitCommandEncoder> get()
@@ -321,13 +285,13 @@ class ComputeCommandEncoder final : public CommandEncoder
 {
   public:
     ComputeCommandEncoder(CommandBuffer *cmdBuffer);
-    ~ComputeCommandEncoder();
+    ~ComputeCommandEncoder() override;
 
     ComputeCommandEncoder &restart();
 
     ComputeCommandEncoder &setComputePipelineState(id<MTLComputePipelineState> state);
 
-    ComputeCommandEncoder &setBuffer(BufferRef buffer, uint32_t offset, uint32_t index);
+    ComputeCommandEncoder &setBuffer(const BufferRef &buffer, uint32_t offset, uint32_t index);
     ComputeCommandEncoder &setBytes(const uint8_t *bytes, size_t size, uint32_t index);
     template <typename T>
     ComputeCommandEncoder &setData(const T &data, uint32_t index)
@@ -338,7 +302,7 @@ class ComputeCommandEncoder final : public CommandEncoder
                                            float lodMinClamp,
                                            float lodMaxClamp,
                                            uint32_t index);
-    ComputeCommandEncoder &setTexture(TextureRef texture, uint32_t index);
+    ComputeCommandEncoder &setTexture(const TextureRef &texture, uint32_t index);
 
     ComputeCommandEncoder &dispatch(MTLSize threadGroupsPerGrid, MTLSize threadsPerGroup);
 

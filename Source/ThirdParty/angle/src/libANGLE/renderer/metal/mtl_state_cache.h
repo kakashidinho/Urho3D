@@ -3,13 +3,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
-// StateCacheMtl.h:
-//    Defines the class interface for StateCacheMtl, RenderPipelineCacheMtl and various
+// mtl_state_cache.h:
+//    Defines the class interface for StateCache, RenderPipelineCache and various
 //    C struct versions of Metal sampler, depth stencil, render pass, render pipeline descriptors.
 //
 
-#ifndef LIBANGLE_RENDERER_METAL_STATECACHEMTL_H_
-#define LIBANGLE_RENDERER_METAL_STATECACHEMTL_H_
+#ifndef LIBANGLE_RENDERER_METAL_MTL_STATE_CACHE_H_
+#define LIBANGLE_RENDERER_METAL_MTL_STATE_CACHE_H_
 
 #import <Metal/Metal.h>
 
@@ -24,6 +24,8 @@ static inline bool operator==(const MTLClearColor &lhs, const MTLClearColor &rhs
 
 namespace rx
 {
+class ContextMtl;
+
 namespace mtl
 {
 struct StencilDesc
@@ -45,7 +47,7 @@ struct StencilDesc
 
 struct DepthStencilDesc
 {
-    DepthStencilDesc() { memset(this, 0, sizeof(*this)); }
+    DepthStencilDesc();
 
     bool operator==(const DepthStencilDesc &rhs) const;
 
@@ -75,7 +77,7 @@ struct DepthStencilDesc
 
 struct SamplerDesc
 {
-    SamplerDesc() { memset(this, 0, sizeof(*this)); }
+    SamplerDesc();
 
     explicit SamplerDesc(const gl::SamplerState &glState);
 
@@ -188,14 +190,15 @@ struct RenderPipelineOutputDesc
     uint8_t numColorAttachments;
 };
 
+// Some SDK levels don't declare MTLPrimitiveTopologyClass. Needs to do compile time check here:
 #if !(TARGET_OS_OSX || TARGET_OS_MACCATALYST) && ANGLE_IOS_DEPLOY_TARGET < __IPHONE_12_0
 #    define ANGLE_MTL_PRIMITIVE_TOPOLOGY_CLASS_AVAILABLE 0
-typedef uint32_t PrimitiveTopologyClass;
+using PrimitiveTopologyClass                                     = uint32_t;
 constexpr PrimitiveTopologyClass kPrimitiveTopologyClassTriangle = 0;
 constexpr PrimitiveTopologyClass kPrimitiveTopologyClassPoint    = 0;
 #else
 #    define ANGLE_MTL_PRIMITIVE_TOPOLOGY_CLASS_AVAILABLE 1
-typedef MTLPrimitiveTopologyClass PrimitiveTopologyClass;
+using PrimitiveTopologyClass = MTLPrimitiveTopologyClass;
 constexpr PrimitiveTopologyClass kPrimitiveTopologyClassTriangle =
     MTLPrimitiveTopologyClassTriangle;
 constexpr PrimitiveTopologyClass kPrimitiveTopologyClassPoint = MTLPrimitiveTopologyClassPoint;
@@ -203,11 +206,7 @@ constexpr PrimitiveTopologyClass kPrimitiveTopologyClassPoint = MTLPrimitiveTopo
 
 struct RenderPipelineDesc
 {
-    RenderPipelineDesc()
-    {
-        memset(this, 0, sizeof(*this));
-        rasterizationEnabled = true;
-    }
+    RenderPipelineDesc();
 
     bool operator==(const RenderPipelineDesc &rhs) const;
 
@@ -224,7 +223,7 @@ struct RenderPipelineDesc
 
 struct RenderPassAttachmentDesc
 {
-    RenderPassAttachmentDesc() { reset(); }
+    RenderPassAttachmentDesc();
     // Set default values
     void reset();
 
@@ -249,7 +248,7 @@ struct RenderPassColorAttachmentDesc : public RenderPassAttachmentDesc
     {
         return !(*this == other);
     }
-    MTLClearColor clearColor = {0};
+    MTLClearColor clearColor = {0, 0, 0, 0};
 };
 
 struct RenderPassDepthAttachmentDesc : public RenderPassAttachmentDesc
@@ -305,7 +304,6 @@ struct RenderPassDesc
 
 // convert to Metal object
 AutoObjCObj<MTLRenderPassDescriptor> ToMetalObj(const RenderPassDesc &desc);
-
 }  // namespace mtl
 }  // namespace rx
 
@@ -334,79 +332,76 @@ struct hash<rx::mtl::RenderPipelineDesc>
 
 namespace rx
 {
-class ContextMtl;
-
+namespace mtl
+{
 // render pipeline state cache per shader program
-class RenderPipelineCacheMtl final : angle::NonCopyable
+class RenderPipelineCache final : angle::NonCopyable
 {
   public:
-    RenderPipelineCacheMtl();
-    ~RenderPipelineCacheMtl();
+    RenderPipelineCache();
+    ~RenderPipelineCache();
 
-    void setVertexShader(mtl::Context *context, id<MTLFunction> shader);
-    void setFragmentShader(mtl::Context *context, id<MTLFunction> shader);
+    void setVertexShader(Context *context, id<MTLFunction> shader);
+    void setFragmentShader(Context *context, id<MTLFunction> shader);
 
     id<MTLFunction> getVertexShader() { return mVertexShader.get(); }
     id<MTLFunction> getFragmentShader() { return mFragmentShader.get(); }
 
-    mtl::AutoObjCPtr<id<MTLRenderPipelineState>> getRenderPipelineState(
-        ContextMtl *context,
-        const mtl::RenderPipelineDesc &desc);
+    AutoObjCPtr<id<MTLRenderPipelineState>> getRenderPipelineState(ContextMtl *context,
+                                                                   const RenderPipelineDesc &desc);
 
     void clear();
 
   protected:
-    mtl::AutoObjCPtr<id<MTLFunction>> mVertexShader   = nil;
-    mtl::AutoObjCPtr<id<MTLFunction>> mFragmentShader = nil;
+    AutoObjCPtr<id<MTLFunction>> mVertexShader   = nil;
+    AutoObjCPtr<id<MTLFunction>> mFragmentShader = nil;
 
   private:
     void clearPipelineStates();
-    void recreatePipelineStates(mtl::Context *context);
-    mtl::AutoObjCPtr<id<MTLRenderPipelineState>> insertRenderPipelineState(
-        mtl::Context *context,
-        const mtl::RenderPipelineDesc &desc,
+    void recreatePipelineStates(Context *context);
+    AutoObjCPtr<id<MTLRenderPipelineState>> insertRenderPipelineState(
+        Context *context,
+        const RenderPipelineDesc &desc,
         bool insertDefaultAttribLayout);
-    mtl::AutoObjCPtr<id<MTLRenderPipelineState>> createRenderPipelineState(
-        mtl::Context *context,
-        const mtl::RenderPipelineDesc &desc,
+    AutoObjCPtr<id<MTLRenderPipelineState>> createRenderPipelineState(
+        Context *context,
+        const RenderPipelineDesc &desc,
         bool insertDefaultAttribLayout);
 
-    bool hasDefaultAttribs(const mtl::RenderPipelineDesc &desc) const;
+    bool hasDefaultAttribs(const RenderPipelineDesc &desc) const;
 
     // One table with default attrib and one table without.
-    std::unordered_map<mtl::RenderPipelineDesc, mtl::AutoObjCPtr<id<MTLRenderPipelineState>>>
+    std::unordered_map<RenderPipelineDesc, AutoObjCPtr<id<MTLRenderPipelineState>>>
         mRenderPipelineStates[2];
 };
 
-class StateCacheMtl final : angle::NonCopyable
+class StateCache final : angle::NonCopyable
 {
   public:
-    StateCacheMtl();
-    ~StateCacheMtl();
+    StateCache();
+    ~StateCache();
 
     // Null depth stencil state has depth/stecil read & write disabled.
-    inline mtl::AutoObjCPtr<id<MTLDepthStencilState>> getNullDepthStencilState(
-        mtl::Context *context)
+    inline AutoObjCPtr<id<MTLDepthStencilState>> getNullDepthStencilState(Context *context)
     {
         return getNullDepthStencilState(context->getMetalDevice());
     }
-    mtl::AutoObjCPtr<id<MTLDepthStencilState>> getNullDepthStencilState(id<MTLDevice> device);
-    mtl::AutoObjCPtr<id<MTLDepthStencilState>> getDepthStencilState(
-        id<MTLDevice> device,
-        const mtl::DepthStencilDesc &desc);
-    mtl::AutoObjCPtr<id<MTLSamplerState>> getSamplerState(id<MTLDevice> device,
-                                                          const mtl::SamplerDesc &desc);
+    AutoObjCPtr<id<MTLDepthStencilState>> getNullDepthStencilState(id<MTLDevice> device);
+    AutoObjCPtr<id<MTLDepthStencilState>> getDepthStencilState(id<MTLDevice> device,
+                                                               const DepthStencilDesc &desc);
+    AutoObjCPtr<id<MTLSamplerState>> getSamplerState(id<MTLDevice> device, const SamplerDesc &desc);
     // Null sampler state uses default SamplerDesc
-    mtl::AutoObjCPtr<id<MTLSamplerState>> getNullSamplerState(mtl::Context *context);
-    mtl::AutoObjCPtr<id<MTLSamplerState>> getNullSamplerState(id<MTLDevice> device);
+    AutoObjCPtr<id<MTLSamplerState>> getNullSamplerState(Context *context);
+    AutoObjCPtr<id<MTLSamplerState>> getNullSamplerState(id<MTLDevice> device);
     void clear();
 
   private:
-    mtl::AutoObjCPtr<id<MTLDepthStencilState>> mNullDepthStencilState = nil;
-    std::unordered_map<mtl::DepthStencilDesc, mtl::AutoObjCPtr<id<MTLDepthStencilState>>>
-        mDepthStencilStates;
-    std::unordered_map<mtl::SamplerDesc, mtl::AutoObjCPtr<id<MTLSamplerState>>> mSamplerStates;
+    AutoObjCPtr<id<MTLDepthStencilState>> mNullDepthStencilState = nil;
+    std::unordered_map<DepthStencilDesc, AutoObjCPtr<id<MTLDepthStencilState>>> mDepthStencilStates;
+    std::unordered_map<SamplerDesc, AutoObjCPtr<id<MTLSamplerState>>> mSamplerStates;
 };
+
+}  // namespace mtl
 }  // namespace rx
 
 static inline bool operator==(const rx::mtl::VertexDesc &lhs, const rx::mtl::VertexDesc &rhs)
@@ -438,4 +433,4 @@ static inline bool operator==(const MTLClearColor &lhs, const MTLClearColor &rhs
            lhs.alpha == rhs.alpha;
 }
 
-#endif /* LIBANGLE_RENDERER_METAL_STATECACHEMTL_H_ */
+#endif /* LIBANGLE_RENDERER_METAL_MTL_STATE_CACHE_H_ */

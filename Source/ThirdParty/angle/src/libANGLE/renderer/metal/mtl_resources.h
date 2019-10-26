@@ -37,11 +37,11 @@ class Resource;
 class Texture;
 class Buffer;
 
-typedef std::shared_ptr<Resource> ResourceRef;
-typedef std::shared_ptr<Texture> TextureRef;
-typedef std::weak_ptr<Texture> TextureWeakRef;
-typedef std::shared_ptr<Buffer> BufferRef;
-typedef std::weak_ptr<Buffer> BufferWeakRef;
+using ResourceRef    = std::shared_ptr<Resource>;
+using TextureRef     = std::shared_ptr<Texture>;
+using TextureWeakRef = std::weak_ptr<Texture>;
+using BufferRef      = std::shared_ptr<Buffer>;
+using BufferWeakRef  = std::weak_ptr<Buffer>;
 
 class Resource : angle::NonCopyable
 {
@@ -54,13 +54,13 @@ class Resource : angle::NonCopyable
 
     const std::atomic<uint64_t> &getCommandBufferQueueSerial() const
     {
-        return mRef->mCmdBufferQueueSerial;
+        return mUsageRef->cmdBufferQueueSerial;
     }
 
     // Flag indicate whether we should synchornize the content to CPU after GPU changed this
     // resource's content.
-    bool isCPUReadMemDirty() const { return mRef->mCPUReadMemDirty; }
-    void resetCPUReadMemDirty() { mRef->mCPUReadMemDirty = false; }
+    bool isCPUReadMemDirty() const { return mUsageRef->cpuReadMemDirty; }
+    void resetCPUReadMemDirty() { mUsageRef->cpuReadMemDirty = false; }
 
   protected:
     Resource();
@@ -68,16 +68,23 @@ class Resource : angle::NonCopyable
     Resource(Resource *other);
 
   private:
-    struct Ref
+    struct UsageRef
     {
-        // The command buffer's writing ref count
-        std::atomic<uint64_t> mCmdBufferQueueSerial{0};
+        // The id of the last command buffer that is using this resource.
+        std::atomic<uint64_t> cmdBufferQueueSerial{0};
 
-        // TODO(hqle): resource dirty handle is not threadsafe.
-        bool mCPUReadMemDirty = false;
+        // NOTE(hqle): resource dirty handle is not threadsafe.
+        // This flag means the resource was issued to be modified by GPU, if CPU wants to read
+        // its content, explicit synchornization call must be invoked.
+        bool cpuReadMemDirty = false;
     };
 
-    std::shared_ptr<Ref> mRef;
+    // One resource object might just be a view of another resource. For example, a texture 2d
+    // object might be a view of one face of a cube texture object. Another example is one texture
+    // object of size 2x2 might be a mipmap view of a texture object size 4x4. Thus, if one object
+    // is being used by a command buffer, it means the other object is being used also. In this
+    // case, the two objects must share the same UsageRef property.
+    std::shared_ptr<UsageRef> mUsageRef;
 };
 
 class Texture final : public Resource,
@@ -138,7 +145,7 @@ class Texture final : public Resource,
     void set(id<MTLTexture> metalTexture);
 
   private:
-    typedef WrappedObject<id<MTLTexture>> ParentClass;
+    using ParentClass = WrappedObject<id<MTLTexture>>;
 
     Texture(id<MTLTexture> metalTexture);
     Texture(ContextMtl *context,

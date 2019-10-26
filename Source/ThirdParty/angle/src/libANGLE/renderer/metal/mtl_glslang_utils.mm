@@ -3,18 +3,20 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
-// GlslangWrapperMtl: Wrapper for Khronos's glslang compiler.
+// GlslangUtils: Wrapper for Khronos's glslang compiler.
 //
 
-#include "libANGLE/renderer/metal/GlslangWrapperMtl.h"
+#include "libANGLE/renderer/metal/mtl_glslang_utils.h"
 
 #include "libANGLE/renderer/glslang_wrapper_utils.h"
 
 namespace rx
 {
+namespace mtl
+{
 namespace
 {
-angle::Result ErrorHandler(mtl::ErrorHandler *context, GlslangError)
+angle::Result HandleError(ErrorHandler *context, GlslangError)
 {
     ANGLE_MTL_TRY(context, false);
     return angle::Result::Stop;
@@ -28,7 +30,7 @@ GlslangSourceOptions CreateSourceOptions()
     options.uniformsAndXfbDescriptorSetIndex = kDefaultUniformsBindingIndex;
     options.textureDescriptorSetIndex        = 0;
     options.driverUniformsDescriptorSetIndex = kDriverUniformsBindingIndex;
-    // TODO(hqle): Unused for now, until we support ES 3.0
+    // NOTE(hqle): Unused for now, until we support ES 3.0
     options.shaderResourceDescriptorSetIndex = -1;
     options.xfbBindingIndexStart             = -1;
 
@@ -40,22 +42,23 @@ GlslangSourceOptions CreateSourceOptions()
 }  // namespace
 
 // static
-void GlslangWrapperMtl::GetShaderSource(const gl::ProgramState &programState,
-                                        const gl::ProgramLinkedResources &resources,
-                                        gl::ShaderMap<std::string> *shaderSourcesOut)
+void GlslangUtils::GetShaderSource(const gl::ProgramState &programState,
+                                   const gl::ProgramLinkedResources &resources,
+                                   gl::ShaderMap<std::string> *shaderSourcesOut)
 {
     GlslangGetShaderSource(CreateSourceOptions(), false, programState, resources, shaderSourcesOut);
 }
 
 // static
-angle::Result GlslangWrapperMtl::GetShaderCode(mtl::ErrorHandler *context,
-                                               const gl::Caps &glCaps,
-                                               bool enableLineRasterEmulation,
-                                               const gl::ShaderMap<std::string> &shaderSources,
-                                               gl::ShaderMap<std::vector<uint32_t>> *shaderCodeOut)
+angle::Result GlslangUtils::GetShaderCode(ErrorHandler *context,
+                                          const gl::Caps &glCaps,
+                                          bool enableLineRasterEmulation,
+                                          const gl::ShaderMap<std::string> &shaderSources,
+                                          gl::ShaderMap<std::vector<uint32_t>> *shaderCodeOut)
 {
     return GlslangGetShaderSpirvCode(
-        [context](GlslangError error) { return ErrorHandler(context, error); }, glCaps,
+        [context](GlslangError error) { return HandleError(context, error); }, glCaps,
         enableLineRasterEmulation, shaderSources, shaderCodeOut);
 }
+}  // namespace mtl
 }  // namespace rx

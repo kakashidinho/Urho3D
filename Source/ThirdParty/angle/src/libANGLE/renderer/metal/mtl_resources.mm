@@ -15,10 +15,9 @@
 
 #include "common/debug.h"
 #include "libANGLE/renderer/metal/ContextMtl.h"
+#include "libANGLE/renderer/metal/DisplayMtl.h"
 #include "libANGLE/renderer/metal/mtl_command_buffer.h"
 #include "libANGLE/renderer/metal/mtl_format_utils.h"
-
-#define MIP_SIZE(baseSize, level) std::max<NSUInteger>(1, baseSize >> level)
 
 namespace rx
 {
@@ -26,39 +25,42 @@ namespace mtl
 {
 namespace
 {
+inline NSUInteger GetMipSize(NSUInteger baseSize, NSUInteger level)
+{
+    return std::max<NSUInteger>(1, baseSize >> level);
+}
+
 void SetTextureSwizzle(ContextMtl *context,
                        const Format &format,
                        MTLTextureDescriptor *textureDescOut)
 {
-#if (TARGET_OS_OSX || TARGET_OS_MACCATALYST) && defined(__MAC_10_15)
-    if (ANGLE_APPLE_AVAILABLE_XC(10.15, 13.0))
+// Texture swizzle functions's declarations are only available if macos 10.15 sdk is present
+#if defined(__MAC_10_15)
+    if (context->getDisplay()->getNativeLimitations().hasTextureSwizzle)
     {
-        if ([context->getMetalDevice() supportsFamily:MTLGPUFamilyMac2])
+        // Work around Metal doesn't have native support for DXT1 without alpha.
+        switch (format.intendedFormatId)
         {
-            // Work around Metal doesn't have native support for DXT1 without alpha.
-            switch (format.intendedFormatId)
-            {
-                case angle::FormatID::BC1_RGB_UNORM_BLOCK:
-                case angle::FormatID::BC1_RGB_UNORM_SRGB_BLOCK:
-                    textureDescOut.swizzle =
-                        MTLTextureSwizzleChannelsMake(MTLTextureSwizzleRed, MTLTextureSwizzleGreen,
-                                                      MTLTextureSwizzleBlue, MTLTextureSwizzleOne);
-                    break;
-                default:
-                    break;
-            }
+            case angle::FormatID::BC1_RGB_UNORM_BLOCK:
+            case angle::FormatID::BC1_RGB_UNORM_SRGB_BLOCK:
+                textureDescOut.swizzle =
+                    MTLTextureSwizzleChannelsMake(MTLTextureSwizzleRed, MTLTextureSwizzleGreen,
+                                                  MTLTextureSwizzleBlue, MTLTextureSwizzleOne);
+                break;
+            default:
+                break;
         }
     }
 #endif
 }
 }  // namespace
 // Resource implementation
-Resource::Resource() : mRef(std::make_shared<Ref>()) {}
+Resource::Resource() : mUsageRef(std::make_shared<UsageRef>()) {}
 
 // Share the GPU usage ref with other resource
-Resource::Resource(Resource *other) : mRef(other->mRef)
+Resource::Resource(Resource *other) : mUsageRef(other->mUsageRef)
 {
-    ASSERT(mRef);
+    ASSERT(mUsageRef);
 }
 
 bool Resource::isBeingUsedByGPU(Context *context) const
@@ -68,21 +70,21 @@ bool Resource::isBeingUsedByGPU(Context *context) const
 
 void Resource::setUsedByCommandBufferWithQueueSerial(uint64_t serial, bool writing)
 {
-    auto curSerial = mRef->mCmdBufferQueueSerial.load(std::memory_order_relaxed);
+    auto curSerial = mUsageRef->cmdBufferQueueSerial.load(std::memory_order_relaxed);
     do
     {
         if (curSerial >= serial)
         {
             return;
         }
-    } while (!mRef->mCmdBufferQueueSerial.compare_exchange_weak(
+    } while (!mUsageRef->cmdBufferQueueSerial.compare_exchange_weak(
         curSerial, serial, std::memory_order_release, std::memory_order_relaxed));
 
-    // TODO(hqle): This is not thread safe, if multiple command buffers on multiple threads
+    // NOTE(hqle): This is not thread safe, if multiple command buffers on multiple threads
     // are writing to it.
     if (writing)
     {
-        mRef->mCPUReadMemDirty = true;
+        mUsageRef->cpuReadMemDirty = true;
     }
 }
 
@@ -98,19 +100,11 @@ angle::Result Texture::Make2DTexture(ContextMtl *context,
 {
     ANGLE_MTL_OBJC_SCOPE
     {
-#if defined(URHO3D_ANGLE_METAL)
-        MTLTextureDescriptor *desc =
-            [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:format.metalFormat
-                                                               width:width
-                                                              height:height
-                                                           mipmapped:YES];
-#else
         MTLTextureDescriptor *desc =
             [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:format.metalFormat
                                                                width:width
                                                               height:height
                                                            mipmapped:mips == 0 || mips > 1];
-#endif
 
         SetTextureSwizzle(context, format, desc);
         refOut->reset(new Texture(context, desc, mips, renderTargetOnly, false));
@@ -214,7 +208,9 @@ Texture::Texture(Texture *original, MTLTextureType type, NSRange mipmapLevelRang
 void Texture::syncContent(ContextMtl *context)
 {
 #if TARGET_OS_OSX || TARGET_OS_MACCATALYST
-    // Make sure GPU & CPU contents are synchronized
+    // Make sure GPU & CPU contents are synchronized.
+    // NOTE: Only MacOS has separated storage for resource on CPU and GPU and needs explicit
+    // synchronization
     if (this->isCPUReadMemDirty())
     {
         mtl::BlitCommandEncoder *blitEncoder = context->getBlitCommandEncoder();
@@ -234,11 +230,15 @@ void Texture::replaceRegion(ContextMtl *context,
                             const uint8_t *data,
                             size_t bytesPerRow)
 {
+    if (mipmapLevel >= this->mipmapLevels())
+    {
+        return;
+    }
     CommandQueue &cmdQueue = context->cmdQueue();
 
     syncContent(context);
 
-    // TODO(hqle): what if multiple contexts on multiple threads are using this texture?
+    // NOTE(hqle): what if multiple contexts on multiple threads are using this texture?
     if (this->isBeingUsedByGPU(context))
     {
         context->flushCommandBufer();
@@ -264,7 +264,7 @@ void Texture::getBytes(ContextMtl *context,
 
     syncContent(context);
 
-    // TODO(hqle): what if multiple contexts on multiple threads are using this texture?
+    // NOTE(hqle): what if multiple contexts on multiple threads are using this texture?
     if (this->isBeingUsedByGPU(context))
     {
         context->flushCommandBufer();
@@ -307,12 +307,12 @@ uint32_t Texture::mipmapLevels() const
 
 uint32_t Texture::width(uint32_t level) const
 {
-    return static_cast<uint32_t>(MIP_SIZE(get().width, level));
+    return static_cast<uint32_t>(GetMipSize(get().width, level));
 }
 
 uint32_t Texture::height(uint32_t level) const
 {
-    return static_cast<uint32_t>(MIP_SIZE(get().height, level));
+    return static_cast<uint32_t>(GetMipSize(get().height, level));
 }
 
 gl::Extents Texture::size(uint32_t level) const
@@ -321,7 +321,7 @@ gl::Extents Texture::size(uint32_t level) const
 
     re.width  = width(level);
     re.height = height(level);
-    re.depth  = static_cast<uint32_t>(MIP_SIZE(get().depth, level));
+    re.depth  = static_cast<uint32_t>(GetMipSize(get().depth, level));
 
     return re;
 }
@@ -390,13 +390,13 @@ uint8_t *Buffer::map(ContextMtl *context)
 {
     CommandQueue &cmdQueue = context->cmdQueue();
 
-    // TODO(hqle): what if multiple contexts on multiple threads are using this buffer?
+    // NOTE(hqle): what if multiple contexts on multiple threads are using this buffer?
     if (this->isBeingUsedByGPU(context))
     {
         context->flushCommandBufer();
     }
 
-    // TODO(hqle): currently not support reading data written by GPU
+    // NOTE(hqle): currently not support reading data written by GPU
     cmdQueue.ensureResourceReadyForCPU(this);
 
     return reinterpret_cast<uint8_t *>([get() contents]);

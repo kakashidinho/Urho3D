@@ -21,6 +21,6 @@
 # THE SOFTWARE.
 #
 
-$(dirname $0)/cmake_generic.sh "$@" -G Xcode -DIOS=1
+$(dirname $0)/cmake_generic.sh "$@" -G Xcode -DIOS=1 -DIPHONEOS_DEPLOYMENT_TARGET=11.0 -DURHO3D_ANGLE_METAL=1
 
 # vi: set ts=4 sw=4 expandtab:

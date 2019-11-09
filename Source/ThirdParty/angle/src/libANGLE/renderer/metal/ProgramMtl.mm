@@ -47,11 +47,14 @@ spv::ExecutionModel ShaderTypeToSpvExecutionModel(gl::ShaderType shaderType)
     }
 }
 
-using BindingField = uint32_t(spirv_cross::MSLResourceBinding::*);
-template <BindingField bindingField1, BindingField bindingField2>
-angle::Result BindResources2(spirv_cross::CompilerMSL *compiler,
-                             const spirv_cross::SmallVector<spirv_cross::Resource> &resources,
-                             gl::ShaderType shaderType)
+// Some GLSL variables need 2 binding points in metal. For example,
+// glsl sampler will be converted to 2 metal objects: texture and sampler.
+// Thus we need to set 2 binding points for one glsl sampler variable.
+using BindingField = uint32_t spirv_cross::MSLResourceBinding::*;
+template <BindingField bindingField1, BindingField bindingField2 = bindingField1>
+angle::Result BindResources(spirv_cross::CompilerMSL *compiler,
+                            const spirv_cross::SmallVector<spirv_cross::Resource> &resources,
+                            gl::ShaderType shaderType)
 {
     auto &compilerMsl = *compiler;
 
@@ -96,7 +99,7 @@ angle::Result BindResources2(spirv_cross::CompilerMSL *compiler,
         }
 
         // bindingField can be buffer or texture, which will be translated to [[buffer(d)]] or
-        // [[texture(d)]]
+        // [[texture(d)]] or [[sampler(d)]]
         resBinding.*bindingField1 = bindingPoint;
         if (bindingField1 != bindingField2)
         {
@@ -107,14 +110,6 @@ angle::Result BindResources2(spirv_cross::CompilerMSL *compiler,
     }
 
     return angle::Result::Continue;
-}
-
-template <BindingField bindingField>
-angle::Result BindResources(spirv_cross::CompilerMSL *compiler,
-                            const spirv_cross::SmallVector<spirv_cross::Resource> &resources,
-                            gl::ShaderType shaderType)
-{
-    return BindResources2<bindingField, bindingField>(compiler, resources, shaderType);
 }
 
 void InitDefaultUniformBlock(const std::vector<sh::Uniform> &uniforms,
@@ -301,7 +296,7 @@ std::unique_ptr<LinkEvent> ProgramMtl::link(const gl::Context *context,
     // assignment done in that function.
     linkResources(resources);
 
-    mtl::GlslangUtils::GetShaderSource(mState, resources, &mShaderSource);
+    mtl::GlslangGetShaderSource(mState, resources, &mShaderSource);
 
     // NOTE(hqle): Parallelize linking.
     return std::make_unique<LinkEventDone>(linkImpl(context, infoLog));
@@ -318,8 +313,8 @@ angle::Result ProgramMtl::linkImpl(const gl::Context *glContext, gl::InfoLog &in
 
     // Convert GLSL to spirv code
     gl::ShaderMap<std::vector<uint32_t>> shaderCodes;
-    ANGLE_TRY(mtl::GlslangUtils::GetShaderCode(contextMtl, contextMtl->getCaps(), false,
-                                               mShaderSource, &shaderCodes));
+    ANGLE_TRY(mtl::GlslangGetShaderSpirvCode(contextMtl, contextMtl->getCaps(), false,
+                                             mShaderSource, &shaderCodes));
 
     // Convert spirv code to MSL
     ANGLE_TRY(convertToMsl(glContext, gl::ShaderType::Vertex, infoLog,
@@ -456,10 +451,9 @@ angle::Result ProgramMtl::convertToMsl(const gl::Context *glContext,
     ANGLE_TRY(BindResources<&spirv_cross::MSLResourceBinding::msl_buffer>(
         &compilerMsl, mslRes.uniform_buffers, shaderType));
 
-    auto bindingErr = BindResources2<&spirv_cross::MSLResourceBinding::msl_sampler,
-                                     &spirv_cross::MSLResourceBinding::msl_texture>(
-        &compilerMsl, mslRes.sampled_images, shaderType);
-    ANGLE_MTL_TRY(contextMtl, !IsError(bindingErr));
+    ANGLE_TRY((BindResources<&spirv_cross::MSLResourceBinding::msl_sampler,
+                             &spirv_cross::MSLResourceBinding::msl_texture>(
+        &compilerMsl, mslRes.sampled_images, shaderType)));
 
     // NOTE(hqle): spirv-cross uses exceptions to report error, what should we do here
     // in case of error?
@@ -914,12 +908,12 @@ angle::Result ProgramMtl::updateTextures(const gl::Context *glContext,
                 switch (shaderType)
                 {
                     case gl::ShaderType::Vertex:
-                        textureMtl->bindVertexShader(glContext, cmdEncoder, destBindingPoint,
-                                                     destBindingPoint);
+                        ANGLE_TRY(textureMtl->bindVertexShader(glContext, cmdEncoder,
+                                                               destBindingPoint, destBindingPoint));
                         break;
                     case gl::ShaderType::Fragment:
-                        textureMtl->bindFragmentShader(glContext, cmdEncoder, destBindingPoint,
-                                                       destBindingPoint);
+                        ANGLE_TRY(textureMtl->bindFragmentShader(
+                            glContext, cmdEncoder, destBindingPoint, destBindingPoint));
                         break;
                     default:
                         UNREACHABLE();

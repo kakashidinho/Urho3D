@@ -300,6 +300,7 @@ class ContextMtl : public ContextImpl, public mtl::Context
     void updateVertexArray(const gl::Context *context);
 
     angle::Result updateDefaultAttribute(size_t attribIndex);
+    angle::Result handleDirtyActiveTextures(const gl::Context *context);
     angle::Result handleDirtyDefaultAttribs(const gl::Context *context);
     angle::Result handleDirtyDriverUniforms(const gl::Context *context);
     angle::Result handleDirtyDepthStencilState(const gl::Context *context);
@@ -307,16 +308,6 @@ class ContextMtl : public ContextImpl, public mtl::Context
     angle::Result checkIfPipelineChanged(const gl::Context *context,
                                          gl::PrimitiveMode primitiveMode,
                                          Optional<mtl::RenderPipelineDesc> *changedPipelineDesc);
-
-    mtl::CommandBuffer mCmdBuffer;
-    mtl::RenderCommandEncoder mRenderEncoder;
-    mtl::BlitCommandEncoder mBlitEncoder;
-    mtl::ComputeCommandEncoder mComputeEncoder;
-
-    // Cached back-end objects
-    FramebufferMtl *mDrawFramebuffer = nullptr;
-    VertexArrayMtl *mVertexArray     = nullptr;
-    ProgramMtl *mProgram             = nullptr;
 
     // Dirty bits.
     enum DirtyBitType : size_t
@@ -336,6 +327,41 @@ class ContextMtl : public ContextImpl, public mtl::Context
         DIRTY_BIT_RENDER_PIPELINE,
         DIRTY_BIT_MAX,
     };
+
+    // See compiler/translator/TranslatorVulkan.cpp: AddDriverUniformsToShader()
+    struct DriverUniforms
+    {
+        float viewport[4];
+
+        float halfRenderAreaHeight;
+        float viewportYScale;
+        float negViewportYScale;
+
+        // NOTE(hqle): Transform feedsback is not supported yet.
+        uint32_t xfbActiveUnpaused;
+
+        int32_t xfbBufferOffsets[4];
+        uint32_t acbBufferOffsets[4];
+
+        // We'll use x, y, z for near / far / diff respectively.
+        float depthRange[4];
+    };
+
+    struct DefaultAttribute
+    {
+        // NOTE(hqle): Support integer default attributes in ES 3.0
+        float values[4];
+    };
+
+    mtl::CommandBuffer mCmdBuffer;
+    mtl::RenderCommandEncoder mRenderEncoder;
+    mtl::BlitCommandEncoder mBlitEncoder;
+    mtl::ComputeCommandEncoder mComputeEncoder;
+
+    // Cached back-end objects
+    FramebufferMtl *mDrawFramebuffer = nullptr;
+    VertexArrayMtl *mVertexArray     = nullptr;
+    ProgramMtl *mProgram             = nullptr;
 
     using DirtyBits = angle::BitSet<DIRTY_BIT_MAX>;
 
@@ -359,32 +385,7 @@ class ContextMtl : public ContextImpl, public mtl::Context
     // one buffer can be reused for any starting vertex in DrawArrays()
     mtl::BufferRef mTriFanArraysIndexBuffer;
 
-    // See compiler/translator/TranslatorVulkan.cpp: AddDriverUniformsToShader()
-    struct DriverUniforms
-    {
-        float viewport[4];
-
-        float halfRenderAreaHeight;
-        float viewportYScale;
-        float negViewportYScale;
-
-        // NOTE(hqle): Transform feedsback is not supported yet.
-        uint32_t xfbActiveUnpaused;
-
-        int32_t xfbBufferOffsets[4];
-        uint32_t acbBufferOffsets[4];
-
-        // We'll use x, y, z for near / far / diff respectively.
-        float depthRange[4];
-    };
-
     DriverUniforms mDriverUniforms;
-
-    struct DefaultAttribute
-    {
-        // NOTE(hqle): Support integer default attributes in ES 3.0
-        float values[4];
-    };
 
     DefaultAttribute mDefaultAttributes[mtl::kMaxVertexAttribs];
 };

@@ -95,6 +95,11 @@ class FramebufferMtl : public FramebufferImpl
     void onFinishedDrawingToFrameBuffer(const gl::Context *context,
                                         mtl::RenderCommandEncoder *encoder);
 
+    // The actual area will be adjusted based on framebuffer flipping property.
+    gl::Rectangle getReadPixelArea(const gl::Rectangle &glArea);
+
+    // NOTE: this method doesn't do the flipping of area. Caller must do it if needed before
+    // callling this. See getReadPixelsArea().
     angle::Result readPixelsImpl(const gl::Context *context,
                                  const gl::Rectangle &area,
                                  const PackPixelsParams &packPixelsParams,
@@ -131,6 +136,9 @@ class FramebufferMtl : public FramebufferImpl
                                            const gl::FramebufferAttachment *attachment,
                                            RenderTargetMtl **cachedRenderTarget);
 
+    // NOTE: we cannot use RenderTargetCache here because it doesn't support separate
+    // depth & stencil attachments as of now. Separate depth & stencil could be useful to
+    // save spaces on iOS devices. See doc/PackedDepthStencilSupport.md.
     std::array<RenderTargetMtl *, mtl::kMaxRenderTargets> mColorRenderTargets;
     std::array<bool, mtl::kMaxRenderTargets> mDiscardColors;
     RenderTargetMtl *mDepthRenderTarget   = nullptr;

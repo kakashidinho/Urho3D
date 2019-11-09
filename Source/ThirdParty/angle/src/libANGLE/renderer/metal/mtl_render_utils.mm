@@ -605,7 +605,7 @@ AutoObjCPtr<id<MTLComputePipelineState>> RenderUtils::getTriFanFromElemArrayGene
 
     IndexConvesionPipelineCacheKey key = {srcType, aligned};
 
-    auto &cache = mIndexConversionPipelineCaches[key];
+    auto &cache = mTriFanFromElemArrayGeneratorPipelineCaches[key];
 
     if (!cache)
     {
@@ -931,7 +931,7 @@ angle::Result RenderUtils::dispatchCompute(const gl::Context *context,
     NSUInteger w                  = pipelineState.threadExecutionWidth;
     MTLSize threadsPerThreadgroup = MTLSizeMake(w, 1, 1);
 
-    if (getDisplay()->getNativeLimitations().hasNonUniformDispatch)
+    if (getDisplay()->getFeatures().hasNonUniformDispatch.enabled)
     {
         MTLSize threads = MTLSizeMake(numThreads, 1, 1);
         cmdEncoder->dispatchNonUniform(threads, threadsPerThreadgroup);

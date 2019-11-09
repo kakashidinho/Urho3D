@@ -188,11 +188,7 @@ angle::Result FramebufferMtl::readPixels(const gl::Context *context,
         // nothing to read
         return angle::Result::Continue;
     }
-    gl::Rectangle flippedArea = clippedArea;
-    if (mFlipY)
-    {
-        flippedArea.y = fbRect.height - flippedArea.y - flippedArea.height;
-    }
+    gl::Rectangle flippedArea = getReadPixelArea(clippedArea);
 
     ContextMtl *contextMtl              = mtl::GetImpl(context);
     const gl::State &glState            = context->getState();
@@ -245,7 +241,7 @@ bool FramebufferMtl::checkStatus(const gl::Context *context) const
     }
 
     ContextMtl *contextMtl = mtl::GetImpl(context);
-    if (!contextMtl->getDisplay()->getNativeLimitations().allowSeparatedDepthStencilBuffers &&
+    if (!contextMtl->getDisplay()->getFeatures().allowSeparatedDepthStencilBuffers.enabled &&
         mState.hasSeparateDepthAndStencilAttachments())
     {
         return false;
@@ -293,7 +289,7 @@ angle::Result FramebufferMtl::syncState(const gl::Context *context,
                 {
                     ASSERT(dirtyBit >= gl::Framebuffer::DIRTY_BIT_COLOR_BUFFER_CONTENTS_0 &&
                            dirtyBit < gl::Framebuffer::DIRTY_BIT_COLOR_BUFFER_CONTENTS_MAX);
-                    // NOTE(hqle): What are we supposed to do?
+                    // NOTE: might need to notify context.
                 }
                 break;
             }
@@ -671,6 +667,21 @@ angle::Result FramebufferMtl::invalidateImpl(ContextMtl *contextMtl,
     }
 
     return angle::Result::Continue;
+}
+
+gl::Rectangle FramebufferMtl::getReadPixelArea(const gl::Rectangle &glArea)
+{
+    RenderTargetMtl *colorReadRT = getColorReadRenderTarget();
+    ASSERT(colorReadRT);
+    gl::Rectangle flippedArea = glArea;
+    if (mFlipY)
+    {
+        flippedArea.y =
+            colorReadRT->getTexture()->height(static_cast<uint32_t>(colorReadRT->getLevelIndex())) -
+            flippedArea.y - flippedArea.height;
+    }
+
+    return flippedArea;
 }
 
 angle::Result FramebufferMtl::readPixelsImpl(const gl::Context *context,

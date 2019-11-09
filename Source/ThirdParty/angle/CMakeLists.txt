@@ -426,6 +426,11 @@ set(libangle_metal_sources
 source_group("libangle-Metal"            FILES ${libangle_metal_sources})
 list (APPEND SOURCE_FILES ${libangle_metal_sources})
 
+# disable ARC
+foreach (FILE ${libangle_metal_sources})
+set_property (SOURCE ${FILE} APPEND_STRING PROPERTY COMPILE_FLAGS "-fno-objc-arc")
+endforeach ()
+
 endif()
 
 #############################################################################

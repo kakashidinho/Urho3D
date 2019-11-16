@@ -45,8 +45,8 @@ const gl::InternalFormat &GetReadAttachmentInfo(const gl::Context *context,
 }
 
 // FramebufferMtl implementation
-FramebufferMtl::FramebufferMtl(const gl::FramebufferState &state, bool flipY, bool alwaysDiscard)
-    : FramebufferImpl(state), mAlwaysDiscardDepthStencil(alwaysDiscard), mFlipY(flipY)
+FramebufferMtl::FramebufferMtl(const gl::FramebufferState &state, bool flipY, bool isDefault)
+    : FramebufferImpl(state), mIsDefaultFBO(isDefault), mFlipY(flipY)
 {
     reset();
 }
@@ -360,12 +360,17 @@ void FramebufferMtl::onFinishedDrawingToFrameBuffer(const gl::Context *context,
         }
     }
     encoder->setDepthStencilStoreAction(
-        (mDiscardDepth || mAlwaysDiscardDepthStencil) ? MTLStoreActionDontCare
-                                                      : MTLStoreActionStore,
-        (mDiscardStencil || mAlwaysDiscardDepthStencil) ? MTLStoreActionDontCare
-                                                        : MTLStoreActionStore);
+        (mDiscardDepth) ? MTLStoreActionDontCare : MTLStoreActionStore,
+        (mDiscardStencil) ? MTLStoreActionDontCare : MTLStoreActionStore);
 
     contextMtl->endEncoding(encoder);
+
+    // Reset discard flags:
+    for (auto &discardColor : mDiscardColors)
+    {
+        discardColor = false;
+    }
+    mDiscardDepth = mDiscardStencil = false;
 }
 
 angle::Result FramebufferMtl::updateColorRenderTarget(const gl::Context *context,

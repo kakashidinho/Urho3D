@@ -19,6 +19,10 @@
   3. This notice may not be removed or altered from any source distribution.
 */
 
+#if defined (URHO3D_ANGLE_METAL)
+#define SDL_VIDEO_STATIC_ANGLE 1
+#endif
+
 /**
  *  \file SDL_egl.h
  *

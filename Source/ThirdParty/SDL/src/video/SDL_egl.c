@@ -95,6 +95,46 @@ if (!_this->egl_data->NAME) \
 }
 #endif
 
+#if defined(URHO3D_ANGLE_METAL)
+    EGLDisplay EGLAPIENTRY eglGetDisplay(EGLNativeDisplayType display_id);
+    EGLBoolean EGLAPIENTRY eglInitialize(EGLDisplay dpy, EGLint *major, EGLint *minor);
+    EGLBoolean EGLAPIENTRY eglTerminate(EGLDisplay dpy);
+    __eglMustCastToProperFunctionPointerType EGLAPIENTRY eglGetProcAddress(const char *procname);
+    EGLBoolean EGLAPIENTRY eglChooseConfig(EGLDisplay dpy,
+                                           const EGLint *attrib_list,
+                                           EGLConfig *configs,
+                                           EGLint config_size,
+                                           EGLint *num_config);
+    EGLBoolean EGLAPIENTRY eglGetConfigAttrib(EGLDisplay dpy,
+                                              EGLConfig config,
+                                              EGLint attribute,
+                                              EGLint *value);
+    EGLContext EGLAPIENTRY eglCreateContext(EGLDisplay dpy,
+                                            EGLConfig config,
+                                            EGLContext share_context,
+                                            const EGLint *attrib_list);
+    EGLBoolean EGLAPIENTRY eglDestroyContext(EGLDisplay dpy, EGLContext ctx);
+    EGLSurface EGLAPIENTRY eglCreateWindowSurface(EGLDisplay dpy,
+                                                  EGLConfig config,
+                                                  EGLNativeWindowType win,
+                                                  const EGLint *attrib_list);
+    EGLBoolean EGLAPIENTRY eglDestroySurface(EGLDisplay dpy, EGLSurface surface);
+    EGLBoolean EGLAPIENTRY eglMakeCurrent(EGLDisplay dpy,
+                                          EGLSurface draw,
+                                          EGLSurface read,
+                                          EGLContext ctx);
+    EGLBoolean EGLAPIENTRY eglSwapBuffers(EGLDisplay dpy, EGLSurface surface);
+    EGLBoolean EGLAPIENTRY eglSwapInterval(EGLDisplay dpy, EGLint interval);
+    EGLBoolean EGLAPIENTRY eglWaitNative(EGLint engine);
+    EGLBoolean EGLAPIENTRY eglWaitGL(void);
+    EGLBoolean EGLAPIENTRY eglBindAPI(EGLenum api);
+    const char *EGLAPIENTRY eglQueryString(EGLDisplay dpy, EGLint name);
+    EGLint EGLAPIENTRY eglGetError(void);
+    EGLDisplay EGLAPIENTRY eglGetPlatformDisplay(EGLenum platform,
+                                                 void *native_display,
+                                                 const EGLAttrib *attrib_list);
+#endif // URHO3D_ANGLE_METAL
+
 static const char * SDL_EGL_GetErrorName(EGLint eglErrorCode)
 {
 #define SDL_EGL_ERROR_TRANSLATE(e) case e: return #e;
@@ -409,7 +449,9 @@ SDL_EGL_LoadLibrary(_THIS, const char *egl_path, NativeDisplayType native_displa
     LOAD_FUNC(eglBindAPI);
     LOAD_FUNC(eglQueryString);
     LOAD_FUNC(eglGetError);
-
+#if defined(URHO3D_ANGLE_METAL)
+    LOAD_FUNC(eglGetPlatformDisplay);
+#endif
     if (_this->egl_data->eglQueryString) {
         /* EGL 1.5 allows querying for client version */
         const char *egl_version = _this->egl_data->eglQueryString(EGL_NO_DISPLAY, EGL_VERSION);
@@ -445,6 +487,20 @@ SDL_EGL_LoadLibrary(_THIS, const char *egl_path, NativeDisplayType native_displa
     }
     /* Try the implementation-specific eglGetDisplay even if eglGetPlatformDisplay fails */
     if (_this->egl_data->egl_display == EGL_NO_DISPLAY) {
+#if defined(URHO3D_ANGLE_METAL)
+        if (_this->egl_data->eglGetPlatformDisplay)
+        {
+            int attr_index = 0;
+            EGLAttrib attribs[64];
+            attribs[attr_index++] = EGL_PLATFORM_ANGLE_TYPE_ANGLE;
+            attribs[attr_index++] = EGL_PLATFORM_ANGLE_TYPE_METAL_ANGLE;
+            attribs[attr_index++] = EGL_NONE;
+            attribs[attr_index++] = EGL_NONE;
+            _this->egl_data->egl_display = _this->egl_data->eglGetPlatformDisplay(EGL_PLATFORM_ANGLE_ANGLE, (void *)(size_t)native_display, attribs);
+
+        }
+        else
+#endif
         _this->egl_data->egl_display = _this->egl_data->eglGetDisplay(native_display);
     }
     if (_this->egl_data->egl_display == EGL_NO_DISPLAY) {

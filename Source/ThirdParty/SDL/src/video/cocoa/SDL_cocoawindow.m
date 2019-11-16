@@ -1465,6 +1465,12 @@ Cocoa_CreateWindow(_THIS, SDL_Window * window)
     if ((window->flags & SDL_WINDOW_OPENGL) &&
         _this->gl_config.profile_mask == SDL_GL_CONTEXT_PROFILE_ES) {
         [contentView setWantsLayer:TRUE];
+#ifdef URHO3D_ANGLE_METAL
+        if(!(window->flags & SDL_WINDOW_ALLOW_HIGHDPI))
+        {
+            contentView.layer.contentsScale = 1;
+        }
+#endif
     }
 #endif /* SDL_VIDEO_OPENGL_EGL */
 #endif /* SDL_VIDEO_OPENGL_ES2 */

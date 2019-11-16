@@ -29,7 +29,10 @@
 #include "../../Graphics/Texture2D.h"
 #include "../../Math/Color.h"
 
-#if defined(IOS) || defined(TVOS)
+#if defined(URHO3D_ANGLE_METAL)
+#include <angle/GLES2/gl2.h>
+#include <angle/GLES2/gl2ext.h>
+#elif defined(IOS) || defined(TVOS)
 #include <OpenGLES/ES2/gl.h>
 #include <OpenGLES/ES2/glext.h>
 #elif defined(__ANDROID__) || defined (__arm__) || defined(__aarch64__) || defined (__EMSCRIPTEN__)

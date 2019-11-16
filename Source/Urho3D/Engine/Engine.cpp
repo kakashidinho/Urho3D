@@ -984,6 +984,10 @@ void Engine::HandleExitRequested(StringHash eventType, VariantMap& eventData)
 
 void Engine::DoExit()
 {
+#if defined(URHO3D_ANGLE_METAL)
+        exiting_ = true;
+        Time::Sleep(250);
+#endif
     auto* graphics = GetSubsystem<Graphics>();
     if (graphics)
         graphics->Close();

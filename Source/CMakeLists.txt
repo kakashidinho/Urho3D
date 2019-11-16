@@ -135,6 +135,10 @@ if (NOT ANDROID AND NOT ARM AND NOT WEB)
     endif ()
 endif ()
 
+if(URHO3D_ANGLE_METAL)
+    add_subdirectory (ThirdParty/angle)
+endif()
+
 # Urho3D game engine library
 add_subdirectory (Urho3D)
 
@@ -153,3 +157,5 @@ add_subdirectory (Samples)
 if (URHO3D_EXTRAS)
     add_subdirectory (Extras)
 endif ()
+
+

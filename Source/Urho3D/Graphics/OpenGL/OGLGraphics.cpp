@@ -45,6 +45,10 @@
 
 #include <SDL/SDL.h>
 
+#if  defined(URHO3D_ANGLE_METAL)
+#include "../../../ThirdParty/angle/include/EGL/egl.h"
+#endif
+
 #include "../../DebugNew.h"
 
 #ifdef GL_ES_VERSION_2_0
@@ -62,6 +66,14 @@ extern "C"
     GL_APICALL void GL_APIENTRY glDrawElementsInstancedANGLE (GLenum mode, GLsizei count, GLenum type, const void *indices, GLsizei primcount);
     GL_APICALL void GL_APIENTRY glVertexAttribDivisorANGLE (GLuint index, GLuint divisor);
 }
+#endif
+
+#if defined(URHO3D_ANGLE_VULKAN) || defined(URHO3D_ANGLE_METAL)
+    extern "C"
+    {
+        EGLDisplay EGLAPIENTRY eglGetCurrentDisplay(void);
+        const char *EGLAPIENTRY eglQueryString(EGLDisplay dpy, EGLint name);
+    }
 #endif
 
 #ifdef _WIN32
@@ -229,10 +241,14 @@ Graphics::Graphics(Context* context) :
     shaderPath_("Shaders/GLSL/"),
     shaderExtension_(".glsl"),
     orientations_("LandscapeLeft LandscapeRight"),
-#ifndef GL_ES_VERSION_2_0
-    apiName_("GL2")
+#if defined(URHO3D_ANGLE_METAL)
+    apiName_("GLES2-METAL")
 #else
-    apiName_("GLES2")
+    #ifndef GL_ES_VERSION_2_0
+        apiName_("GL2")
+    #else
+        apiName_("GLES2")
+    #endif
 #endif
 {
     SetTextureUnitMappings();
@@ -416,7 +432,10 @@ bool Graphics::SetMode(int width, int height, bool fullscreen, bool borderless, 
             flags |= SDL_WINDOW_ALLOW_HIGHDPI;
 
         SDL_SetHint(SDL_HINT_ORIENTATIONS, orientations_.CString());
-
+#if  defined(URHO3D_ANGLE_METAL)
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+        SDL_SetHint(SDL_HINT_OPENGL_ES_DRIVER, "1");
+#endif
         for (;;)
         {
             if (!externalWindow_)
@@ -2453,6 +2472,9 @@ void Graphics::Restore()
     // Ensure first that the context exists
     if (!impl_->context_)
     {
+#if defined(URHO3D_ANGLE_VULKAN) || defined(URHO3D_ANGLE_METAL)
+        SDL_SetHint(SDL_HINT_OPENGL_ES_DRIVER, "1");
+#endif
         impl_->context_ = SDL_GL_CreateContext(window_);
 
 #ifndef GL_ES_VERSION_2_0

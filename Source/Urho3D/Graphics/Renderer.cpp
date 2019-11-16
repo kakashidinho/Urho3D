@@ -1371,10 +1371,20 @@ bool Renderer::ResizeInstancingBuffer(unsigned numInstances)
 
 void Renderer::OptimizeLightByScissor(Light* light, Camera* camera)
 {
+    /*
+     TBD elix22
+     Angle-Vulkan can't handle large number of different scissor states
+     pending an fix from the Angle development team.
+     https://bugs.chromium.org/p/angleproject/issues/detail?id=3143
+    */
+#if  defined(URHO3D_ANGLE_METAL)
+    graphics_->SetScissorTest(false);
+#else
     if (light && light->GetLightType() != LIGHT_DIRECTIONAL)
         graphics_->SetScissorTest(true, GetLightScissor(light, camera));
     else
         graphics_->SetScissorTest(false);
+#endif
 }
 
 void Renderer::OptimizeLightByStencil(Light* light, Camera* camera)

@@ -228,6 +228,10 @@ add_definitions(-DUSING_GENERATED_CONFIG_H)
 # Urho3D - use 'generated' path suffix for generated config header file, the suffic prevents overwriting the header file with the same name in the source tree in case of non out-of-source build tree is being used
 set (INCLUDE_DIRS ${SDL2_BINARY_DIR}/include/generated ${SDL2_SOURCE_DIR}/include)
 
+if(URHO3D_ANGLE_METAL)
+  list (APPEND INCLUDE_DIRS ../angle/include)
+endif()
+
 # All these ENABLED_BY_DEFAULT vars will default to ON if not specified, so
 #  you only need to have a platform override them if they are disabling.
 # Urho3D - bug fix - commented out double initialization of the OPT_DEF_ASM variable, it has been initialized properly in "Compiler info" section above
@@ -998,9 +1002,17 @@ elseif(APPLE)
       else ()
         set (VIDEO_VULKAN OFF)
       endif ()
+      if(URHO3D_ANGLE_METAL)
+        set(SDL_VIDEO_OPENGL_EGL 1)
+        set(SDL_VIDEO_OPENGL_ES2 1)
+      endif()
     else ()
       CheckOpenGL ()
       CheckOpenGLES ()
+      if(URHO3D_ANGLE_METAL)
+        set(SDL_VIDEO_OPENGL_EGL 1)
+        set(SDL_VIDEO_OPENGL_ES2 1)
+      endif()
     endif ()
   endif()
 

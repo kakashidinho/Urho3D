@@ -259,12 +259,16 @@ bool Texture2D::SetData(Image* image, bool useAlpha)
         unsigned levels = image->GetNumCompressedLevels();
         unsigned format = graphics_->GetFormat(image->GetCompressedFormat());
         bool needDecompress = false;
-
+#if defined(URHO3D_ANGLE_VULKAN) || defined(URHO3D_ANGLE_METAL)
+        format = Graphics::GetRGBAFormat();
+        needDecompress = true;
+#else
         if (!format)
         {
             format = Graphics::GetRGBAFormat();
             needDecompress = true;
         }
+#endif
 
         unsigned mipsToSkip = mipsToSkip_[quality];
         if (mipsToSkip >= levels)

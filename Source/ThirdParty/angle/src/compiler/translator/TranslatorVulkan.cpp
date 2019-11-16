@@ -351,8 +351,9 @@ const TVariable *AddGraphicsDriverUniformsToShader(TIntermBlock *root, TSymbolTa
     depthRangeParamsFields->push_back(new TField(new TType(EbtFloat, EbpHigh, EvqGlobal, 1, 1),
                                                  ImmutableString("diff"), TSourceLoc(),
                                                  SymbolType::AngleInternal));
+    // This additional field might be used by subclass such as TranslatorMetal.
     depthRangeParamsFields->push_back(new TField(new TType(EbtFloat, EbpHigh, EvqGlobal, 1, 1),
-                                                 ImmutableString("dummyPacker"), TSourceLoc(),
+                                                 ImmutableString("reserved"), TSourceLoc(),
                                                  SymbolType::AngleInternal));
     TStructure *emulatedDepthRangeParams = new TStructure(
         symbolTable, kEmulatedDepthRangeParams, depthRangeParamsFields, SymbolType::AngleInternal);
@@ -656,11 +657,11 @@ TranslatorVulkan::TranslatorVulkan(sh::GLenum type, ShShaderSpec spec)
     : TCompiler(type, spec, SH_GLSL_450_CORE_OUTPUT)
 {}
 
-bool TranslatorVulkan::preWriting(TIntermBlock *root,
-                                  ShCompileOptions compileOptions,
-                                  PerformanceDiagnostics * /*perfDiagnostics*/,
-                                  const TVariable **driverUniformsOut,
-                                  TOutputVulkanGLSL *outputGLSL)
+bool TranslatorVulkan::translateImpl(TIntermBlock *root,
+                                     ShCompileOptions compileOptions,
+                                     PerformanceDiagnostics * /*perfDiagnostics*/,
+                                     const TVariable **driverUniformsOut,
+                                     TOutputVulkanGLSL *outputGLSL)
 {
     TInfoSinkBase &sink = getInfoSink().obj;
 
@@ -914,6 +915,10 @@ bool TranslatorVulkan::preWriting(TIntermBlock *root,
         }
 
         // Append depth range translation to main.
+        if (!transformDepthBeforeCorrection(root, driverUniforms))
+        {
+            return false;
+        }
         if (!AppendVertexShaderDepthCorrectionToMain(this, root, &getSymbolTable()))
         {
             return false;
@@ -956,7 +961,7 @@ bool TranslatorVulkan::translate(TIntermBlock *root,
                                  getNameMap(), &getSymbolTable(), getShaderType(),
                                  getShaderVersion(), getOutputType(), compileOptions);
 
-    if (!preWriting(root, compileOptions, perfDiagnostics, nullptr, &outputGLSL))
+    if (!translateImpl(root, compileOptions, perfDiagnostics, nullptr, &outputGLSL))
     {
         return false;
     }
@@ -977,6 +982,14 @@ TIntermBinary *TranslatorVulkan::getDriverUniformNegViewportYScaleRef(
     const TVariable *driverUniforms) const
 {
     return CreateDriverUniformRef(driverUniforms, kNegViewportYScale);
+}
+
+TIntermBinary *TranslatorVulkan::getDriverUniformDepthRangeReservedFieldRef(
+    const TVariable *driverUniforms) const
+{
+    TIntermBinary *depthRange = CreateDriverUniformRef(driverUniforms, kDepthRange);
+
+    return new TIntermBinary(EOpIndexDirectStruct, depthRange, CreateIndexNode(3));
 }
 
 }  // namespace sh

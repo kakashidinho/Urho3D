@@ -56,7 +56,7 @@
 #define glClearDepth glClearDepthf
 #endif
 
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) || defined(URHO3D_ANGLE_METAL)
 // Emscripten provides even all GL extension functions via static linking. However there is
 // no GLES2-specific extension header at the moment to include instanced rendering declarations,
 // so declare them manually from GLES3 gl2ext.h. Emscripten will provide these when linking final output.
@@ -970,7 +970,7 @@ void Graphics::Draw(PrimitiveType type, unsigned indexStart, unsigned indexCount
 void Graphics::DrawInstanced(PrimitiveType type, unsigned indexStart, unsigned indexCount, unsigned minVertex, unsigned vertexCount,
     unsigned instanceCount)
 {
-#if !defined(GL_ES_VERSION_2_0) || defined(__EMSCRIPTEN__)
+#if !defined(GL_ES_VERSION_2_0) || defined(__EMSCRIPTEN__) || defined(URHO3D_ANGLE_METAL)
     if (!indexCount || !indexBuffer_ || !indexBuffer_->GetGPUObjectName() || !instancingSupport_)
         return;
 
@@ -982,7 +982,7 @@ void Graphics::DrawInstanced(PrimitiveType type, unsigned indexStart, unsigned i
 
     GetGLPrimitiveType(indexCount, type, primitiveCount, glPrimitiveType);
     GLenum indexType = indexSize == sizeof(unsigned short) ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT;
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) || defined(URHO3D_ANGLE_METAL)
     glDrawElementsInstancedANGLE(glPrimitiveType, indexCount, indexType, reinterpret_cast<const GLvoid*>(indexStart * indexSize),
         instanceCount);
 #else
@@ -2140,7 +2140,7 @@ unsigned Graphics::GetFormat(CompressedFormat format) const
     case CF_DXT1:
         return dxtTextureSupport_ ? GL_COMPRESSED_RGBA_S3TC_DXT1_EXT : 0;
 
-#if !defined(GL_ES_VERSION_2_0) || defined(__EMSCRIPTEN__)
+#if !defined(GL_ES_VERSION_2_0) || defined(__EMSCRIPTEN__) || defined(URHO3D_ANGLE_METAL)
     case CF_DXT3:
         return dxtTextureSupport_ ? GL_COMPRESSED_RGBA_S3TC_DXT3_EXT : 0;
 
@@ -2845,6 +2845,9 @@ void Graphics::CheckFeatureSupport()
     dxtTextureSupport_ = CheckExtension("EXT_texture_compression_dxt1");
     etcTextureSupport_ = CheckExtension("OES_compressed_ETC1_RGB8_texture");
     pvrtcTextureSupport_ = CheckExtension("IMG_texture_compression_pvrtc");
+#   if defined(GL_ES_VERSION_2_0) && defined(URHO3D_ANGLE_METAL)
+    instancingSupport_ = CheckExtension("ANGLE_instanced_arrays");
+#   endif
 #endif
 
     // Check for best supported depth renderbuffer format for GLES2
@@ -3430,7 +3433,7 @@ void Graphics::SetVertexAttribDivisor(unsigned location, unsigned divisor)
     else if (instancingSupport_)
         glVertexAttribDivisorARB(location, divisor);
 #else
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) || defined(URHO3D_ANGLE_METAL)
     if (instancingSupport_)
         glVertexAttribDivisorANGLE(location, divisor);
 #endif

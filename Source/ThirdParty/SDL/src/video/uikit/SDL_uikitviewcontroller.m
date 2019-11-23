@@ -179,9 +179,10 @@ SDL_HideHomeIndicatorHintChanged(void *userdata, const char *name, const char *o
 {
     /* Don't run the game loop while a messagebox is up */
     if (!UIKit_ShowingMessageBox()) {
+#ifndef URHO3D_ANGLE_METAL
         /* See the comment in the function definition. */
         UIKit_GL_RestoreCurrentContext();
-
+#endif
         animationCallback(animationCallbackParam);
     }
 }

@@ -44,6 +44,10 @@
 #include "SDL_uikitvulkan.h"
 #endif
 
+#if URHO3D_ANGLE_METAL
+#include "SDL_uikitegl.h"
+#endif
+
 #define UIKITVID_DRIVER_NAME "uikit"
 
 @implementation SDL_VideoData
@@ -104,7 +108,9 @@ UIKit_CreateDevice(int devindex)
         device->SetWindowBordered = UIKit_SetWindowBordered;
         device->SetWindowFullscreen = UIKit_SetWindowFullscreen;
         device->DestroyWindow = UIKit_DestroyWindow;
+#ifndef URHO3D_ANGLE_METAL
         device->GetWindowWMInfo = UIKit_GetWindowWMInfo;
+#endif
         device->GetDisplayUsableBounds = UIKit_GetDisplayUsableBounds;
 
 #if SDL_IPHONE_KEYBOARD
@@ -119,6 +125,18 @@ UIKit_CreateDevice(int devindex)
         device->GetClipboardText = UIKit_GetClipboardText;
         device->HasClipboardText = UIKit_HasClipboardText;
 
+#if URHO3D_ANGLE_METAL
+        /* Switch to EGL based functions */
+        device->GL_LoadLibrary = UIKIT_GLES_LoadLibrary;
+        device->GL_GetProcAddress = UIKIT_GLES_GetProcAddress;
+        device->GL_UnloadLibrary = UIKIT_GLES_UnloadLibrary;
+        device->GL_CreateContext = UIKIT_GLES_CreateContext;
+        device->GL_MakeCurrent = UIKIT_GLES_MakeCurrent;
+        device->GL_SetSwapInterval = UIKIT_GLES_SetSwapInterval;
+        device->GL_GetSwapInterval = UIKIT_GLES_GetSwapInterval;
+        device->GL_SwapWindow = UIKIT_GLES_SwapWindow;
+        device->GL_DeleteContext = UIKIT_GLES_DeleteContext;
+#else
         /* OpenGL (ES) functions */
         device->GL_MakeCurrent      = UIKit_GL_MakeCurrent;
         device->GL_GetDrawableSize  = UIKit_GL_GetDrawableSize;
@@ -128,6 +146,7 @@ UIKit_CreateDevice(int devindex)
         device->GL_GetProcAddress   = UIKit_GL_GetProcAddress;
         device->GL_LoadLibrary      = UIKit_GL_LoadLibrary;
         device->free = UIKit_DeleteDevice;
+#endif
 
 // Urho3D - iOS/tvOS simulator does not have Metal support
 #if SDL_VIDEO_VULKAN && !defined(TARGET_IPHONE_SIMULATOR)

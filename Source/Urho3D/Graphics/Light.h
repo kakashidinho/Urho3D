@@ -46,7 +46,7 @@ enum LightType
 static const float SHADOW_MIN_QUANTIZE = 0.1f;
 static const float SHADOW_MIN_VIEW = 1.0f;
 static const int MAX_LIGHT_SPLITS = 6;
-#ifdef DESKTOP_GRAPHICS
+#if defined(DESKTOP_GRAPHICS) || defined(URHO3D_ANGLE_METAL)
 static const unsigned MAX_CASCADE_SPLITS = 4;
 #else
 static const unsigned MAX_CASCADE_SPLITS = 1;

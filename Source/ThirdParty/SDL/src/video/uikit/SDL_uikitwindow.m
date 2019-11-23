@@ -42,6 +42,10 @@
 
 #include <Foundation/Foundation.h>
 
+#if URHO3D_ANGLE_METAL
+#include "SDL_uikitegl.h"
+#endif
+
 @implementation SDL_WindowData
 
 @synthesize uiwindow;
@@ -215,7 +219,10 @@ UIKit_CreateWindow(_THIS, SDL_Window *window)
         UIWindow *uiwindow = [[SDL_uikitwindow alloc] initWithFrame:data.uiscreen.bounds];
 
 #ifdef URHO3D_ANGLE_METAL
-        uiwindow.layer.contentsScale = 1;
+        if(!(window->flags & SDL_WINDOW_ALLOW_HIGHDPI))
+        {
+            uiwindow.layer.contentsScale = 1;
+        }
 #endif
         /* put the window on an external display if appropriate. */
         if (data.uiscreen != [UIScreen mainScreen]) {
@@ -227,6 +234,17 @@ UIKit_CreateWindow(_THIS, SDL_Window *window)
         }
     }
 
+#if URHO3D_ANGLE_METAL
+        /* The rest of this macro mess is OpenGL ES windows */
+        if (_this->gl_config.profile_mask == SDL_GL_CONTEXT_PROFILE_ES)
+        {
+            if (UIKIT_GLES_SetupWindow(_this, window) < 0) {
+                UIKit_DestroyWindow(_this, window);
+                return -1;
+            }
+            return 1;
+        }
+#endif
     return 1;
 }
 
@@ -365,6 +383,7 @@ UIKit_GetWindowWMInfo(_THIS, SDL_Window * window, SDL_SysWMinfo * info)
             info->subsystem = SDL_SYSWM_UIKIT;
             info->info.uikit.window = data.uiwindow;
 
+#ifndef URHO3D_ANGLE_METAL
             /* These struct members were added in SDL 2.0.4. */
             if (versionnum >= SDL_VERSIONNUM(2,0,4)) {
                 if ([data.viewcontroller.view isKindOfClass:[SDL_uikitopenglview class]]) {
@@ -378,7 +397,7 @@ UIKit_GetWindowWMInfo(_THIS, SDL_Window * window, SDL_SysWMinfo * info)
                     info->info.uikit.resolveFramebuffer = 0;
                 }
             }
-
+#endif
             return SDL_TRUE;
         } else {
             SDL_SetError("Application not compiled with SDL %d.%d",

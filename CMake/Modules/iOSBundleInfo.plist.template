@@ -45,5 +45,9 @@
     <array>
         <string>${MACOSX_BUNDLE_ICON_FILE}</string>
     </array>
+    <key>NSBluetoothPeripheralUsageDescription</key>
+    <string>Our app uses bluetooth to find, connect and transfer data between different devices</string>
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>Our app uses bluetooth to find, connect and transfer data between different devices</string>
 </dict>
 </plist>

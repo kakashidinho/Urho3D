@@ -134,6 +134,9 @@ bool ShaderVariation::Create()
     // Add define for the maximum number of supported bones
     shaderCode += "#define MAXBONES " + String(Graphics::GetMaxBones()) + "\n";
 
+#if defined(URHO3D_ANGLE_METAL)
+    shaderCode += "#define METAL\n";
+#endif
     // Prepend the defines to the shader code
     Vector<String> defineVec = defines_.Split(' ');
     for (unsigned i = 0; i < defineVec.Size(); ++i)

@@ -20,7 +20,7 @@
 */
 #include "../../SDL_internal.h"
 
-#if SDL_VIDEO_DRIVER_UIKIT
+#if SDL_VIDEO_DRIVER_UIKIT && !(URHO3D_ANGLE_METAL)
 
 #include <OpenGLES/EAGLDrawable.h>
 #include <OpenGLES/ES2/glext.h>

@@ -1142,6 +1142,7 @@ macro (define_resource_dirs)
             if (ARM)
                 # Default app icon on the iOS/tvOS home screen
                 list (APPEND RESOURCE_FILES ${CMAKE_SOURCE_DIR}/bin/Data/Textures/UrhoIcon.png)
+                list (APPEND RESOURCE_FILES ${CMAKE_SOURCE_DIR}/bin/Data/Textures/Default-568h@2x.png)
             endif ()
         endif ()
         # Group them together under 'Resources' in Xcode IDE

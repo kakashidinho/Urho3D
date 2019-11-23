@@ -26,6 +26,10 @@
 #import "SDL_uikitview.h"
 #import "SDL_uikitviewcontroller.h"
 
+#if SDL_VIDEO_OPENGL_EGL
+#include "../SDL_egl_c.h"
+#endif
+
 extern int UIKit_CreateWindow(_THIS, SDL_Window * window);
 extern void UIKit_SetWindowTitle(_THIS, SDL_Window * window);
 extern void UIKit_ShowWindow(_THIS, SDL_Window * window);
@@ -48,7 +52,9 @@ extern NSUInteger UIKit_GetSupportedOrientations(SDL_Window * window);
 
 /* Array of SDL_uikitviews owned by this window. */
 @property (nonatomic, copy) NSMutableArray *views;
-
+#if SDL_VIDEO_OPENGL_EGL
+@property (nonatomic)  EGLSurface egl_surface;
+#endif
 @end
 
 #endif /* SDL_uikitwindow_h_ */

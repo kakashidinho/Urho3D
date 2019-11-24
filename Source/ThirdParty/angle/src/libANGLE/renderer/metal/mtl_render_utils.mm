@@ -243,11 +243,11 @@ void RenderUtils::clearWithDraw(const gl::Context *context,
     {
         overridedParams.clearColor.reset();
     }
-    if (!renderPassDesc.depthAttachment.texture)
+    if (!renderPassDesc.depthAttachment.texture())
     {
         overridedParams.clearDepth.reset();
     }
-    if (!renderPassDesc.stencilAttachment.texture)
+    if (!renderPassDesc.stencilAttachment.texture())
     {
         overridedParams.clearStencil.reset();
     }
@@ -312,23 +312,23 @@ void RenderUtils::setupClearWithDraw(const gl::Context *context,
     {
         renderPassAttachment = renderPassDesc.colorAttachments[0];
     }
-    else if (renderPassDesc.depthAttachment.texture)
+    else if (renderPassDesc.depthAttachment.texture())
     {
         renderPassAttachment = renderPassDesc.depthAttachment;
     }
     else
     {
-        ASSERT(renderPassDesc.stencilAttachment.texture);
+        ASSERT(renderPassDesc.stencilAttachment.texture());
         renderPassAttachment = renderPassDesc.stencilAttachment;
     }
 
-    auto texture = renderPassAttachment.texture;
+    auto texture = renderPassAttachment.texture();
 
     viewport =
-        GetViewport(params.clearArea, texture->height(renderPassAttachment.level), params.flipY);
+        GetViewport(params.clearArea, texture->height(renderPassAttachment.level()), params.flipY);
 
-    scissorRect =
-        GetScissorRect(params.clearArea, texture->height(renderPassAttachment.level), params.flipY);
+    scissorRect = GetScissorRect(params.clearArea, texture->height(renderPassAttachment.level()),
+                                 params.flipY);
 
     cmdEncoder->setViewport(viewport);
     cmdEncoder->setScissorRect(scissorRect);
@@ -363,14 +363,14 @@ void RenderUtils::setupBlitWithDraw(const gl::Context *context,
     const RenderPassDesc &renderPassDesc = cmdEncoder->renderPassDesc();
     const RenderPassColorAttachmentDesc &renderPassColorAttachment =
         renderPassDesc.colorAttachments[0];
-    auto texture = renderPassColorAttachment.texture;
+    auto texture = renderPassColorAttachment.texture();
 
     gl::Rectangle dstRect(params.dstOffset.x, params.dstOffset.y, params.srcRect.width,
                           params.srcRect.height);
     MTLViewport viewportMtl =
-        GetViewport(dstRect, texture->height(renderPassColorAttachment.level), params.dstFlipY);
-    MTLScissorRect scissorRectMtl =
-        GetScissorRect(dstRect, texture->height(renderPassColorAttachment.level), params.dstFlipY);
+        GetViewport(dstRect, texture->height(renderPassColorAttachment.level()), params.dstFlipY);
+    MTLScissorRect scissorRectMtl = GetScissorRect(
+        dstRect, texture->height(renderPassColorAttachment.level()), params.dstFlipY);
     cmdEncoder->setViewport(viewportMtl);
     cmdEncoder->setScissorRect(scissorRectMtl);
 
@@ -716,7 +716,7 @@ angle::Result RenderUtils::convertIndexBuffer(const gl::Context *context,
 
     cmdEncoder->setComputePipelineState(pipelineState);
 
-    ASSERT((dstOffset % kBufferSettingOffsetAlignment) == 0);
+    ASSERT((dstOffset % kIndexBufferOffsetAlignment) == 0);
 
     IndexConversionUniform uniform;
     uniform.srcOffset  = srcOffset;
@@ -724,7 +724,7 @@ angle::Result RenderUtils::convertIndexBuffer(const gl::Context *context,
 
     cmdEncoder->setData(uniform, 0);
     cmdEncoder->setBuffer(srcBuffer, 0, 1);
-    cmdEncoder->setBuffer(dstBuffer, dstOffset, 2);
+    cmdEncoder->setBufferForWrite(dstBuffer, dstOffset, 2);
 
     ANGLE_TRY(dispatchCompute(context, cmdEncoder, pipelineState, indexCount));
 
@@ -743,7 +743,7 @@ angle::Result RenderUtils::generateTriFanBufferFromArrays(const gl::Context *con
 
     cmdEncoder->setComputePipelineState(mTriFanFromArraysGeneratorPipeline);
 
-    ASSERT((params.dstOffset % kBufferSettingOffsetAlignment) == 0);
+    ASSERT((params.dstOffset % kIndexBufferOffsetAlignment) == 0);
 
     struct TriFanArrayParams
     {
@@ -756,7 +756,7 @@ angle::Result RenderUtils::generateTriFanBufferFromArrays(const gl::Context *con
     uniform.vertexCountFrom3rd = params.vertexCount - 2;
 
     cmdEncoder->setData(uniform, 0);
-    cmdEncoder->setBuffer(params.dstBuffer, params.dstOffset, 2);
+    cmdEncoder->setBufferForWrite(params.dstBuffer, params.dstOffset, 2);
 
     ANGLE_TRY(dispatchCompute(context, cmdEncoder, mTriFanFromArraysGeneratorPipeline,
                               uniform.vertexCountFrom3rd));
@@ -794,7 +794,7 @@ angle::Result RenderUtils::generateTriFanBufferFromElementsArrayGPU(
     const BufferRef &srcBuffer,
     uint32_t srcOffset,
     const BufferRef &dstBuffer,
-    // Must be multiples of kBufferSettingOffsetAlignment
+    // Must be multiples of kIndexBufferOffsetAlignment
     uint32_t dstOffset)
 {
     ContextMtl *contextMtl            = GetImpl(context);
@@ -808,7 +808,7 @@ angle::Result RenderUtils::generateTriFanBufferFromElementsArrayGPU(
 
     cmdEncoder->setComputePipelineState(pipelineState);
 
-    ASSERT((dstOffset % kBufferSettingOffsetAlignment) == 0);
+    ASSERT((dstOffset % kIndexBufferOffsetAlignment) == 0);
     ASSERT(indexCount > 2);
 
     IndexConversionUniform uniform;
@@ -817,7 +817,7 @@ angle::Result RenderUtils::generateTriFanBufferFromElementsArrayGPU(
 
     cmdEncoder->setData(uniform, 0);
     cmdEncoder->setBuffer(srcBuffer, 0, 1);
-    cmdEncoder->setBuffer(dstBuffer, dstOffset, 2);
+    cmdEncoder->setBufferForWrite(dstBuffer, dstOffset, 2);
 
     ANGLE_TRY(dispatchCompute(context, cmdEncoder, pipelineState, uniform.indexCount));
 

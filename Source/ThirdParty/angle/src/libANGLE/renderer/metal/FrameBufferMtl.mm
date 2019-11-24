@@ -45,8 +45,10 @@ const gl::InternalFormat &GetReadAttachmentInfo(const gl::Context *context,
 }
 
 // FramebufferMtl implementation
-FramebufferMtl::FramebufferMtl(const gl::FramebufferState &state, bool flipY, bool isDefault)
-    : FramebufferImpl(state), mIsDefaultFBO(isDefault), mFlipY(flipY)
+FramebufferMtl::FramebufferMtl(const gl::FramebufferState &state,
+                               bool flipY,
+                               SurfaceMtl *backbuffer)
+    : FramebufferImpl(state), mBackbuffer(backbuffer), mFlipY(flipY)
 {
     reset();
 }
@@ -59,12 +61,7 @@ void FramebufferMtl::reset()
     {
         rt = nullptr;
     }
-    for (auto &discardColor : mDiscardColors)
-    {
-        discardColor = false;
-    }
     mDepthRenderTarget = mStencilRenderTarget = nullptr;
-    mDiscardDepth = mDiscardStencil = false;
 }
 
 void FramebufferMtl::destroy(const gl::Context *context)
@@ -164,12 +161,12 @@ angle::Result FramebufferMtl::clearBufferfi(const gl::Context *context,
 
 GLenum FramebufferMtl::getImplementationColorReadFormat(const gl::Context *context) const
 {
-    return GetReadAttachmentInfo(context, getColorReadRenderTarget()).format;
+    return GetReadAttachmentInfo(context, getColorReadRenderTarget(context)).format;
 }
 
 GLenum FramebufferMtl::getImplementationColorReadType(const gl::Context *context) const
 {
-    return GetReadAttachmentInfo(context, getColorReadRenderTarget()).type;
+    return GetReadAttachmentInfo(context, getColorReadRenderTarget(context)).type;
 }
 
 angle::Result FramebufferMtl::readPixels(const gl::Context *context,
@@ -188,7 +185,7 @@ angle::Result FramebufferMtl::readPixels(const gl::Context *context,
         // nothing to read
         return angle::Result::Continue;
     }
-    gl::Rectangle flippedArea = getReadPixelArea(clippedArea);
+    gl::Rectangle flippedArea = getReadPixelArea(context, clippedArea);
 
     ContextMtl *contextMtl              = mtl::GetImpl(context);
     const gl::State &glState            = context->getState();
@@ -216,7 +213,7 @@ angle::Result FramebufferMtl::readPixels(const gl::Context *context,
         params.reverseRowOrder = !params.reverseRowOrder;
     }
 
-    ANGLE_TRY(readPixelsImpl(context, flippedArea, params, getColorReadRenderTarget(),
+    ANGLE_TRY(readPixelsImpl(context, flippedArea, params, getColorReadRenderTarget(context),
                              static_cast<uint8_t *>(pixels) + outputSkipBytes));
 
     return angle::Result::Continue;
@@ -321,12 +318,21 @@ angle::Result FramebufferMtl::getSamplePosition(const gl::Context *context,
     return angle::Result::Stop;
 }
 
-RenderTargetMtl *FramebufferMtl::getColorReadRenderTarget() const
+RenderTargetMtl *FramebufferMtl::getColorReadRenderTarget(const gl::Context *context) const
 {
     if (mState.getReadIndex() >= mColorRenderTargets.size())
     {
         return nullptr;
     }
+
+    if (mBackbuffer)
+    {
+        if (IsError(mBackbuffer->ensureCurrentDrawableObtained(context)))
+        {
+            return nullptr;
+        }
+    }
+
     return mColorRenderTargets[mState.getReadIndex()];
 }
 
@@ -335,58 +341,105 @@ gl::Rectangle FramebufferMtl::getCompleteRenderArea() const
     return gl::Rectangle(0, 0, mState.getDimensions().width, mState.getDimensions().height);
 }
 
-const mtl::RenderPassDesc &FramebufferMtl::getRenderPassDesc(ContextMtl *context)
+bool FramebufferMtl::renderPassHasStarted(ContextMtl *contextMtl) const
 {
-    return mRenderPassDesc;
+    return contextMtl->hasStartedRenderPass(mRenderPassDesc);
 }
 
-void FramebufferMtl::onFinishedDrawingToFrameBuffer(const gl::Context *context,
-                                                    mtl::RenderCommandEncoder *encoder)
+mtl::RenderCommandEncoder *FramebufferMtl::ensureRenderPassStarted(const gl::Context *context)
 {
-    if (!encoder->valid())
-    {
-        return;
-    }
+    return ensureRenderPassStarted(context, mRenderPassDesc);
+}
 
+mtl::RenderCommandEncoder *FramebufferMtl::ensureRenderPassStarted(const gl::Context *context,
+                                                                   const mtl::RenderPassDesc &desc)
+{
     ContextMtl *contextMtl = mtl::GetImpl(context);
 
-    ASSERT(encoder->renderPassDesc().equalIgnoreLoadStoreOptions(mRenderPassDesc));
-
-    for (uint32_t i = 0; i < mRenderPassDesc.numColorAttachments; ++i)
+    if (renderPassHasStarted(contextMtl))
     {
-        if (mDiscardColors[i])
+        return contextMtl->getRenderCommandEncoder();
+    }
+
+    if (mBackbuffer)
+    {
+        // Backbuffer might obtain new drawable, which means it might change the
+        // the native texture used as the target of the render pass.
+        // We need to call this before creating render encoder.
+        if (IsError(mBackbuffer->ensureCurrentDrawableObtained(context)))
         {
-            encoder->setColorStoreAction(MTLStoreActionDontCare, i);
+            return nullptr;
         }
     }
-    encoder->setDepthStencilStoreAction(
-        (mDiscardDepth) ? MTLStoreActionDontCare : MTLStoreActionStore,
-        (mDiscardStencil) ? MTLStoreActionDontCare : MTLStoreActionStore);
 
-    contextMtl->endEncoding(encoder);
+    // Only support ensureRenderPassStarted() with different load & store options.
+    // The texture, level, slice must be the same.
+    ASSERT(desc.equalIgnoreLoadStoreOptions(mRenderPassDesc));
 
-    // Reset discard flags:
-    for (auto &discardColor : mDiscardColors)
+    // If this render pass already started, this will be no-op.
+    return contextMtl->getRenderCommandEncoder(desc);
+}
+
+void FramebufferMtl::onStartedDrawingToFrameBuffer(const gl::Context *context)
+{
+    // Compute loadOp based on previous storeOp and reset storeOp flags:
+    for (mtl::RenderPassColorAttachmentDesc &colorAttachment : mRenderPassDesc.colorAttachments)
     {
-        discardColor = false;
+        if (colorAttachment.storeAction == MTLStoreActionDontCare)
+        {
+            // If we previously discarded attachment's content, then don't need to load it.
+            colorAttachment.loadAction = MTLLoadActionDontCare;
+        }
+        else
+        {
+            colorAttachment.loadAction = MTLLoadActionLoad;
+        }
+        colorAttachment.storeAction = MTLStoreActionStore;  // Default action is store
     }
-    mDiscardDepth = mDiscardStencil = false;
+    // Depth load/store
+    if (mRenderPassDesc.depthAttachment.storeAction == MTLStoreActionDontCare)
+    {
+        mRenderPassDesc.depthAttachment.loadAction = MTLLoadActionDontCare;
+    }
+    else
+    {
+        mRenderPassDesc.depthAttachment.loadAction = MTLLoadActionLoad;
+    }
+    mRenderPassDesc.depthAttachment.storeAction = MTLStoreActionStore;
+
+    // Stencil load/store
+    if (mRenderPassDesc.stencilAttachment.storeAction == MTLStoreActionDontCare)
+    {
+        mRenderPassDesc.stencilAttachment.loadAction = MTLLoadActionDontCare;
+    }
+    else
+    {
+        mRenderPassDesc.stencilAttachment.loadAction = MTLLoadActionLoad;
+    }
+    mRenderPassDesc.stencilAttachment.storeAction = MTLStoreActionStore;
 }
 
 angle::Result FramebufferMtl::updateColorRenderTarget(const gl::Context *context,
                                                       size_t colorIndexGL)
 {
+    ASSERT(colorIndexGL < mtl::kMaxRenderTargets);
+    // Reset load store action
+    mRenderPassDesc.colorAttachments[colorIndexGL].reset();
     return updateCachedRenderTarget(context, mState.getColorAttachment(colorIndexGL),
                                     &mColorRenderTargets[colorIndexGL]);
 }
 
 angle::Result FramebufferMtl::updateDepthRenderTarget(const gl::Context *context)
 {
+    // Reset load store action
+    mRenderPassDesc.depthAttachment.reset();
     return updateCachedRenderTarget(context, mState.getDepthAttachment(), &mDepthRenderTarget);
 }
 
 angle::Result FramebufferMtl::updateStencilRenderTarget(const gl::Context *context)
 {
+    // Reset load store action
+    mRenderPassDesc.stencilAttachment.reset();
     return updateCachedRenderTarget(context, mState.getStencilAttachment(), &mStencilRenderTarget);
 }
 
@@ -425,19 +478,16 @@ angle::Result FramebufferMtl::prepareRenderPass(const gl::Context *context,
 
         mtl::RenderPassColorAttachmentDesc &colorAttachment =
             desc.colorAttachments[attachmentIdx++];
-        colorAttachment.reset();
         colorRenderTarget->toRenderPassAttachmentDesc(&colorAttachment);
     }
 
     if (mDepthRenderTarget)
     {
-        desc.depthAttachment.reset();
         mDepthRenderTarget->toRenderPassAttachmentDesc(&desc.depthAttachment);
     }
 
     if (mStencilRenderTarget)
     {
-        desc.stencilAttachment.reset();
         mStencilRenderTarget->toRenderPassAttachmentDesc(&desc.stencilAttachment);
     }
 
@@ -457,13 +507,13 @@ angle::Result FramebufferMtl::clearWithLoadOp(const gl::Context *context,
                                               const mtl::ClearRectParams &clearOpts)
 {
     ContextMtl *contextMtl             = mtl::GetImpl(context);
-    bool startedRenderPass             = contextMtl->hasStartedRenderPass(mRenderPassDesc);
+    bool startedRenderPass             = renderPassHasStarted(contextMtl);
     mtl::RenderCommandEncoder *encoder = nullptr;
     mtl::RenderPassDesc tempDesc       = mRenderPassDesc;
 
     if (startedRenderPass)
     {
-        encoder = contextMtl->getRenderCommandEncoder();
+        encoder = ensureRenderPassStarted(context);
     }
 
     size_t attachmentCount = 0;
@@ -474,36 +524,40 @@ angle::Result FramebufferMtl::clearWithLoadOp(const gl::Context *context,
         uint32_t attachmentIdx = static_cast<uint32_t>(attachmentCount++);
         mtl::RenderPassColorAttachmentDesc &colorAttachment =
             tempDesc.colorAttachments[attachmentIdx];
-        const mtl::TextureRef &texture = colorAttachment.texture;
+        const mtl::TextureRef &texture = colorAttachment.texture();
 
         if (clearColorBuffers.test(colorIndexGL))
         {
             if (startedRenderPass)
             {
+                // Render pass already started, and we want to clear this buffer,
+                // then discard its content before clearing.
                 encoder->setColorStoreAction(MTLStoreActionDontCare, attachmentIdx);
             }
             colorAttachment.loadAction = MTLLoadActionClear;
             overrideClearColor(texture, clearOpts.clearColor.value(), &colorAttachment.clearColor);
         }
-        else
+        else if (startedRenderPass)
         {
-            if (startedRenderPass)
-            {
-                encoder->setColorStoreAction(MTLStoreActionStore, attachmentIdx);
-            }
+            // If render pass already started and we don't want to clear this buffer,
+            // then store it with current render encoder and load it before clearing step
+            encoder->setColorStoreAction(MTLStoreActionStore, attachmentIdx);
             colorAttachment.loadAction = MTLLoadActionLoad;
         }
     }
 
-    MTLStoreAction preClearDethpStoreAction, preClearStencilStoreAction;
+    MTLStoreAction preClearDethpStoreAction   = MTLStoreActionStore,
+                   preClearStencilStoreAction = MTLStoreActionStore;
     if (clearOpts.clearDepth.valid())
     {
         preClearDethpStoreAction            = MTLStoreActionDontCare;
         tempDesc.depthAttachment.loadAction = MTLLoadActionClear;
         tempDesc.depthAttachment.clearDepth = clearOpts.clearDepth.value();
     }
-    else
+    else if (startedRenderPass)
     {
+        // If render pass already started and we don't want to clear this buffer,
+        // then store it with current render encoder and load it before clearing step
         preClearDethpStoreAction            = MTLStoreActionStore;
         tempDesc.depthAttachment.loadAction = MTLLoadActionLoad;
     }
@@ -514,13 +568,15 @@ angle::Result FramebufferMtl::clearWithLoadOp(const gl::Context *context,
         tempDesc.stencilAttachment.loadAction   = MTLLoadActionClear;
         tempDesc.stencilAttachment.clearStencil = clearOpts.clearStencil.value();
     }
-    else
+    else if (startedRenderPass)
     {
+        // If render pass already started and we don't want to clear this buffer,
+        // then store it with current render encoder and load it before clearing step
         preClearStencilStoreAction            = MTLStoreActionStore;
         tempDesc.stencilAttachment.loadAction = MTLLoadActionLoad;
     }
 
-    // End current render pass.
+    // End current render encoder.
     if (startedRenderPass)
     {
         encoder->setDepthStencilStoreAction(preClearDethpStoreAction, preClearStencilStoreAction);
@@ -528,7 +584,7 @@ angle::Result FramebufferMtl::clearWithLoadOp(const gl::Context *context,
     }
 
     // Start new render encoder with loadOp=Clear
-    contextMtl->getRenderCommandEncoder(tempDesc);
+    ensureRenderPassStarted(context, tempDesc);
 
     return angle::Result::Continue;
 }
@@ -539,30 +595,9 @@ angle::Result FramebufferMtl::clearWithDraw(const gl::Context *context,
 {
     ContextMtl *contextMtl = mtl::GetImpl(context);
     DisplayMtl *display    = contextMtl->getDisplay();
-    mtl::RenderPassDesc rpDesc;
-    ANGLE_TRY(prepareRenderPass(context, mState.getEnabledDrawBuffers(), &rpDesc));
 
-    for (uint32_t i = 0, attachmentIdx = 0; i < rpDesc.numColorAttachments; ++i, ++attachmentIdx)
-    {
-        mtl::RenderPassColorAttachmentDesc &colorAttachment =
-            rpDesc.colorAttachments[attachmentIdx];
-
-        // Need to preserve previous content, since we only clear a portion of the framebuffer
-        colorAttachment.loadAction = MTLLoadActionLoad;
-    }
-
-    if (rpDesc.depthAttachment.texture)
-    {
-        rpDesc.depthAttachment.loadAction = MTLLoadActionLoad;
-    }
-
-    if (rpDesc.stencilAttachment.texture)
-    {
-        rpDesc.stencilAttachment.loadAction = MTLLoadActionLoad;
-    }
-
-    // Start new render encoder with loadOp=Load
-    mtl::RenderCommandEncoder *encoder = contextMtl->getRenderCommandEncoder(rpDesc);
+    // Start new render encoder if not already.
+    mtl::RenderCommandEncoder *encoder = ensureRenderPassStarted(context, mRenderPassDesc);
 
     display->getUtils().clearWithDraw(context, encoder, clearOpts);
 
@@ -597,7 +632,7 @@ angle::Result FramebufferMtl::clearImpl(const gl::Context *context,
 
     MTLColorWriteMask colorMask = contextMtl->getColorMask();
     uint32_t stencilMask        = contextMtl->getStencilMask();
-    if (!contextMtl->isDepthWriteEnabled())
+    if (!contextMtl->getDepthMask())
     {
         // Disable depth clearing, since depth write is disable
         clearOpts.clearDepth.reset();
@@ -651,32 +686,50 @@ angle::Result FramebufferMtl::invalidateImpl(ContextMtl *contextMtl,
     }
 
     // Set the appropriate storeOp for attachments.
-    size_t attachmentIdx = 0;
-    for (size_t colorIndexGL : mState.getEnabledDrawBuffers())
+    // If we already start the render pass, then need to set the store action now.
+    bool renderPassStarted = contextMtl->hasStartedRenderPass(mRenderPassDesc);
+    mtl::RenderCommandEncoder *encoder =
+        renderPassStarted ? contextMtl->getRenderCommandEncoder() : nullptr;
+
+    for (uint32_t i = 0; i < mRenderPassDesc.numColorAttachments; ++i)
     {
-        if (mColorRenderTargets[colorIndexGL] && invalidateColorBuffers.test(colorIndexGL))
+        if (invalidateColorBuffers.test(i))
         {
-            mDiscardColors[attachmentIdx] = true;
+            mtl::RenderPassColorAttachmentDesc &colorAttachment =
+                mRenderPassDesc.colorAttachments[i];
+            colorAttachment.storeAction = MTLStoreActionDontCare;
+            if (renderPassStarted)
+            {
+                encoder->setColorStoreAction(MTLStoreActionDontCare, i);
+            }
         }
-        ++attachmentIdx;
     }
 
     if (invalidateDepthBuffer && mDepthRenderTarget)
     {
-        mDiscardDepth = true;
+        mRenderPassDesc.depthAttachment.storeAction = MTLStoreActionDontCare;
+        if (renderPassStarted)
+        {
+            encoder->setDepthStoreAction(MTLStoreActionDontCare);
+        }
     }
 
     if (invalidateStencilBuffer && mStencilRenderTarget)
     {
-        mDiscardStencil = true;
+        mRenderPassDesc.stencilAttachment.storeAction = MTLStoreActionDontCare;
+        if (renderPassStarted)
+        {
+            encoder->setStencilStoreAction(MTLStoreActionDontCare);
+        }
     }
 
     return angle::Result::Continue;
 }
 
-gl::Rectangle FramebufferMtl::getReadPixelArea(const gl::Rectangle &glArea)
+gl::Rectangle FramebufferMtl::getReadPixelArea(const gl::Context *context,
+                                               const gl::Rectangle &glArea)
 {
-    RenderTargetMtl *colorReadRT = getColorReadRenderTarget();
+    RenderTargetMtl *colorReadRT = getColorReadRenderTarget(context);
     ASSERT(colorReadRT);
     gl::Rectangle flippedArea = glArea;
     if (mFlipY)
@@ -705,7 +758,7 @@ angle::Result FramebufferMtl::readPixelsImpl(const gl::Context *context,
     {
         return angle::Result::Continue;
     }
-    const mtl::TextureRef &texture = renderTarget->getTexture();
+    mtl::TextureRef texture = renderTarget->getTexture();
 
     if (!texture)
     {

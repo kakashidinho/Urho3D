@@ -27,6 +27,7 @@ class DisplayMtl;
 class FramebufferMtl;
 class VertexArrayMtl;
 class ProgramMtl;
+class RenderTargetMtl;
 
 class ContextMtl : public ContextImpl, public mtl::Context
 {
@@ -212,7 +213,7 @@ class ContextMtl : public ContextImpl, public mtl::Context
     uint32_t getClearStencilValue() const;
     // Return front facing stencil write mask
     uint32_t getStencilMask() const;
-    bool isDepthWriteEnabled() const;
+    bool getDepthMask() const;
 
     const mtl::Format &getPixelFormat(angle::FormatID angleFormatId) const;
     // See mtl::FormatTable::getVertexFormat()
@@ -231,25 +232,20 @@ class ContextMtl : public ContextImpl, public mtl::Context
 
     // Check whether compatible render pass has been started.
     bool hasStartedRenderPass(const mtl::RenderPassDesc &desc);
-    bool hasStartedRenderPass(FramebufferMtl *framebuffer);
 
     // Get current render encoder. May be nullptr if no render pass has been started.
     mtl::RenderCommandEncoder *getRenderCommandEncoder();
-
-    mtl::RenderCommandEncoder *getCurrentFramebufferRenderCommandEncoder();
 
     // Will end current command encoder if it is valid, then start new encoder.
     // Unless hasStartedRenderPass(desc) returns true.
     mtl::RenderCommandEncoder *getRenderCommandEncoder(const mtl::RenderPassDesc &desc);
 
-    // Utilities to quickly create render command enconder to a specific texture:
+    // Utilities to quickly create render command encoder to a specific texture:
     // The previous content of texture will be loaded if clearColor is not provided
-    mtl::RenderCommandEncoder *getRenderCommandEncoder(const mtl::TextureRef &textureTarget,
-                                                       const gl::ImageIndex &index,
+    mtl::RenderCommandEncoder *getRenderCommandEncoder(const RenderTargetMtl &renderTarget,
                                                        const Optional<MTLClearColor> &clearColor);
     // The previous content of texture will be loaded
-    mtl::RenderCommandEncoder *getRenderCommandEncoder(const mtl::TextureRef &textureTarget,
-                                                       const gl::ImageIndex &index);
+    mtl::RenderCommandEncoder *getRenderCommandEncoder(const RenderTargetMtl &renderTarget);
 
     // Will end current command encoder and start new blit command encoder. Unless a blit comamnd
     // encoder is already started.
@@ -384,6 +380,12 @@ class ContextMtl : public ContextImpl, public mtl::Context
     VertexArrayMtl *mVertexArray     = nullptr;
     ProgramMtl *mProgram             = nullptr;
 
+    // Special flag to indicate current draw framebuffer is default framebuffer.
+    // We need this instead of calling mDrawFramebuffer->getState().isDefault() because
+    // mDrawFramebuffer might point to a deleted object, ContextMtl only knows about this very late,
+    // only during syncState() function call.
+    bool mDrawFramebufferIsDefault = true;
+
     using DirtyBits = angle::BitSet<DIRTY_BIT_MAX>;
 
     gl::AttributesMask mDirtyDefaultAttribsMask;
@@ -394,6 +396,9 @@ class ContextMtl : public ContextImpl, public mtl::Context
     mtl::DepthStencilDesc mDepthStencilDesc;
     mtl::BlendDesc mBlendDesc;
     MTLClearColor mClearColor;
+    uint32_t mClearStencil    = 0;
+    uint32_t mStencilRefFront = 0;
+    uint32_t mStencilRefBack  = 0;
     MTLViewport mViewport;
     MTLScissorRect mScissorRect;
     MTLWinding mWinding;

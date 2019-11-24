@@ -60,6 +60,16 @@ void PBRMaterials::Start()
     // Execute base class startup
     Sample::Start();
 
+    // Use deferred rendering
+    auto* cache = GetSubsystem<ResourceCache>();
+    auto* renderer = GetSubsystem<Renderer>();
+    auto* graphics = GetSubsystem<Graphics>();
+
+#ifdef DESKTOP_GRAPHICS
+    if (graphics->GetDeferredSupport())
+        renderer->SetDefaultRenderPath(cache->GetResource<XMLFile>("RenderPaths/PBRDeferred.xml"));
+#endif
+
     // Create the scene content
     CreateScene();
 

@@ -50,6 +50,8 @@
 
 #include "../DebugNew.h"
 
+#include <SDL/SDL_video.h>
+
 #ifdef _MSC_VER
 #pragma warning(disable:6293)
 #endif
@@ -1607,7 +1609,10 @@ void Renderer::Initialize()
     defaultMaterial_ = new Material(context_);
 
     defaultRenderPath_ = new RenderPath();
-    defaultRenderPath_->Load(cache->GetResource<XMLFile>("RenderPaths/Forward.xml"));
+    if (graphics_->GetDeferredSupport())
+        defaultRenderPath_->Load(cache->GetResource<XMLFile>("RenderPaths/Deferred.xml"));
+    else
+        defaultRenderPath_->Load(cache->GetResource<XMLFile>("RenderPaths/Forward.xml"));
 
     CreateGeometries();
     CreateInstancingBuffer();

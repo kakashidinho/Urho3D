@@ -345,6 +345,9 @@ public:
     /// Return whether hardware instancing is supported.
     bool GetInstancingSupport() const { return instancingSupport_; }
 
+    /// Return whether multiple render targets are supported.
+    bool GetDrawBuffersSupport() const { return drawBuffersSupport_; }
+
     /// Return whether light pre-pass rendering is supported.
     bool GetLightPrepassSupport() const { return lightPrepassSupport_; }
 
@@ -689,6 +692,10 @@ private:
     bool hardwareShadowSupport_{};
     /// Instancing support flag.
     bool instancingSupport_{};
+    /// Draw multiple render targets support flag.
+    bool drawBuffersSupport_{};
+    /// 32 bit floating point texture support flag.
+    bool textureF32Support_{};
     /// sRGB conversion on read support flag.
     bool sRGBSupport_{};
     /// sRGB conversion on write support flag.

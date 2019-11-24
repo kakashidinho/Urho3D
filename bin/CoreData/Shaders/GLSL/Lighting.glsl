@@ -316,7 +316,7 @@ float GetDirShadow(const highp vec4 iShadowPos[NUMCASCADES], float depth)
 }
 #endif
 
-#ifndef GL_ES
+#ifdef HAS_G_BUFFER
 float GetDirShadowDeferred(vec4 projWorldPos, vec3 normal, float depth)
 {
     vec4 shadowPos;
@@ -344,8 +344,8 @@ float GetDirShadowDeferred(vec4 projWorldPos, vec3 normal, float depth)
 
     return GetDirShadowFade(GetShadow(shadowPos), depth);
 }
-#endif
-#endif
+#endif  // HAS_G_BUFFER
+#endif  // DIRLIGHT
 
 #ifndef GL_ES
 float GetShadow(const vec4 iShadowPos[NUMCASCADES], float depth)
@@ -362,7 +362,7 @@ float GetShadow(const highp vec4 iShadowPos[NUMCASCADES], float depth)
     #endif
 }
 
-#ifndef GL_ES
+#ifdef HAS_G_BUFFER
 float GetShadowDeferred(vec4 projWorldPos, vec3 normal, float depth)
 {
     #ifdef DIRLIGHT
@@ -382,6 +382,6 @@ float GetShadowDeferred(vec4 projWorldPos, vec3 normal, float depth)
         #endif
     #endif
 }
-#endif
+#endif  // HAS_G_BUFFER
 #endif
 #endif

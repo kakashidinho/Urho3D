@@ -131,9 +131,16 @@ bool ShaderVariation::Create()
     // Distinguish between VS and PS compile in case the shader code wants to include/omit different things
     shaderCode += type_ == VS ? "#define COMPILEVS\n" : "#define COMPILEPS\n";
 
-    // Add define for GLES on Desktop
-#if defined(GL_ES_VERSION_2_0) && defined(DESKTOP_GRAPHICS)
+#if defined(GL_ES_VERSION_2_0)
+// Add define for GLES on Desktop
+#   if defined(DESKTOP_GRAPHICS)
     shaderCode += "#define DESKTOP_GRAPHICS\n";
+#   endif
+
+    if (graphics_->GetDrawBuffersSupport())
+    {
+        shaderCode += "#extension GL_EXT_draw_buffers: enable\n";
+    }
 #endif
 
     // Add define for the maximum number of supported bones

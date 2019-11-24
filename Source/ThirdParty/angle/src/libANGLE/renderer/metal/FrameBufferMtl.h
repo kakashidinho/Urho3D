@@ -18,13 +18,17 @@
 
 namespace rx
 {
+namespace mtl
+{
+class RenderCommandEncoder;
+}
 class ContextMtl;
 class SurfaceMtl;
 
 class FramebufferMtl : public FramebufferImpl
 {
   public:
-    explicit FramebufferMtl(const gl::FramebufferState &state, bool flipY, bool defaultFbo);
+    explicit FramebufferMtl(const gl::FramebufferState &state, bool flipY, SurfaceMtl *backbuffer);
     ~FramebufferMtl() override;
     void destroy(const gl::Context *context) override;
 
@@ -81,21 +85,22 @@ class FramebufferMtl : public FramebufferImpl
                                     size_t index,
                                     GLfloat *xy) const override;
 
-    RenderTargetMtl *getColorReadRenderTarget() const;
+    RenderTargetMtl *getColorReadRenderTarget(const gl::Context *context) const;
+    RenderTargetMtl *getDepthRenderTarget() const { return mDepthRenderTarget; }
+    RenderTargetMtl *getStencilRenderTarget() const { return mStencilRenderTarget; }
 
     bool flipY() const { return mFlipY; }
-    bool isDefault() const { return mIsDefaultFBO; }
 
     gl::Rectangle getCompleteRenderArea() const;
 
-    const mtl::RenderPassDesc &getRenderPassDesc(ContextMtl *context);
+    bool renderPassHasStarted(ContextMtl *contextMtl) const;
+    mtl::RenderCommandEncoder *ensureRenderPassStarted(const gl::Context *context);
 
-    // Call this to notify FramebufferMtl whenever its render pass has ended.
-    void onFinishedDrawingToFrameBuffer(const gl::Context *context,
-                                        mtl::RenderCommandEncoder *encoder);
+    // Call this to notify FramebufferMtl whenever its render pass has started.
+    void onStartedDrawingToFrameBuffer(const gl::Context *context);
 
     // The actual area will be adjusted based on framebuffer flipping property.
-    gl::Rectangle getReadPixelArea(const gl::Rectangle &glArea);
+    gl::Rectangle getReadPixelArea(const gl::Context *context, const gl::Rectangle &glArea);
 
     // NOTE: this method doesn't do the flipping of area. Caller must do it if needed before
     // callling this. See getReadPixelsArea().
@@ -120,9 +125,10 @@ class FramebufferMtl : public FramebufferImpl
                                 gl::DrawBufferMask clearColorBuffers,
                                 const mtl::ClearRectParams &clearOpts);
 
-    angle::Result prepareRenderPass(const gl::Context *context,
-                                    gl::DrawBufferMask drawColorBuffers,
-                                    mtl::RenderPassDesc *descOut);
+    angle::Result prepareRenderPass(const gl::Context *context, mtl::RenderPassDesc *descOut);
+
+    mtl::RenderCommandEncoder *ensureRenderPassStarted(const gl::Context *context,
+                                                       const mtl::RenderPassDesc &desc);
 
     void overrideClearColor(const mtl::TextureRef &texture,
                             MTLClearColor clearColor,
@@ -139,14 +145,12 @@ class FramebufferMtl : public FramebufferImpl
     // depth & stencil attachments as of now. Separate depth & stencil could be useful to
     // save spaces on iOS devices. See doc/PackedDepthStencilSupport.md.
     std::array<RenderTargetMtl *, mtl::kMaxRenderTargets> mColorRenderTargets;
-    std::array<bool, mtl::kMaxRenderTargets> mDiscardColors;
     RenderTargetMtl *mDepthRenderTarget   = nullptr;
-    bool mDiscardDepth                    = false;
     RenderTargetMtl *mStencilRenderTarget = nullptr;
-    bool mDiscardStencil                  = false;
     mtl::RenderPassDesc mRenderPassDesc;
-    const bool mIsDefaultFBO;
-    const bool mFlipY = false;
+
+    SurfaceMtl *mBackbuffer = nullptr;
+    const bool mFlipY       = false;
 };
 }  // namespace rx
 

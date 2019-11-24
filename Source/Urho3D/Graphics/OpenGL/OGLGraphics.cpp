@@ -56,15 +56,20 @@
 #define glClearDepth glClearDepthf
 #endif
 
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) || defined(URHO3D_ANGLE_METAL)
 // Emscripten provides even all GL extension functions via static linking. However there is
 // no GLES2-specific extension header at the moment to include instanced rendering declarations,
 // so declare them manually from GLES3 gl2ext.h. Emscripten will provide these when linking final output.
+
+#define glDrawBuffers glDrawBuffersEXT
+#define GL_EXT_draw_buffers
+
 extern "C"
 {
     GL_APICALL void GL_APIENTRY glDrawArraysInstancedANGLE (GLenum mode, GLint first, GLsizei count, GLsizei primcount);
     GL_APICALL void GL_APIENTRY glDrawElementsInstancedANGLE (GLenum mode, GLsizei count, GLenum type, const void *indices, GLsizei primcount);
     GL_APICALL void GL_APIENTRY glVertexAttribDivisorANGLE (GLuint index, GLuint divisor);
+    GL_APICALL void GL_APIENTRY glDrawBuffersEXT(GLsizei n, const GLenum *bufs);
 }
 #endif
 
@@ -970,7 +975,7 @@ void Graphics::Draw(PrimitiveType type, unsigned indexStart, unsigned indexCount
 void Graphics::DrawInstanced(PrimitiveType type, unsigned indexStart, unsigned indexCount, unsigned minVertex, unsigned vertexCount,
     unsigned instanceCount)
 {
-#if !defined(GL_ES_VERSION_2_0) || defined(__EMSCRIPTEN__)
+#if !defined(GL_ES_VERSION_2_0) || defined(__EMSCRIPTEN__) || defined(URHO3D_ANGLE_METAL)
     if (!indexCount || !indexBuffer_ || !indexBuffer_->GetGPUObjectName() || !instancingSupport_)
         return;
 
@@ -982,7 +987,7 @@ void Graphics::DrawInstanced(PrimitiveType type, unsigned indexStart, unsigned i
 
     GetGLPrimitiveType(indexCount, type, primitiveCount, glPrimitiveType);
     GLenum indexType = indexSize == sizeof(unsigned short) ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT;
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) || defined(URHO3D_ANGLE_METAL)
     glDrawElementsInstancedANGLE(glPrimitiveType, indexCount, indexType, reinterpret_cast<const GLvoid*>(indexStart * indexSize),
         instanceCount);
 #else
@@ -2140,7 +2145,7 @@ unsigned Graphics::GetFormat(CompressedFormat format) const
     case CF_DXT1:
         return dxtTextureSupport_ ? GL_COMPRESSED_RGBA_S3TC_DXT1_EXT : 0;
 
-#if !defined(GL_ES_VERSION_2_0) || defined(__EMSCRIPTEN__)
+#if !defined(GL_ES_VERSION_2_0) || defined(__EMSCRIPTEN__) || defined(URHO3D_ANGLE_METAL)
     case CF_DXT3:
         return dxtTextureSupport_ ? GL_COMPRESSED_RGBA_S3TC_DXT3_EXT : 0;
 
@@ -2794,8 +2799,8 @@ void Graphics::CheckFeatureSupport()
     lightPrepassSupport_ = false;
     deferredSupport_ = false;
 
-#ifndef GL_ES_VERSION_2_0
     int numSupportedRTs = 1;
+#ifndef GL_ES_VERSION_2_0
     if (gl3Support)
     {
         // Work around GLEW failure to check extensions properly from a GL3 context
@@ -2817,12 +2822,7 @@ void Graphics::CheckFeatureSupport()
 
         glGetIntegerv(GL_MAX_COLOR_ATTACHMENTS_EXT, &numSupportedRTs);
     }
-
-    // Must support 2 rendertargets for light pre-pass, and 4 for deferred
-    if (numSupportedRTs >= 2)
-        lightPrepassSupport_ = true;
-    if (numSupportedRTs >= 4)
-        deferredSupport_ = true;
+    drawBuffersSupport_ = true;
 
 #if defined(__APPLE__) && !defined(IOS) && !defined(TVOS)
     // On macOS check for an Intel driver and use shadow map RGBA dummy color textures, because mixing
@@ -2845,6 +2845,17 @@ void Graphics::CheckFeatureSupport()
     dxtTextureSupport_ = CheckExtension("EXT_texture_compression_dxt1");
     etcTextureSupport_ = CheckExtension("OES_compressed_ETC1_RGB8_texture");
     pvrtcTextureSupport_ = CheckExtension("IMG_texture_compression_pvrtc");
+#   if defined(GL_ES_VERSION_2_0) && defined(URHO3D_ANGLE_METAL)
+    instancingSupport_ = CheckExtension("ANGLE_instanced_arrays");
+#   endif
+#endif
+
+#ifdef GL_EXT_draw_buffers
+    if (CheckExtension("GL_EXT_draw_buffers"))
+    {
+        drawBuffersSupport_ = true;
+        glGetIntegerv(GL_MAX_COLOR_ATTACHMENTS_EXT, &numSupportedRTs);
+    }
 #endif
 
     // Check for best supported depth renderbuffer format for GLES2
@@ -2877,6 +2888,12 @@ void Graphics::CheckFeatureSupport()
 #endif
     }
 #endif
+
+    // Must support 2 rendertargets for light pre-pass, and 4 for deferred
+    if (numSupportedRTs >= 2)
+        lightPrepassSupport_ = true;
+    if (numSupportedRTs >= 4)
+        deferredSupport_ = true;
 
     // Consider OpenGL shadows always hardware sampled, if supported at all
     hardwareShadowSupport_ = shadowMapFormat_ != 0;
@@ -2968,39 +2985,44 @@ void Graphics::PrepareDraw()
             glReadBuffer(GL_NONE);
             i->second_.readBuffers_ = GL_NONE;
         }
+#endif
 
-        // Calculate the bit combination of non-zero color rendertargets to first check if the combination changed
-        unsigned newDrawBuffers = 0;
-        for (unsigned j = 0; j < MAX_RENDERTARGETS; ++j)
+#if !defined(GL_ES_VERSION_2_0) || defined(GL_EXT_draw_buffers)
+        if (drawBuffersSupport_)
         {
-            if (renderTargets_[j])
-                newDrawBuffers |= 1u << j;
-        }
-
-        if (newDrawBuffers != i->second_.drawBuffers_)
-        {
-            // Check for no color rendertargets (depth rendering only)
-            if (!newDrawBuffers)
-                glDrawBuffer(GL_NONE);
-            else
+            // Calculate the bit combination of non-zero color rendertargets to first check if the combination changed
+            unsigned newDrawBuffers = 0;
+            for (unsigned j = 0; j < MAX_RENDERTARGETS; ++j)
             {
-                int drawBufferIds[MAX_RENDERTARGETS];
-                unsigned drawBufferCount = 0;
-
-                for (unsigned j = 0; j < MAX_RENDERTARGETS; ++j)
-                {
-                    if (renderTargets_[j])
-                    {
-                        if (!gl3Support)
-                            drawBufferIds[drawBufferCount++] = GL_COLOR_ATTACHMENT0_EXT + j;
-                        else
-                            drawBufferIds[drawBufferCount++] = GL_COLOR_ATTACHMENT0 + j;
-                    }
-                }
-                glDrawBuffers(drawBufferCount, (const GLenum*)drawBufferIds);
+                if (renderTargets_[j])
+                    newDrawBuffers |= 1u << j;
             }
 
-            i->second_.drawBuffers_ = newDrawBuffers;
+            if (newDrawBuffers != i->second_.drawBuffers_)
+            {
+                // Check for no color rendertargets (depth rendering only)
+                if (!newDrawBuffers)
+                    glDrawBuffers(0, nullptr);
+                else
+                {
+                    int drawBufferIds[MAX_RENDERTARGETS];
+                    unsigned drawBufferCount = 0;
+
+                    for (unsigned j = 0; j < MAX_RENDERTARGETS; ++j)
+                    {
+                        if (renderTargets_[j])
+                        {
+                            if (!gl3Support)
+                                drawBufferIds[drawBufferCount++] = GL_COLOR_ATTACHMENT0_EXT + j;
+                            else
+                                drawBufferIds[drawBufferCount++] = GL_COLOR_ATTACHMENT0 + j;
+                        }
+                    }
+                    glDrawBuffers(drawBufferCount, (const GLenum*)drawBufferIds);
+                }
+
+                i->second_.drawBuffers_ = newDrawBuffers;
+            }
         }
 #endif
 
@@ -3300,14 +3322,16 @@ void Graphics::SetTextureUnitMappings()
     textureUnits_["LightSpotMap"] = TU_LIGHTSHAPE;
     textureUnits_["LightCubeMap"] = TU_LIGHTSHAPE;
     textureUnits_["ShadowMap"] = TU_SHADOWMAP;
-#ifndef GL_ES_VERSION_2_0
-    textureUnits_["VolumeMap"] = TU_VOLUMEMAP;
+#ifdef DESKTOP_GRAPHICS
     textureUnits_["FaceSelectCubeMap"] = TU_FACESELECT;
     textureUnits_["IndirectionCubeMap"] = TU_INDIRECTION;
     textureUnits_["DepthBuffer"] = TU_DEPTHBUFFER;
     textureUnits_["LightBuffer"] = TU_LIGHTBUFFER;
     textureUnits_["ZoneCubeMap"] = TU_ZONE;
+#ifndef GL_ES_VERSION_2_0
     textureUnits_["ZoneVolumeMap"] = TU_ZONE;
+    textureUnits_["VolumeMap"] = TU_VOLUMEMAP;
+#endif
 #endif
 }
 
@@ -3430,7 +3454,7 @@ void Graphics::SetVertexAttribDivisor(unsigned location, unsigned divisor)
     else if (instancingSupport_)
         glVertexAttribDivisorARB(location, divisor);
 #else
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) || defined(URHO3D_ANGLE_METAL)
     if (instancingSupport_)
         glVertexAttribDivisorANGLE(location, divisor);
 #endif

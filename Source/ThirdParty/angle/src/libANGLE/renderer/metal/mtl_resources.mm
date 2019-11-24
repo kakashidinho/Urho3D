@@ -404,9 +404,41 @@ gl::Extents Texture::size(const gl::ImageIndex &index) const
     return size(index.getLevelIndex());
 }
 
+TextureRef Texture::getStencilView()
+{
+    if (mStencilView)
+    {
+        return mStencilView;
+    }
+
+    switch (pixelFormat())
+    {
+        case MTLPixelFormatStencil8:
+        case MTLPixelFormatX32_Stencil8:
+#if TARGET_OS_OSX || TARGET_OS_MACCATALYST
+        case MTLPixelFormatX24_Stencil8:
+#endif
+            return mStencilView = shared_from_this();
+#if TARGET_OS_OSX || TARGET_OS_MACCATALYST
+        case MTLPixelFormatDepth24Unorm_Stencil8:
+            mStencilView = createViewWithDifferentFormat(MTLPixelFormatX24_Stencil8);
+            break;
+#endif
+        case MTLPixelFormatDepth32Float_Stencil8:
+            mStencilView = createViewWithDifferentFormat(MTLPixelFormatX32_Stencil8);
+            break;
+        default:
+            UNREACHABLE();
+    }
+
+    return mStencilView;
+}
+
 void Texture::set(id<MTLTexture> metalTexture)
 {
     ParentClass::set(metalTexture);
+    // Reset stencil view
+    mStencilView = nullptr;
 }
 
 // Buffer implementation
@@ -440,6 +472,9 @@ angle::Result Buffer::reset(ContextMtl *context, size_t size, const uint8_t *dat
         id<MTLDevice> metalDevice = context->getMetalDevice();
 
         options = 0;
+#if TARGET_OS_OSX || TARGET_OS_MACCATALYST
+        options |= MTLResourceStorageModeManaged;
+#endif
 
         if (data)
         {
@@ -472,7 +507,12 @@ uint8_t *Buffer::map(ContextMtl *context)
     return reinterpret_cast<uint8_t *>([get() contents]);
 }
 
-void Buffer::unmap(ContextMtl *context) {}
+void Buffer::unmap(ContextMtl *context)
+{
+#if TARGET_OS_OSX || TARGET_OS_MACCATALYST
+    [get() didModifyRange:NSMakeRange(0, size())];
+#endif
+}
 
 size_t Buffer::size() const
 {

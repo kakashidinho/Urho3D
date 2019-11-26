@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <node id="1">
-    <attribute name="matFile" value="MaterialEffects/Materials/waterRippleMat.xml" />
+    <attribute name="matFile" value="MaterialEffects/Materials/waterrippleMat.xml" />
     <attribute name="splashType" value="2" />
     <attribute name="maxImages" value="1" />
     <attribute name="duration" value="5000" />

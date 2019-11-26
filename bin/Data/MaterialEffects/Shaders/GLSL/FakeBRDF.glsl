@@ -5,7 +5,7 @@
 #include "Lighting.glsl"
 #include "Fog.glsl"
 
-uniform float cBRDFAttenuation;
+uniform PRECISION float cBRDFAttenuation;
 
 varying vec4 vEyeVec;
 varying vec2 vTexCoord;

@@ -4,7 +4,7 @@
 #include "ScreenPos.glsl"
 #include "Fog.glsl"
 
-uniform vec2 cUVScrollSpeed;
+uniform PRECISION vec2 cUVScrollSpeed;
 
 varying vec2 vTexCoord;
 varying vec4 vWorldPos;

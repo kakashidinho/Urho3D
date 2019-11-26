@@ -149,7 +149,13 @@ bool ShaderVariation::Create()
 
 #if defined(URHO3D_ANGLE_METAL)
     shaderCode += "#define METAL\n";
+    shaderCode += "#define PRECISION highp\n";
+#elif defined(GL_ES_VERSION_2_0)
+    shaderCode += "#define PRECISION mediump\n";
+#else
+    shaderCode += "#define PRECISION highp\n";
 #endif
+
     // Prepend the defines to the shader code
     Vector<String> defineVec = defines_.Split(' ');
     for (unsigned i = 0; i < defineVec.Size(); ++i)

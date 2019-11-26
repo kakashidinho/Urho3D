@@ -4,12 +4,13 @@
 #include "ScreenPos.glsl"
 #include "Fog.glsl"
 
-uniform float cMinSumColor;
-uniform float cMaxAlpha;
-uniform float cMultAddEmission;
-uniform float cMaskEdges;
-uniform vec2 cCurRowCol;
-uniform vec2 cMaxRowCol;
+
+uniform PRECISION float cMinSumColor;
+uniform PRECISION float cMaxAlpha;
+uniform PRECISION float cMultAddEmission;
+uniform PRECISION float cMaskEdges;
+uniform PRECISION vec2 cCurRowCol;
+uniform PRECISION vec2 cMaxRowCol;
 
 varying vec2 vFrameTexCoord;
 

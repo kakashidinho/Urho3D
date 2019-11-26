@@ -26,7 +26,7 @@
 //                          // 1.0f / texture_pixel_height for a vertical blur.
 // 
 //========================================================================== -->
-    <command type="quad" tag="Glow" vs="CopyFrameBuffer" ps="CopyFrameBuffer" output="copyViewBuff">
+    <command type="quad" tag="Glow" vs="CopyFramebuffer" ps="CopyFramebuffer" output="copyViewBuff">
         <texture unit="diffuse" name="viewport" />
     </command>
     <command type="quad" tag="Glow" vs="BlackScreen" ps="BlackScreen" output="viewport">

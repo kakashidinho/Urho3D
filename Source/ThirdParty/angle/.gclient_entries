@@ -16,7 +16,7 @@ entries = {
   './third_party/libjpeg_turbo': 'https://chromium.googlesource.com/chromium/deps/libjpeg_turbo@6dcdade8828297e306cabfdae80f3510f3f3eea2',
   './third_party/libpng/src': 'https://android.googlesource.com/platform/external/libpng@094e181e79a3d6c23fd005679025058b7df1ad6c',
   './third_party/rapidjson/src': 'https://chromium.googlesource.com/external/github.com/Tencent/rapidjson@7484e06c589873e1ed80382d262087e4fa80fb63',
-  './third_party/spirv-cross/src': 'https://chromium.googlesource.com/external/github.com/KhronosGroup/SPIRV-Cross@7cc84020b37a69cd3503d63c4b9ae76cb75d9f6a',
+  './third_party/spirv-cross/src': 'https://chromium.googlesource.com/external/github.com/KhronosGroup/SPIRV-Cross@fd5aa3ad51ece55a1b51fe6bfb271db6844ae291',
   './third_party/spirv-headers/src': 'https://chromium.googlesource.com/external/github.com/KhronosGroup/SPIRV-Headers@842ec90674627ed2ffef609e3cd79d1562eded01',
   './third_party/spirv-tools/src': 'https://chromium.googlesource.com/external/github.com/KhronosGroup/SPIRV-Tools@3c7ff8d4f0a1c0f27328871fe64879170a4f0930',
   './third_party/vulkan-headers/src': 'https://chromium.googlesource.com/external/github.com/KhronosGroup/Vulkan-Headers@5b44df19e040fca0048ab30c553a8c2d2cb9623e',

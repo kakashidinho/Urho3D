@@ -11,6 +11,9 @@
 #include "libANGLE/renderer/metal/mtl_command_buffer.h"
 
 #include <cassert>
+#if ANGLE_MTL_SIMULATE_DISCARD_FRAMEBUFFER
+#    include <random>
+#endif
 
 #include "common/debug.h"
 #include "libANGLE/renderer/metal/mtl_resources.h"
@@ -342,6 +345,11 @@ RenderCommandEncoder::~RenderCommandEncoder() {}
 
 void RenderCommandEncoder::endEncoding()
 {
+    endEncodingImpl(true);
+}
+
+void RenderCommandEncoder::endEncodingImpl(bool considerDiscardSimulation)
+{
     if (!valid())
         return;
 
@@ -385,6 +393,13 @@ void RenderCommandEncoder::endEncoding()
 
     CommandEncoder::endEncoding();
 
+#if ANGLE_MTL_SIMULATE_DISCARD_FRAMEBUFFER
+    if (considerDiscardSimulation)
+    {
+        simulateDiscardFramebuffer();
+    }
+#endif
+
     // reset state
     mRenderPassDesc = RenderPassDesc();
 }
@@ -403,6 +418,60 @@ inline void RenderCommandEncoder::initWriteDependencyAndStoreAction(const Textur
         // Texture is invalid, use don'tcare store action
         *storeActionOut = MTLStoreActionDontCare;
     }
+}
+
+void RenderCommandEncoder::simulateDiscardFramebuffer()
+{
+    // Simulate true framebuffer discard operation by clearing the framebuffer
+#if ANGLE_MTL_SIMULATE_DISCARD_FRAMEBUFFER
+    std::random_device rd;   // Will be used to obtain a seed for the random number engine
+    std::mt19937 gen(rd());  // Standard mersenne_twister_engine seeded with rd()
+    std::uniform_real_distribution<float> dis(0.0, 1.0f);
+    bool hasDiscard = false;
+    for (uint32_t i = 0; i < mRenderPassDesc.numColorAttachments; ++i)
+    {
+        if (mRenderPassDesc.colorAttachments[i].storeAction == MTLStoreActionDontCare)
+        {
+            hasDiscard                                     = true;
+            mRenderPassDesc.colorAttachments[i].loadAction = MTLLoadActionClear;
+            mRenderPassDesc.colorAttachments[i].clearColor =
+                MTLClearColorMake(dis(gen), dis(gen), dis(gen), dis(gen));
+        }
+        else
+        {
+            mRenderPassDesc.colorAttachments[i].loadAction = MTLLoadActionLoad;
+        }
+    }
+
+    if (mRenderPassDesc.depthAttachment.storeAction == MTLStoreActionDontCare)
+    {
+        hasDiscard                                 = true;
+        mRenderPassDesc.depthAttachment.loadAction = MTLLoadActionClear;
+        mRenderPassDesc.depthAttachment.clearDepth = dis(gen);
+    }
+    else
+    {
+        mRenderPassDesc.depthAttachment.loadAction = MTLLoadActionLoad;
+    }
+
+    if (mRenderPassDesc.stencilAttachment.storeAction == MTLStoreActionDontCare)
+    {
+        hasDiscard                                     = true;
+        mRenderPassDesc.stencilAttachment.loadAction   = MTLLoadActionClear;
+        mRenderPassDesc.stencilAttachment.clearStencil = rand();
+    }
+    else
+    {
+        mRenderPassDesc.stencilAttachment.loadAction = MTLLoadActionLoad;
+    }
+
+    if (hasDiscard)
+    {
+        auto tmpDesc = mRenderPassDesc;
+        restart(tmpDesc);
+        endEncodingImpl(false);
+    }
+#endif  // ANGLE_MTL_SIMULATE_DISCARD_FRAMEBUFFER
 }
 
 RenderCommandEncoder &RenderCommandEncoder::restart(const RenderPassDesc &desc)
@@ -429,19 +498,19 @@ RenderCommandEncoder &RenderCommandEncoder::restart(const RenderPassDesc &desc)
 
     ANGLE_MTL_OBJC_SCOPE
     {
-        // mask writing dependency
+        // mask writing dependency & set load & store options
         for (uint32_t i = 0; i < mRenderPassDesc.numColorAttachments; ++i)
         {
-            initWriteDependencyAndStoreAction(mRenderPassDesc.colorAttachments[i].texture,
+            initWriteDependencyAndStoreAction(mRenderPassDesc.colorAttachments[i].texture(),
                                               &mRenderPassDesc.colorAttachments[i].storeAction);
             mColorInitialStoreActions[i] = mRenderPassDesc.colorAttachments[i].storeAction;
         }
 
-        initWriteDependencyAndStoreAction(mRenderPassDesc.depthAttachment.texture,
+        initWriteDependencyAndStoreAction(mRenderPassDesc.depthAttachment.texture(),
                                           &mRenderPassDesc.depthAttachment.storeAction);
         mDepthInitialStoreAction = mRenderPassDesc.depthAttachment.storeAction;
 
-        initWriteDependencyAndStoreAction(mRenderPassDesc.stencilAttachment.texture,
+        initWriteDependencyAndStoreAction(mRenderPassDesc.stencilAttachment.texture(),
                                           &mRenderPassDesc.stencilAttachment.storeAction);
         mStencilInitialStoreAction = mRenderPassDesc.stencilAttachment.storeAction;
 
@@ -513,8 +582,8 @@ RenderCommandEncoder &RenderCommandEncoder::setDepthBias(float depthBias,
 RenderCommandEncoder &RenderCommandEncoder::setStencilRefVals(uint32_t frontRef, uint32_t backRef)
 {
     // Metal has some bugs when reference values are larger than 0xff
-    frontRef = frontRef & kStencilMaskAll;
-    backRef  = backRef & kStencilMaskAll;
+    ASSERT(frontRef == (frontRef & kStencilMaskAll));
+    ASSERT(backRef == (backRef & kStencilMaskAll));
     [get() setStencilFrontReferenceValue:frontRef backReferenceValue:backRef];
 
     return *this;
@@ -795,6 +864,22 @@ RenderCommandEncoder &RenderCommandEncoder::setDepthStencilStoreAction(
     return *this;
 }
 
+RenderCommandEncoder &RenderCommandEncoder::setDepthStoreAction(MTLStoreAction action)
+{
+    // We only store the options, will defer the actual setting until the encoder finishes
+    mRenderPassDesc.depthAttachment.storeAction = action;
+
+    return *this;
+}
+
+RenderCommandEncoder &RenderCommandEncoder::setStencilStoreAction(MTLStoreAction action)
+{
+    // We only store the options, will defer the actual setting until the encoder finishes
+    mRenderPassDesc.stencilAttachment.storeAction = action;
+
+    return *this;
+}
+
 // BlitCommandEncoder
 BlitCommandEncoder::BlitCommandEncoder(CommandBuffer *cmdBuffer) : CommandEncoder(cmdBuffer, BLIT)
 {}
@@ -966,13 +1051,24 @@ ComputeCommandEncoder &ComputeCommandEncoder::setBuffer(const BufferRef &buffer,
         return *this;
     }
 
-    // NOTE(hqle): Assume compute shader both reads and writes to this buffer for now.
     cmdBuffer().setReadDependency(buffer);
-    cmdBuffer().setWriteDependency(buffer);
 
     [get() setBuffer:(buffer ? buffer->get() : nil) offset:offset atIndex:index];
 
     return *this;
+}
+
+ComputeCommandEncoder &ComputeCommandEncoder::setBufferForWrite(const BufferRef &buffer,
+                                                                uint32_t offset,
+                                                                uint32_t index)
+{
+    if (index >= kMaxShaderBuffers)
+    {
+        return *this;
+    }
+
+    cmdBuffer().setWriteDependency(buffer);
+    return setBuffer(buffer, offset, index);
 }
 
 ComputeCommandEncoder &ComputeCommandEncoder::setBytes(const uint8_t *bytes,
@@ -1010,12 +1106,21 @@ ComputeCommandEncoder &ComputeCommandEncoder::setTexture(const TextureRef &textu
         return *this;
     }
 
-    // NOTE(hqle): Assume compute shader both reads and writes to this texture for now.
     cmdBuffer().setReadDependency(texture);
-    cmdBuffer().setWriteDependency(texture);
     [get() setTexture:(texture ? texture->get() : nil) atIndex:index];
 
     return *this;
+}
+ComputeCommandEncoder &ComputeCommandEncoder::setTextureForWrite(const TextureRef &texture,
+                                                                 uint32_t index)
+{
+    if (index >= kMaxShaderSamplers)
+    {
+        return *this;
+    }
+
+    cmdBuffer().setWriteDependency(texture);
+    return setTexture(texture, index);
 }
 
 ComputeCommandEncoder &ComputeCommandEncoder::dispatch(MTLSize threadGroupsPerGrid,

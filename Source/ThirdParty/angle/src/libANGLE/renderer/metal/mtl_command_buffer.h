@@ -247,6 +247,8 @@ class RenderCommandEncoder final : public CommandEncoder
 
     RenderCommandEncoder &setDepthStencilStoreAction(MTLStoreAction depthStoreAction,
                                                      MTLStoreAction stencilStoreAction);
+    RenderCommandEncoder &setDepthStoreAction(MTLStoreAction action);
+    RenderCommandEncoder &setStencilStoreAction(MTLStoreAction action);
 
     const RenderPassDesc &renderPassDesc() const { return mRenderPassDesc; }
 
@@ -255,8 +257,10 @@ class RenderCommandEncoder final : public CommandEncoder
     {
         return static_cast<id<MTLRenderCommandEncoder>>(CommandEncoder::get());
     }
-    inline void initWriteDependencyAndStoreAction(const TextureRef &texture,
-                                                  MTLStoreAction *storeActionOut);
+    void initWriteDependencyAndStoreAction(const TextureRef &texture,
+                                           MTLStoreAction *storeActionOut);
+    void simulateDiscardFramebuffer();
+    void endEncodingImpl(bool considerDiscardSimulation);
 
     RenderPassDesc mRenderPassDesc;
     MTLStoreAction mColorInitialStoreActions[kMaxRenderTargets];
@@ -314,6 +318,9 @@ class ComputeCommandEncoder final : public CommandEncoder
     ComputeCommandEncoder &setComputePipelineState(id<MTLComputePipelineState> state);
 
     ComputeCommandEncoder &setBuffer(const BufferRef &buffer, uint32_t offset, uint32_t index);
+    ComputeCommandEncoder &setBufferForWrite(const BufferRef &buffer,
+                                             uint32_t offset,
+                                             uint32_t index);
     ComputeCommandEncoder &setBytes(const uint8_t *bytes, size_t size, uint32_t index);
     template <typename T>
     ComputeCommandEncoder &setData(const T &data, uint32_t index)
@@ -325,6 +332,7 @@ class ComputeCommandEncoder final : public CommandEncoder
                                            float lodMaxClamp,
                                            uint32_t index);
     ComputeCommandEncoder &setTexture(const TextureRef &texture, uint32_t index);
+    ComputeCommandEncoder &setTextureForWrite(const TextureRef &texture, uint32_t index);
 
     ComputeCommandEncoder &dispatch(MTLSize threadGroupsPerGrid, MTLSize threadsPerGroup);
 

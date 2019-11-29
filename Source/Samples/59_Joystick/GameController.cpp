@@ -77,7 +77,7 @@ bool GameController::CreateController()
         RemoveScreenJoystick();
 
         // and create our own
-        if( graphics->GetHighDPI() == true)
+        if( graphics->GetHighDPI() == true || GetPlatform() == "Android" )
         {
             XMLFile *layout = cache->GetResource<XMLFile>("ScreenJoystick/ScreenJoystickHDPI.xml");
             joystickID_ = input->AddScreenJoystick(layout, cache->GetResource<XMLFile>("UI/DefaultStyle.xml"));

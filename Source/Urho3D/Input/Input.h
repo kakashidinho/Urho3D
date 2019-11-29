@@ -73,6 +73,15 @@ struct TouchState
     WeakPtr<UIElement> touchedElement_;
 };
 
+
+/// Screen joystick axis button
+struct ScreenJoystickAxis
+{
+    IntVector2  buttonOffset_;
+    unsigned    arrayIdx_;
+    float       innerRadius_;
+};
+
 /// %Input state for a joystick.
 struct JoystickState
 {
@@ -123,6 +132,8 @@ struct JoystickState
     PODVector<float> axes_;
     /// POV hat bits.
     PODVector<int> hats_;
+    /// Screen joystick axis buttons
+    PODVector<ScreenJoystickAxis> screenJoystickAxisList_;
 };
 
 #ifdef __EMSCRIPTEN__
@@ -341,6 +352,8 @@ private:
     void HandleBeginFrame(StringHash eventType, VariantMap& eventData);
     /// Handle touch events from the controls of screen joystick(s).
     void HandleScreenJoystickTouch(StringHash eventType, VariantMap& eventData);
+    /// Handle drag events from the controls of screen joystick(s).
+    void HandleScreenJoystickDrag(StringHash eventType, VariantMap& eventData);
     /// Handle SDL event.
     void HandleSDLEvent(void* sdlEvent);
 

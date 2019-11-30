@@ -1,0 +1,355 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<CodeBlocks_project_file>
+   <FileVersion major="1" minor="6" />
+   <Project>
+      <Option title="hexon" />
+      <Option makefile_is_custom="1" />
+      <Option compiler="gcc" />
+      <Option virtualFolders="CMake Files\;CMake Files\..\;CMake Files\..\..\;CMake Files\..\..\..\;CMake Files\..\..\..\Git\;CMake Files\..\..\..\Git\mxe\;CMake Files\..\..\..\Git\mxe\usr\;CMake Files\..\..\..\Git\mxe\usr\i686-w64-mingw32.static\;CMake Files\..\..\..\Git\mxe\usr\i686-w64-mingw32.static\share\;CMake Files\..\..\..\Git\mxe\usr\i686-w64-mingw32.static\share\cmake\;CMake Files\..\..\..\Git\mxe\usr\i686-w64-mingw32.static\share\cmake\mxe-conf.d\;" />
+      <Build>
+      <Target title="all">
+         <Option working_dir="/home/frode/Creations/Games/heXon" />
+         <Option type="4" />
+         <MakeCommands>
+            <Build command="/usr/bin/make -f &quot;/home/frode/Creations/Games/heXon/Makefile&quot;  VERBOSE=1 all" />
+            <CompileFile command="/usr/bin/make -f &quot;/home/frode/Creations/Games/heXon/Makefile&quot;  VERBOSE=1 &quot;$file&quot;" />
+            <Clean command="/usr/bin/make -f &quot;/home/frode/Creations/Games/heXon/Makefile&quot;  VERBOSE=1 clean" />
+            <DistClean command="/usr/bin/make -f &quot;/home/frode/Creations/Games/heXon/Makefile&quot;  VERBOSE=1 clean" />
+         </MakeCommands>
+      </Target>
+      <Target title="rebuild_cache">
+         <Option working_dir="/home/frode/Creations/Games/heXon" />
+         <Option type="4" />
+         <MakeCommands>
+            <Build command="/usr/bin/make -f &quot;/home/frode/Creations/Games/heXon/Makefile&quot;  VERBOSE=1 rebuild_cache" />
+            <CompileFile command="/usr/bin/make -f &quot;/home/frode/Creations/Games/heXon/Makefile&quot;  VERBOSE=1 &quot;$file&quot;" />
+            <Clean command="/usr/bin/make -f &quot;/home/frode/Creations/Games/heXon/Makefile&quot;  VERBOSE=1 clean" />
+            <DistClean command="/usr/bin/make -f &quot;/home/frode/Creations/Games/heXon/Makefile&quot;  VERBOSE=1 clean" />
+         </MakeCommands>
+      </Target>
+      <Target title="edit_cache">
+         <Option working_dir="/home/frode/Creations/Games/heXon" />
+         <Option type="4" />
+         <MakeCommands>
+            <Build command="/usr/bin/make -f &quot;/home/frode/Creations/Games/heXon/Makefile&quot;  VERBOSE=1 edit_cache" />
+            <CompileFile command="/usr/bin/make -f &quot;/home/frode/Creations/Games/heXon/Makefile&quot;  VERBOSE=1 &quot;$file&quot;" />
+            <Clean command="/usr/bin/make -f &quot;/home/frode/Creations/Games/heXon/Makefile&quot;  VERBOSE=1 clean" />
+            <DistClean command="/usr/bin/make -f &quot;/home/frode/Creations/Games/heXon/Makefile&quot;  VERBOSE=1 clean" />
+         </MakeCommands>
+      </Target>
+      <Target title="hexon">
+         <Option output="/home/frode/Creations/Games/heXon/hexon.exe" prefix_auto="0" extension_auto="0" />
+         <Option working_dir="/home/frode/Creations/Games/heXon" />
+         <Option object_output="./" />
+         <Option type="1" />
+         <Option compiler="gcc" />
+         <Compiler>
+            <Add directory="/home/frode/Creations/Games/heXon/../heXon/Urho3D/include" />
+            <Add directory="/home/frode/Creations/Games/heXon/../heXon/Urho3D/include/Urho3D/ThirdParty" />
+         </Compiler>
+         <MakeCommands>
+            <Build command="/usr/bin/make -f &quot;/home/frode/Creations/Games/heXon/Makefile&quot;  VERBOSE=1 hexon" />
+            <CompileFile command="/usr/bin/make -f &quot;/home/frode/Creations/Games/heXon/Makefile&quot;  VERBOSE=1 &quot;$file&quot;" />
+            <Clean command="/usr/bin/make -f &quot;/home/frode/Creations/Games/heXon/Makefile&quot;  VERBOSE=1 clean" />
+            <DistClean command="/usr/bin/make -f &quot;/home/frode/Creations/Games/heXon/Makefile&quot;  VERBOSE=1 clean" />
+         </MakeCommands>
+      </Target>
+      <Target title="hexon/fast">
+         <Option output="/home/frode/Creations/Games/heXon/hexon.exe" prefix_auto="0" extension_auto="0" />
+         <Option working_dir="/home/frode/Creations/Games/heXon" />
+         <Option object_output="./" />
+         <Option type="1" />
+         <Option compiler="gcc" />
+         <Compiler>
+            <Add directory="/home/frode/Creations/Games/heXon/../heXon/Urho3D/include" />
+            <Add directory="/home/frode/Creations/Games/heXon/../heXon/Urho3D/include/Urho3D/ThirdParty" />
+         </Compiler>
+         <MakeCommands>
+            <Build command="/usr/bin/make -f &quot;/home/frode/Creations/Games/heXon/Makefile&quot;  VERBOSE=1 hexon/fast" />
+            <CompileFile command="/usr/bin/make -f &quot;/home/frode/Creations/Games/heXon/Makefile&quot;  VERBOSE=1 &quot;$file&quot;" />
+            <Clean command="/usr/bin/make -f &quot;/home/frode/Creations/Games/heXon/Makefile&quot;  VERBOSE=1 clean" />
+            <DistClean command="/usr/bin/make -f &quot;/home/frode/Creations/Games/heXon/Makefile&quot;  VERBOSE=1 clean" />
+         </MakeCommands>
+      </Target>
+      </Build>
+      <Unit filename="/home/frode/Creations/Games/heXon/TailGenerator.cpp">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/TailGenerator.h">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/apple.cpp">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/apple.h">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/arena.cpp">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/arena.h">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/bubble.cpp">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/bubble.h">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/bullet.cpp">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/bullet.h">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/chaoball.cpp">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/chaoball.h">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/chaoflash.cpp">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/chaoflash.h">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/chaomine.cpp">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/chaomine.h">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/chaozap.cpp">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/chaozap.h">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/coin.cpp">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/coin.h">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/controllable.cpp">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/controllable.h">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/door.cpp">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/door.h">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/effect.cpp">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/effect.h">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/effectinstance.cpp">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/effectinstance.h">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/effectmaster.cpp">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/effectmaster.h">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/enemy.cpp">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/enemy.h">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/explosion.cpp">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/explosion.h">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/flash.cpp">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/flash.h">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/gui3d.cpp">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/gui3d.h">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/heart.cpp">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/heart.h">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/hexocam.cpp">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/hexocam.h">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/highest.cpp">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/highest.h">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/hitfx.cpp">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/hitfx.h">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/inputmaster.cpp">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/inputmaster.h">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/line.cpp">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/line.h">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/lobby.cpp">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/lobby.h">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/luckey.cpp">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/luckey.h">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/mastercontrol.cpp">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/mastercontrol.h">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/muzzle.cpp">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/muzzle.h">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/panel.cpp">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/panel.h">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/phaser.cpp">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/phaser.h">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/pickup.cpp">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/pickup.h">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/pilot.cpp">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/pilot.h">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/player.cpp">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/player.h">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/razor.cpp">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/razor.h">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/sceneobject.cpp">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/sceneobject.h">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/seeker.cpp">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/seeker.h">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/ship.cpp">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/ship.h">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/spawnmaster.cpp">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/spawnmaster.h">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/spire.cpp">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/spire.h">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/splatterpillar.cpp">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/splatterpillar.h">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/tile.cpp">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/tile.h">
+         <Option target="hexon"/>
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/CMakeLists.txt">
+          <Option virtualFolder="CMake Files\" />
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/../../../Git/mxe/usr/i686-w64-mingw32.static/share/cmake/mxe-conf.cmake">
+          <Option virtualFolder="CMake Files\..\..\..\Git\mxe\usr\i686-w64-mingw32.static\share\cmake\" />
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/../../../Git/mxe/usr/i686-w64-mingw32.static/share/cmake/mxe-conf.cmake">
+          <Option virtualFolder="CMake Files\..\..\..\Git\mxe\usr\i686-w64-mingw32.static\share\cmake\" />
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/../../../Git/mxe/usr/i686-w64-mingw32.static/share/cmake/mxe-conf.d/pkgconf.cmake">
+          <Option virtualFolder="CMake Files\..\..\..\Git\mxe\usr\i686-w64-mingw32.static\share\cmake\mxe-conf.d\" />
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/../../../Git/mxe/usr/i686-w64-mingw32.static/share/cmake/mxe-conf.d/qtbase.cmake">
+          <Option virtualFolder="CMake Files\..\..\..\Git\mxe\usr\i686-w64-mingw32.static\share\cmake\mxe-conf.d\" />
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/../../../Git/mxe/usr/i686-w64-mingw32.static/share/cmake/mxe-conf.d/qt.cmake">
+          <Option virtualFolder="CMake Files\..\..\..\Git\mxe\usr\i686-w64-mingw32.static\share\cmake\mxe-conf.d\" />
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/../../../Git/mxe/usr/i686-w64-mingw32.static/share/cmake/mxe-conf.d/pkgconf.cmake">
+          <Option virtualFolder="CMake Files\..\..\..\Git\mxe\usr\i686-w64-mingw32.static\share\cmake\mxe-conf.d\" />
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/../../../Git/mxe/usr/i686-w64-mingw32.static/share/cmake/mxe-conf.d/qtbase.cmake">
+          <Option virtualFolder="CMake Files\..\..\..\Git\mxe\usr\i686-w64-mingw32.static\share\cmake\mxe-conf.d\" />
+      </Unit>
+      <Unit filename="/home/frode/Creations/Games/heXon/../../../Git/mxe/usr/i686-w64-mingw32.static/share/cmake/mxe-conf.d/qt.cmake">
+          <Option virtualFolder="CMake Files\..\..\..\Git\mxe\usr\i686-w64-mingw32.static\share\cmake\mxe-conf.d\" />
+      </Unit>
+   </Project>
+</CodeBlocks_project_file>

@@ -1,0 +1,30 @@
+os: linux
+dist: trusty
+compiler: gcc
+language: cpp
+sudo: false
+cache:
+  apt: true
+submodules: false
+addons:
+  apt:
+    sources:
+      - ubuntu-toolchain-r-test
+    packages:
+      - build-essential
+      - make
+      - g++-4.9
+      - libx11-dev
+      - libxrandr-dev
+      - libasound2-dev
+      - git
+before_script:
+  - wget --no-check-certificate https://cmake.org/files/v3.9/cmake-3.9.2-Linux-x86_64.tar.gz -O - | tar zx -C $HOME
+  - export PATH=$HOME/cmake-3.9.2-Linux-x86_64/bin:$PATH
+script:
+  - git clone https://github.com/Urho3D/Urho3D
+  - cd Urho3D
+  - cmake . -Wno-dev -DURHO3D_SAMPLES=0 -DURHO3D_URHO2D=0 -DURHO3D_TOOLS=0 -DURHO3D_ANGELSCRIPT=0 -DURHO3D_LUA=0 && make
+  - cd ..
+  - qmake heXon.pro -Wnone
+  - make

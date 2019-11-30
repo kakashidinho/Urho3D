@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<particleeffect>
+	<material name="Materials/Explosion.xml" />
+	<numparticles value="23" />
+	<updateinvisible enable="false" />
+	<relative enable="false" />
+	<scaled enable="true" />
+	<sorted enable="false" />
+	<animlodbias value="0" />
+	<emittertype value="Sphere" />
+	<emittersize value="0.25 0.25 0.25" />
+	<direction min="0 0 0" max="0 0 0" />
+	<constantforce value="0 0 0" />
+	<dampingforce value="2" />
+	<activetime value="0" />
+	<inactivetime value="0" />
+	<emissionrate min="5" max="13" />
+	<particlesize min="0.7 0.7" max="0.9 0.9" />
+	<timetolive min="1" max="1" />
+	<velocity min="0.2" max="1" />
+	<rotation min="0" max="360" />
+	<rotationspeed min="-200" max="200" />
+	<sizedelta add="3" mul="-3" />
+	<color value="1 1 1 1" />
+	<texanim uv="0 0.75 0.25 1" time="0" />
+	<texanim uv="0.25 0.75 0.5 1" time="0.1" />
+	<texanim uv="0.5 0.75 0.75 1" time="0.22" />
+</particleeffect>

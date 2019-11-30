@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Exec=hexon
+Name=heXon
+Comment=Astral Arcade
+Icon=hexon
+Terminal=false
+Categories=Game;ArcadeGame;
+Name[en_US.UTF-8]=heXon

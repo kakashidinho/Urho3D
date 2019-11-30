@@ -1,0 +1,6 @@
+<technique vs="DissolveLitSolid" ps="DissolveLitSolid" psdefines="DIFFMAP ALPHAMASK" alphamask="true">
+    <pass name="alpha" psdefines="EMISSIVEMAP" depthwrite="false" blend="alpha" />
+    <pass name="litalpha" depthwrite="false" blend="addalpha" />
+    <pass name="light" depthtest="equal" depthwrite="false" blend="add" />
+    <pass name="shadow" vs="DissolveShadow" ps="DissolveShadow" psdefines="ALPHAMASK" />
+</technique>

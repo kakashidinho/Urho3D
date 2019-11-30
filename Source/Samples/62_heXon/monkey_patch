@@ -1,0 +1,3 @@
+#!/bin/bash
+
+sed -i 's/CXXFLAGS      = -pipe -fno-keep-inline-dllexport -std=c++0x -O2 -g -std=gnu++11 -frtti -Wall -Wextra -fexceptions -mthreads $(DEFINES)/CXXFLAGS      = -pipe -fno-keep-inline-dllexport -std=c++0x -O2 -g -std=gnu++11 -frtti -Wall -Wextra -fexceptions -mthreads -msse4.2 -mavx $(DEFINES)/' Makefile.Debug

@@ -1,0 +1,4 @@
+<technique vs="Unlit" ps="Tile" psdefines="DIFFMAP">
+    <pass name="alpha" depthwrite="false" blend="addalpha" />
+    <pass name="light" depthtest="equal" depthwrite="false" blend="add" />
+</technique>

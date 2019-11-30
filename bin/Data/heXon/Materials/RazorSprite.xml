@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<material>
+	<technique name="Techniques/DiffNormalEmissiveAlpha.xml" quality="0" loddistance="0" />
+	<texture unit="diffuse" name="Textures/RazorSpriteDiffuse.png" />
+	<!--texture unit="specular" name="Textures/RazorSpriteDiffuse.png" /-->
+	<texture unit="normal" name="Textures/RazorSpriteNormal.png" />
+	<texture unit="emissive" name="Textures/RazorSpriteEmissive.png" />
+	<parameter name="UOffset" value="1 0 0 0" />
+	<parameter name="VOffset" value="0 1 0 0" />
+	<parameter name="MatDiffColor" value="1 1 1 1" />
+	<parameter name="MatEmissiveColor" value="0.42 0.05 0.05" />
+	<parameter name="MatSpecColor" value="1 1 1 10" />
+	<cull value="none" />
+	<shadowcull value="ccw" />
+	<depthbias constant="0" slopescaled="0" />
+</material>

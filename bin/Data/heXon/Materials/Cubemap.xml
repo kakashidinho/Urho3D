@@ -1,0 +1,9 @@
+<cubemap>
+    <face name="Textures/Cubemap_right.png"/>
+    <face name="Textures/Cubemap_left.png"/>
+    <face name="Textures/Cubemap_top.png"/>
+    <face name="Textures/Cubemap_bottom.png"/>
+    <face name="Textures/Cubemap_back.png"/>
+    <face name="Textures/Cubemap_front.png"/>
+    <quality low="0"/>
+</cubemap>

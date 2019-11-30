@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<particleeffect>
+	<material name="Materials/BloodDrip.xml" />
+	<numparticles value="88" />
+	<updateinvisible enable="true" />
+	<relative enable="true" />
+	<scaled enable="true" />
+	<sorted enable="true" />
+	<animlodbias value="0" />
+	<emittertype value="Sphere" />
+	<emittersize value="0.666 0 0.666" />
+	<direction min="0 -0.01 0" max="0 0 0" />
+	<constantforce value="0 -13 0" />
+	<dampingforce value="0" />
+	<activetime value="0" />
+	<inactivetime value="0" />
+	<emissionrate min="200" max="300" />
+	<particlesize min="0.005 0.01" max="0.0666 0.34" />
+	<timetolive min="0.42" max="0.42" />
+	<velocity min="0" max="0" />
+	<rotation min="0" max="0" />
+	<rotationspeed min="0" max="0" />
+	<sizedelta add="0" mul="1" />
+	<faceCameraMode value="Direction" />
+	<colorfade color="0 0 0 1" time="0" />
+	<colorfade color="1 0.23 0.1 0" time="0" />
+	<colorfade color="1 0.23 0.23 1" time="0.01" />
+	<colorfade color="1 0.1 0.2 0.5" time="0.2" />
+	<colorfade color="0 0 0 0" time="0.23" />
+</particleeffect>

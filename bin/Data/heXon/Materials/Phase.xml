@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<material>
+	<technique name="Techniques/DissolveDiffEmissiveAlphaMask.xml"/>
+	<!--texture unit="diffuse" name="Textures/Blood.png" /-->
+	<texture unit="emissive" name="Textures/CoreGradient.png" />
+	<texture unit="specular" name="Textures/CoreGradient.png" />
+	<parameter name="MatDiffColor" value="0.0 0.0 0.0 1.0" />
+	<parameter name="MatEmissiveColor" value="2 3 5" />
+	<parameter name="MatSpecColor" value="0 0 0 1" />
+	<parameter name="Dissolve" value="0.1"/>
+</material>

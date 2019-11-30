@@ -29,6 +29,7 @@ import android.view.View
 import android.widget.ExpandableListView
 import android.widget.SimpleExpandableListAdapter
 import com.github.urho3d.UrhoActivity
+import android.os.Build
 
 class LauncherActivity : ExpandableListActivity() {
 
@@ -69,6 +70,21 @@ class LauncherActivity : ExpandableListActivity() {
         ))
         setContentView(R.layout.activity_launcher)
 
+ 
+        if (Build.VERSION.SDK_INT >= 19)
+        {
+            window.decorView.systemUiVisibility = (View.SYSTEM_UI_FLAG_IMMERSIVE
+            // Set the content to appear under the system bars so that the
+            // content doesn't resize when the system bars hide and show.
+            or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+            or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+            or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+            // Hide the nav bar and status bar
+            or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+            or View.SYSTEM_UI_FLAG_FULLSCREEN)
+
+        }
+       
         // Pass the argument to the main activity, if any
         launch(intent.getStringExtra(MainActivity.argument))
     }

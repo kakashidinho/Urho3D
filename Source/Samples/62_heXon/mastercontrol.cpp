@@ -69,6 +69,8 @@
 #include "arena.h"
 #include "tile.h"
 
+#include "GameController.h"
+
 URHO3D_DEFINE_APPLICATION_MAIN(MasterControl);
 
 MasterControl* MasterControl::instance_ = NULL;
@@ -206,6 +208,9 @@ void MasterControl::Start()
     SetGameState(GS_LOBBY);
 
     SubscribeToEvents();
+    
+    // TBD ELI
+    context_->RegisterSubsystem(new GameController(context_));
 }
 void MasterControl::Stop()
 {
@@ -485,9 +490,12 @@ void MasterControl::CreateScene()
     navMesh->SetTileSize(256);
     navMesh->Build();
 
-    for (unsigned p{1}; p <= Max(INPUT->GetNumJoysticks(), 1 * !engineParameters_[EP_HEADLESS].GetBool()); ++p) {
+    if (GetPlatform() != "Android" && GetPlatform() != "iOS")
+    {
+        for (unsigned p{1}; p <= Max(INPUT->GetNumJoysticks(), 1 * !engineParameters_[EP_HEADLESS].GetBool()); ++p) {
 
-        AddPlayer();
+           AddPlayer();
+        }
     }
 }
 

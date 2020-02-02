@@ -100,13 +100,11 @@ bool GameController::CreateController()
             XMLFile *layout = cache->GetResource<XMLFile>("ScreenJoystick/ScreenJoystickHDPI.xml");
             joystickID_ = input->AddScreenJoystick(layout, cache->GetResource<XMLFile>("UI/DefaultStyle.xml"));
             input->SetScreenJoystickVisible(joystickID_, true);
-            Cursor* cursor = GetSubsystem<UI>()->GetCursor();
         }
         else{
             XMLFile *layout = cache->GetResource<XMLFile>("ScreenJoystick/ScreenJoystick.xml");
             joystickID_ = input->AddScreenJoystick(layout, cache->GetResource<XMLFile>("UI/DefaultStyle.xml"));
             input->SetScreenJoystickVisible(joystickID_, true);
-            Cursor* cursor = GetSubsystem<UI>()->GetCursor();
         }
     }
     else
@@ -142,10 +140,7 @@ bool GameController::CreateController()
 
     SubscribeToEvent(E_JOYSTICKCONNECTED, URHO3D_HANDLER(GameController, HandleJoystickConnected));
     SubscribeToEvent(E_JOYSTICKDISCONNECTED, URHO3D_HANDLER(GameController, HandleJoystickDisconnected));
-    SubscribeToEvent(E_JOYSTICKBUTTONDOWN, URHO3D_HANDLER(GameController, HandleJoystickButtonDown));
-    SubscribeToEvent(E_JOYSTICKBUTTONUP, URHO3D_HANDLER(GameController, HandleJoystickButtonUp));
-    SubscribeToEvent(E_JOYSTICKAXISMOVE, URHO3D_HANDLER(GameController, HandleJoystickAxisMove));
-    
+
     return (joystickID_ != -1);
 }
 
@@ -306,23 +301,6 @@ void GameController::HandleJoystickDisconnected(StringHash eventType, VariantMap
     int joystickID = eventData[P_JOYSTICKID].GetInt();
 
     URHO3D_LOGINFOF("HandleJoystickDisconnected: id=%d", joystickID);
-}
-
-void GameController::HandleJoystickButtonDown(StringHash eventType, VariantMap &eventData)
-{
-    
-}
-
-void GameController::HandleJoystickButtonUp(StringHash eventType, VariantMap &eventData)
-{
-    
-}
-
-void GameController::HandleJoystickAxisMove(StringHash eventType, VariantMap& eventData)
-{
-    int joystickId{ eventData[JoystickAxisMove::P_JOYSTICKID].GetInt() };
-    int axis{ eventData[JoystickAxisMove::P_AXIS].GetInt() };
-    float position{ eventData[JoystickAxisMove::P_POSITION].GetFloat() };
 }
 
 

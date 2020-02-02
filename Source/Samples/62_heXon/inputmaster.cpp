@@ -1,4 +1,4 @@
-﻿/* heXon
+/* heXon
 // Copyright (C) 2018 LucKey Productions (luckeyproductions.nl)
 //
 // This program is free software; you can redistribute it and/or modify
@@ -20,6 +20,8 @@
 
 #include "player.h"
 #include "ship.h"
+
+#include "GameController.h"
 
 InputMaster::InputMaster(Context* context):
     Object(context),
@@ -62,10 +64,16 @@ InputMaster::InputMaster(Context* context):
         buttonBindingsPlayer_[p][CONTROLLER_BUTTON_DPAD_LEFT]   = PlayerInputAction::MOVE_LEFT;
         buttonBindingsPlayer_[p][CONTROLLER_BUTTON_DPAD_RIGHT]  = PlayerInputAction::MOVE_RIGHT;
 
+        /* TBD ELI 
         buttonBindingsPlayer_[p][CONTROLLER_BUTTON_A]           = PlayerInputAction::RAM;
         buttonBindingsPlayer_[p][CONTROLLER_BUTTON_B]           = PlayerInputAction::REPEL;
         buttonBindingsPlayer_[p][CONTROLLER_BUTTON_X]           = PlayerInputAction::DIVE;
         buttonBindingsPlayer_[p][CONTROLLER_BUTTON_Y]           = PlayerInputAction::DEPTHCHARGE;
+         */
+        buttonBindingsPlayer_[p][CONTROLLER_BUTTON_A]           = PlayerInputAction::FIRE_S;
+        buttonBindingsPlayer_[p][CONTROLLER_BUTTON_B]           = PlayerInputAction::FIRE_W;
+        buttonBindingsPlayer_[p][CONTROLLER_BUTTON_X]           = PlayerInputAction::FIRE_E;
+        buttonBindingsPlayer_[p][CONTROLLER_BUTTON_Y]           = PlayerInputAction::FIRE_N;
 
         axisBindingsPlayer_[p][CONTROLLER_AXIS_LEFTX]           = PlayerInputAxis::MOVE_X;
         axisBindingsPlayer_[p][CONTROLLER_AXIS_LEFTY]           = PlayerInputAxis::MOVE_Y;
@@ -84,6 +92,26 @@ InputMaster::InputMaster(Context* context):
 void InputMaster::HandleUpdate(StringHash eventType, VariantMap &eventData)
 { (void)eventType; (void)eventData;
 
+    
+    GameController* gameController = GetSubsystem<GameController>();
+    if(gameController != nullptr)
+    {
+        gameController->UpdateControlInputs(controls_);
+        
+        // left stick
+        Variant lStick = controls_.extraData_[VAR_AXIS_0];
+
+        if (!lStick.IsEmpty())
+        {
+            Vector2 axisInput = lStick.GetVector2();
+            leftStickPosition_[0].x_ = axisInput.x_;
+            leftStickPosition_[0].y_ =  -axisInput.y_;
+
+        }
+        
+        controls_.pitch_ = Clamp(controls_.pitch_, -80.0f, 80.0f);
+    }
+    
     InputActions activeActions{};
     for (Player* p : MC->GetPlayers()){
 
@@ -253,6 +281,9 @@ void InputMaster::HandleJoystickButtonDown(Urho3D::StringHash eventType, Urho3D:
     int joystickId{ eventData[JoystickButtonDown::P_JOYSTICKID].GetInt() };
     ControllerButton button{ static_cast<ControllerButton>(eventData[JoystickButtonDown::P_BUTTON].GetInt()) };
 
+    // TBD eLI
+    joystickId = 0 ;
+    
     if (!pressedJoystickButtons_[joystickId].Contains(button))
         pressedJoystickButtons_[joystickId].Push(button);
 
@@ -280,6 +311,9 @@ void InputMaster::HandleJoystickButtonUp(Urho3D::StringHash eventType, Urho3D::V
     int joystickId{ eventData[JoystickButtonDown::P_JOYSTICKID].GetInt() };
     ControllerButton button{ static_cast<ControllerButton>(eventData[JoystickButtonUp::P_BUTTON].GetInt()) };
 
+    // TBD eLI
+    joystickId = 0 ;
+    
     if (pressedJoystickButtons_[joystickId].Contains(button))
         pressedJoystickButtons_[joystickId].Remove(button);
 }

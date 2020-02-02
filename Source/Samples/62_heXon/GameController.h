@@ -85,9 +85,6 @@ protected:
     void DumpControllerInfo(unsigned idx, bool useIdx=false) const;
     void HandleJoystickConnected(StringHash eventType, VariantMap& eventData);
     void HandleJoystickDisconnected(StringHash eventType, VariantMap& eventData);
-    void HandleJoystickButtonDown(StringHash eventType, VariantMap &eventData);
-    void HandleJoystickButtonUp(StringHash eventType, VariantMap &eventData);
-    void HandleJoystickAxisMove(StringHash eventType, VariantMap& eventData);
 
 protected:
     int joystickID_;

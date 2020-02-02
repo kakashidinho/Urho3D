@@ -81,6 +81,8 @@ private:
     HashMap<int, Vector2> rightStickPosition_;
 
     HashMap<int, Controllable*> controlledByPlayer_;
+    
+    Controls controls_;
 
     void HandleUpdate(StringHash eventType, VariantMap &eventData);
     void HandleKeyDown(StringHash eventType, VariantMap &eventData);

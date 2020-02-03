@@ -274,7 +274,7 @@ License / copyright information included with the assets as necessary. All other
 
 \page License License
 
-Copyright (c) 2008-2019 the Urho3D project.
+Copyright (c) 2008-2020 the Urho3D project.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 
@@ -1391,8 +1391,9 @@ From 1.7 to master:
 - Constants are replaced with enums and flag sets in multiple places. Use corresponding types and typed constants instead of integers and integer constants. For example, "unsigned vertexMask = MASK_POSITION" becomes "VertexMaskFlags vertexMask = MASK_POSITION" and "input->GetKeyDown('A')" becomes "input->GetKeyDown(KEY_A)".
 - StringHash::Calculate() method is now case-sensitive.
 - Build system - integrate with Gradle build system and migration to use Kotlin for Android platform.
-- Build system - introduce a new Emscripten-specific build option "EMSCRIPTEN_AUTO_SHELL" (default to TRUE), which cause the build system to automatically add an HTML shell-file if one is not explicitly given. Also set the default for "EMSCRIPTEN_WASM" build option to TRUE in order to align with the upstream EMCC compiler changes.
+- Build system - introduce a new Emscripten-specific build option "EMSCRIPTEN_AUTO_SHELL" (default to TRUE), which cause the build system to automatically add an HTML shell-file if one is not explicitly given. Switch to LLVM WASM backend with the implication of removing the "EMSCRIPTEN_WASM" build option (WASM is now always enabled and we do not support asm.js anymore), also removing the SHARED and MODULE library types for Web platform (they do not build correctly with LLVM backend).
 - Build system - the 'WIN32' build option for 'cmake_generic.sh' is renamed to 'MINGW' to be consistent with 'cmake_generic.bat'.
+- Build system - CMake version 3.10.2 is now minimum version required for building Urho3D library on any host systems.
 
 */
 

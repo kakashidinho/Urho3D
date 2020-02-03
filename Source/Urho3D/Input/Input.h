@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2008-2019 the Urho3D project.
+// Copyright (c) 2008-2020 the Urho3D project.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -103,7 +103,7 @@ struct JoystickState
     float GetAxisPosition(unsigned index) const { return index < axes_.Size() ? axes_[index] : 0.0f; }
 
     /// Return hat position.
-    int GetHatPosition(unsigned index) const { return index < hats_.Size() ? hats_[index] : HAT_CENTER; }
+    int GetHatPosition(unsigned index) const { return index < hats_.Size() ? hats_[index] : int(HAT_CENTER); }
 
     /// SDL joystick.
     SDL_Joystick* joystick_{};

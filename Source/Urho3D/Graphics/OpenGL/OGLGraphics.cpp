@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2008-2019 the Urho3D project.
+// Copyright (c) 2008-2020 the Urho3D project.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -505,13 +505,15 @@ bool Graphics::SetMode(int width, int height, bool fullscreen, bool borderless, 
 
 #ifdef URHO3D_LOGGING
     URHO3D_LOGINFOF("Adapter used %s %s", (const char *) glGetString(GL_VENDOR), (const char *) glGetString(GL_RENDERER));
-    
+
     String msg;
     msg.AppendWithFormat("Set screen mode %dx%d rate %d Hz %s monitor %d", width_, height_, refreshRate_, (fullscreen_ ? "fullscreen" : "windowed"), monitor_);
     if (borderless_)
         msg.Append(" borderless");
     if (resizable_)
         msg.Append(" resizable");
+    if (highDPI_)
+        msg.Append(" highDPI");
     if (multiSample > 1)
         msg.AppendWithFormat(" multisample %d", multiSample);
     URHO3D_LOGINFO(msg);

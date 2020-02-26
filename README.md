@@ -31,6 +31,7 @@ Urho3D development, contributions and bugfixes by:
 - Danny Boisvert
 - Sergey Bosko
 - Lisandro Bruzzo
+- Steven Burns
 - Thomas Böhm
 - Carlo Carollo
 - Pete Chown
@@ -108,6 +109,7 @@ Urho3D development, contributions and bugfixes by:
 - Fastran
 - Firegorilla
 - Gordon-F
+- Igor Segalla
 - LordGolias
 - Lumak
 - Magic.Lixin
@@ -118,6 +120,7 @@ Urho3D development, contributions and bugfixes by:
 - OvermindDL1
 - Polynominal
 - PredatorMF
+- PsychoCircuitry
 - Scellow
 - Skrylar
 - SuperWangKai
@@ -154,7 +157,9 @@ Urho3D development, contributions and bugfixes by:
 - ninjastone
 - orefkov
 - pat2nav
+- pflat
 - proller
+- r-a-sattarov
 - raould
 - rasteron
 - reattiva

@@ -50,8 +50,10 @@
 #        include "libANGLE/renderer/gl/wgl/DisplayWGL.h"
 #    elif defined(ANGLE_USE_X11)
 #        include "libANGLE/renderer/gl/glx/DisplayGLX.h"
-#    elif defined(ANGLE_PLATFORM_APPLE)
+#    elif defined(ANGLE_PLATFORM_MACOS)
 #        include "libANGLE/renderer/gl/cgl/DisplayCGL.h"
+#    elif defined(ANGLE_PLATFORM_IOS)
+#        include "libANGLE/renderer/gl/eagl/DisplayEAGL.h"
 #    elif defined(ANGLE_USE_OZONE)
 #        include "libANGLE/renderer/gl/egl/ozone/DisplayOzone.h"
 #    elif defined(ANGLE_PLATFORM_ANDROID)
@@ -195,7 +197,7 @@ EGLAttrib GetDisplayTypeFromEnvironment()
 #elif defined(ANGLE_ENABLE_VULKAN) && defined(ANGLE_PLATFORM_ANDROID)
     return EGL_PLATFORM_ANGLE_TYPE_VULKAN_ANGLE;
 #elif defined(ANGLE_ENABLE_OPENGL)
-#    if defined(ANGLE_PLATFORM_ANDROID) || defined(ANGLE_USE_OZONE)
+#    if defined(ANGLE_PLATFORM_ANDROID) || defined(ANGLE_USE_OZONE) || defined(ANGLE_PLATFORM_IOS)
     return EGL_PLATFORM_ANGLE_TYPE_OPENGLES_ANGLE;
 #    else
     return EGL_PLATFORM_ANGLE_TYPE_OPENGL_ANGLE;
@@ -220,6 +222,16 @@ rx::DisplayImpl *CreateDisplayFromAttribs(const AttributeMap &attribMap, const D
     rx::DisplayImpl *impl = nullptr;
     EGLAttrib displayType =
         attribMap.get(EGL_PLATFORM_ANGLE_TYPE_ANGLE, EGL_PLATFORM_ANGLE_TYPE_DEFAULT_ANGLE);
+
+#if defined(ANGLE_ENABLE_METAL)
+    if (displayType == EGL_PLATFORM_ANGLE_TYPE_METAL_ANGLE && !rx::IsMetalDisplayAvailable())
+    {
+        // Fallback to default type
+        displayType = EGL_PLATFORM_ANGLE_TYPE_DEFAULT_ANGLE;
+        WARN() << "EGL_PLATFORM_ANGLE_TYPE_METAL_ANGLE is not available, fallback to "
+                  "EGL_PLATFORM_ANGLE_TYPE_DEFAULT_ANGLE";
+    }
+#endif
 
     if (displayType == EGL_PLATFORM_ANGLE_TYPE_DEFAULT_ANGLE)
     {
@@ -248,12 +260,12 @@ rx::DisplayImpl *CreateDisplayFromAttribs(const AttributeMap &attribMap, const D
             impl = new rx::DisplayWGL(state);
 #    elif defined(ANGLE_USE_X11)
             impl = new rx::DisplayGLX(state);
-#    elif defined(ANGLE_PLATFORM_APPLE)
+#    elif defined(ANGLE_PLATFORM_MACOS)
             impl = new rx::DisplayCGL(state);
 #    elif defined(ANGLE_USE_OZONE)
             // This might work but has never been tried, so disallow for now.
             impl = nullptr;
-#    elif defined(ANGLE_PLATFORM_ANDROID)
+#    elif defined(ANGLE_PLATFORM_ANDROID) || defined(ANGLE_PLATFORM_IOS)
             // No GL support on this platform, fail display creation.
             impl = nullptr;
 #    else
@@ -275,6 +287,8 @@ rx::DisplayImpl *CreateDisplayFromAttribs(const AttributeMap &attribMap, const D
             impl = new rx::DisplayOzone(state);
 #    elif defined(ANGLE_PLATFORM_ANDROID)
             impl = new rx::DisplayAndroid(state);
+#    elif defined(ANGLE_PLATFORM_IOS) && !defined(ANGLE_PLATFORM_MACCATALYST)
+            impl = new rx::DisplayEAGL(state);
 #    else
             // No GLES support on this platform, fail display creation.
             impl = nullptr;
@@ -302,11 +316,9 @@ rx::DisplayImpl *CreateDisplayFromAttribs(const AttributeMap &attribMap, const D
             break;
         case EGL_PLATFORM_ANGLE_TYPE_METAL_ANGLE:
 #if defined(ANGLE_ENABLE_METAL)
-            if (rx::IsMetalDisplayAvailable())
-            {
-                impl = rx::CreateMetalDisplay(state);
-                break;
-            }
+            ASSERT(rx::IsMetalDisplayAvailable());
+            impl = rx::CreateMetalDisplay(state);
+            break;
 #endif
             // No display available
             UNREACHABLE();

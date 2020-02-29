@@ -85,6 +85,90 @@ angle::Result AllocateTriangleFanBufferFromPool(ContextMtl *context,
 
     return angle::Result::Continue;
 }
+
+bool NeedToInvertDepthRange(float near, float far)
+{
+    return near > far;
+}
+
+// This class constructs line loop buffer inside begin() method
+// and perform the draw of the line loop's last segment inside destructor
+class LineLoopHelper
+{
+  public:
+    LineLoopHelper() {}
+
+    ~LineLoopHelper()
+    {
+        if (!mLineLoopIndexBuffer)
+        {
+            // This was not in line loop mode
+            return;
+        }
+
+        // Draw last segment of line loop here
+        mtl::RenderCommandEncoder *encoder = mContextMtl->getRenderCommandEncoder();
+        ASSERT(encoder);
+        if (mInstanceCount == 0)
+        {
+            encoder->drawIndexed(MTLPrimitiveTypeLine, 2, MTLIndexTypeUInt32, mLineLoopIndexBuffer,
+                                 0);
+        }
+        else
+        {
+            encoder->drawIndexedInstanced(MTLPrimitiveTypeLine, 2, MTLIndexTypeUInt32,
+                                          mLineLoopIndexBuffer, 0, mInstanceCount);
+        }
+    }
+
+    angle::Result begin(const gl::Context *context,
+                        mtl::BufferPool *indexBufferPool,
+                        gl::PrimitiveMode mode,
+                        GLint firstVertex,
+                        GLsizei vertexOrIndexCount,
+                        GLsizei instanceCount,
+                        gl::DrawElementsType indexTypeOrNone,
+                        const void *indices)
+    {
+        if (mode != gl::PrimitiveMode::LineLoop)
+        {
+            // Skip
+            return angle::Result::Continue;
+        }
+        mContextMtl    = mtl::GetImpl(context);
+        mInstanceCount = instanceCount;
+
+        indexBufferPool->releaseInFlightBuffers(mContextMtl);
+
+        ANGLE_TRY(indexBufferPool->allocate(mContextMtl, 2 * sizeof(uint32_t), nullptr,
+                                            &mLineLoopIndexBuffer, nullptr, nullptr));
+
+        if (indexTypeOrNone == gl::DrawElementsType::InvalidEnum)
+        {
+            ANGLE_TRY(mContextMtl->getDisplay()->getUtils().generateLineLoopLastSegment(
+                context, firstVertex, firstVertex + vertexOrIndexCount - 1, mLineLoopIndexBuffer,
+                0));
+        }
+        else
+        {
+            ASSERT(firstVertex == 0);
+            ANGLE_TRY(
+                mContextMtl->getDisplay()->getUtils().generateLineLoopLastSegmentFromElementsArray(
+                    context,
+                    {indexTypeOrNone, vertexOrIndexCount, indices, mLineLoopIndexBuffer, 0}));
+        }
+
+        ANGLE_TRY(indexBufferPool->commit(mContextMtl));
+
+        return angle::Result::Continue;
+    }
+
+  private:
+    ContextMtl *mContextMtl = nullptr;
+    GLsizei mInstanceCount  = 0;
+    mtl::BufferRef mLineLoopIndexBuffer;
+};
+
 }  // namespace
 
 ContextMtl::ContextMtl(const gl::State &state, gl::ErrorSet *errorSet, DisplayMtl *display)
@@ -224,6 +308,11 @@ angle::Result ContextMtl::drawArraysImpl(const gl::Context *context,
 
     MTLPrimitiveType mtlType = mtl::GetPrimitiveType(mode);
 
+    LineLoopHelper lineloopHelper;
+    // Line loop helper needs to generate index before rendering command encoder starts.
+    ANGLE_TRY(lineloopHelper.begin(context, &mLineLoopIndexBuffer, mode, first, count, instances,
+                                   gl::DrawElementsType::InvalidEnum, nullptr));
+
     ANGLE_TRY(setupDraw(context, mode, first, count, instances, gl::DrawElementsType::InvalidEnum,
                         nullptr));
 
@@ -333,6 +422,11 @@ angle::Result ContextMtl::drawElementsImpl(const gl::Context *context,
 
     ASSERT(idxBuffer);
     ASSERT((convertedOffset % mtl::kIndexBufferOffsetAlignment) == 0);
+
+    LineLoopHelper lineloopHelper;
+    // Line loop helper needs to generate index before rendering command encoder starts.
+    ANGLE_TRY(lineloopHelper.begin(context, &mLineLoopIndexBuffer, mode, 0, count, instances, type,
+                                   indices));
 
     ANGLE_TRY(setupDraw(context, mode, 0, count, instances, type, indices));
 
@@ -1149,9 +1243,9 @@ void ContextMtl::updateViewport(FramebufferMtl *framebufferMtl,
 
 void ContextMtl::updateDepthRange(float nearPlane, float farPlane)
 {
-    if (nearPlane > farPlane)
+    if (NeedToInvertDepthRange(nearPlane, farPlane))
     {
-        // We also need to inverse the depth in shader later by using scale value stored in driver
+        // We also need to invert the depth in shader later by using scale value stored in driver
         // uniform depthRange.reserved
         std::swap(nearPlane, farPlane);
     }
@@ -1315,15 +1409,6 @@ angle::Result ContextMtl::setupDraw(const gl::Context *context,
     // instances=0 means no instanced draw.
     GLsizei instanceCount = instances ? instances : 1;
 
-    mtl::BufferRef lineLoopLastSegmentIndexBuffer;
-    if (mode == gl::PrimitiveMode::LineLoop)
-    {
-        // Generate line loop last segment before render command encoder is created
-        ANGLE_TRY(genLineLoopLastSegment(context, firstVertex, vertexOrIndexCount, instanceCount,
-                                         indexTypeOrNone, indices,
-                                         &lineLoopLastSegmentIndexBuffer));
-    }
-
     // Must be called before the render command encoder is started.
     if (context->getStateCache().hasAnyActiveClientAttrib())
     {
@@ -1411,56 +1496,6 @@ angle::Result ContextMtl::setupDraw(const gl::Context *context,
 
     ANGLE_TRY(mProgram->setupDraw(context, &mRenderEncoder, changedPipelineDesc, textureChanged));
 
-    if (mode == gl::PrimitiveMode::LineLoop)
-    {
-        // Draw last segment of line loop here
-        if (instances == 0)
-        {
-            mRenderEncoder.drawIndexed(MTLPrimitiveTypeLine, 2, MTLIndexTypeUInt32,
-                                       lineLoopLastSegmentIndexBuffer, 0);
-        }
-        else
-        {
-            mRenderEncoder.drawIndexedInstanced(MTLPrimitiveTypeLine, 2, MTLIndexTypeUInt32,
-                                                lineLoopLastSegmentIndexBuffer, 0, instanceCount);
-        }
-    }
-
-    return angle::Result::Continue;
-}
-
-angle::Result ContextMtl::genLineLoopLastSegment(const gl::Context *context,
-                                                 GLint firstVertex,
-                                                 GLsizei vertexOrIndexCount,
-                                                 GLsizei instanceCount,
-                                                 gl::DrawElementsType indexTypeOrNone,
-                                                 const void *indices,
-                                                 mtl::BufferRef *lastSegmentIndexBufferOut)
-{
-    mLineLoopIndexBuffer.releaseInFlightBuffers(this);
-
-    mtl::BufferRef newBuffer;
-    ANGLE_TRY(mLineLoopIndexBuffer.allocate(this, 2 * sizeof(uint32_t), nullptr, &newBuffer,
-                                            nullptr, nullptr));
-
-    if (indexTypeOrNone == gl::DrawElementsType::InvalidEnum)
-    {
-        ANGLE_TRY(getDisplay()->getUtils().generateLineLoopLastSegment(
-            context, firstVertex, firstVertex + vertexOrIndexCount - 1, newBuffer, 0));
-    }
-    else
-    {
-        // NOTE(hqle): Support drawRangeElements & instanced draw, which means firstVertex has to be
-        // taken into account
-        ASSERT(firstVertex == 0);
-        ANGLE_TRY(getDisplay()->getUtils().generateLineLoopLastSegmentFromElementsArray(
-            context, {indexTypeOrNone, vertexOrIndexCount, indices, newBuffer, 0}));
-    }
-
-    ANGLE_TRY(mLineLoopIndexBuffer.commit(this));
-
-    *lastSegmentIndexBufferOut = newBuffer;
-
     return angle::Result::Continue;
 }
 
@@ -1528,7 +1563,7 @@ angle::Result ContextMtl::handleDirtyDriverUniforms(const gl::Context *context)
     mDriverUniforms.depthRange[0] = depthRangeNear;
     mDriverUniforms.depthRange[1] = depthRangeFar;
     mDriverUniforms.depthRange[2] = depthRangeDiff;
-    mDriverUniforms.depthRange[3] = depthRangeNear > depthRangeFar ? -1 : 1;
+    mDriverUniforms.depthRange[3] = NeedToInvertDepthRange(depthRangeNear, depthRangeFar) ? -1 : 1;
 
     ASSERT(mRenderEncoder.valid());
     mRenderEncoder.setFragmentData(mDriverUniforms, mtl::kDriverUniformsBindingIndex);

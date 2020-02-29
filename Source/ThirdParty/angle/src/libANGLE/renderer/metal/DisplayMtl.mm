@@ -25,7 +25,11 @@ namespace rx
 bool IsMetalDisplayAvailable()
 {
     // We only support macos 10.13+ and 11 for now. Since they are requirements for Metal 2.0.
+#if TARGET_OS_SIMULATOR
+    if (ANGLE_APPLE_AVAILABLE_XCI(10.13, 13.0, 13))
+#else
     if (ANGLE_APPLE_AVAILABLE_XCI(10.13, 13.0, 11))
+#endif
     {
         return true;
     }
@@ -614,10 +618,11 @@ void DisplayMtl::initializeFeatures()
 {
     // default values:
     mFeatures.hasBaseVertexInstancedDraw.enabled        = true;
+    mFeatures.hasDepthTextureFiltering.enabled          = false;
     mFeatures.hasNonUniformDispatch.enabled             = true;
+    mFeatures.hasStencilOutput.enabled                  = false;
     mFeatures.hasTextureSwizzle.enabled                 = false;
     mFeatures.allowSeparatedDepthStencilBuffers.enabled = false;
-    mFeatures.hasStencilOutput.enabled                  = false;
 
     if (ANGLE_APPLE_AVAILABLE_XCI(10.14, 13.0, 12.0))
     {
@@ -625,6 +630,8 @@ void DisplayMtl::initializeFeatures()
     }
 
 #if TARGET_OS_OSX || TARGET_OS_MACCATALYST
+    mFeatures.hasDepthTextureFiltering.enabled = true;
+
     // Texture swizzle is only supported if macos sdk 10.15 is present
 #    if defined(__MAC_10_15)
     if (ANGLE_APPLE_AVAILABLE_XC(10.15, 13.0))

@@ -17,8 +17,17 @@ namespace rx
 namespace mtl
 {
 
+namespace
+{
+// The max size of a buffer that will be allocated in shared memory
+constexpr size_t kSharedMemBufferMaxBufSizeHint = 128 * 1024;
+}
+
 // BufferPool implementation.
 BufferPool::BufferPool(bool alwaysAllocNewBuffer)
+    : BufferPool(alwaysAllocNewBuffer, BufferPoolMemPolicy::Auto)
+{}
+BufferPool::BufferPool(bool alwaysAllocNewBuffer, BufferPoolMemPolicy policy)
     : mInitialSize(0),
       mBuffer(nullptr),
       mNextAllocationOffset(0),
@@ -26,6 +35,7 @@ BufferPool::BufferPool(bool alwaysAllocNewBuffer)
       mAlignment(1),
       mBuffersAllocated(0),
       mMaxBuffers(0),
+      mMemPolicy(policy),
       mAlwaysAllocateNewBuffer(alwaysAllocNewBuffer)
 
 {}
@@ -35,10 +45,45 @@ void BufferPool::initialize(ContextMtl *contextMtl,
                             size_t alignment,
                             size_t maxBuffers)
 {
-    destroy(contextMtl);
+    ANGLE_UNUSED_VARIABLE(commit(contextMtl));
+    releaseInFlightBuffers(contextMtl);
+
+    mSize = 0;
+    if (mBufferFreeList.size() && mInitialSize <= mBufferFreeList.front()->size())
+    {
+        // Instead of deleteing old buffers, we should reset them to avoid excessive
+        // memory re-allocations
+        if (maxBuffers && mBufferFreeList.size() > maxBuffers)
+        {
+            mBufferFreeList.resize(maxBuffers);
+            mBuffersAllocated = maxBuffers;
+        }
+
+        mSize = mBufferFreeList.front()->size();
+        for (size_t i = 0; i < mBufferFreeList.size(); ++i)
+        {
+            BufferRef &buffer = mBufferFreeList[i];
+            if (!buffer->isBeingUsedByGPU(contextMtl))
+            {
+                continue;
+            }
+            bool useSharedMem = shouldAllocateInSharedMem();
+            if (IsError(buffer->reset(contextMtl, useSharedMem, mSize, nullptr)))
+            {
+                mBufferFreeList.clear();
+                mBuffersAllocated = 0;
+                mSize             = 0;
+                break;
+            }
+        }
+    }
+    else
+    {
+        mBufferFreeList.clear();
+        mBuffersAllocated = 0;
+    }
 
     mInitialSize = initialSize;
-    mSize        = 0;
 
     mMaxBuffers = maxBuffers;
 
@@ -46,6 +91,19 @@ void BufferPool::initialize(ContextMtl *contextMtl,
 }
 
 BufferPool::~BufferPool() {}
+
+bool BufferPool::shouldAllocateInSharedMem() const
+{
+    switch (mMemPolicy)
+    {
+        case BufferPoolMemPolicy::AlwaysSharedMem:
+            return true;
+        case BufferPoolMemPolicy::AlwaysGPUMem:
+            return false;
+        default:
+            return mSize <= kSharedMemBufferMaxBufSizeHint;
+    }
+}
 
 angle::Result BufferPool::allocateNewBuffer(ContextMtl *contextMtl)
 {
@@ -77,7 +135,8 @@ angle::Result BufferPool::allocateNewBuffer(ContextMtl *contextMtl)
         return angle::Result::Continue;
     }
 
-    ANGLE_TRY(Buffer::MakeBuffer(contextMtl, mSize, nullptr, &mBuffer));
+    bool useSharedMem = shouldAllocateInSharedMem();
+    ANGLE_TRY(Buffer::MakeBuffer(contextMtl, useSharedMem, mSize, nullptr, &mBuffer));
 
     ASSERT(mBuffer);
 
@@ -181,7 +240,12 @@ void BufferPool::releaseInFlightBuffers(ContextMtl *contextMtl)
     for (auto &toRelease : mInFlightBuffers)
     {
         // If the dynamic buffer was resized we cannot reuse the retained buffer.
-        if (toRelease->size() < mSize)
+        if (toRelease->size() < mSize
+#if TARGET_OS_OSX || TARGET_OS_MACCATALYST
+            // Also release buffer if it was allocated in different policy
+            || toRelease->useSharedMem() != shouldAllocateInSharedMem()
+#endif
+        )
         {
             toRelease = nullptr;
             mBuffersAllocated--;

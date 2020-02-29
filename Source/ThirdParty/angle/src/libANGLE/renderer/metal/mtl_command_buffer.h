@@ -104,8 +104,11 @@ class CommandBuffer final : public WrappedObject<id<MTLCommandBuffer>>, angle::N
 
     CommandQueue &cmdQueue() { return mCmdQueue; }
 
+    // Private use only
     void setActiveCommandEncoder(CommandEncoder *encoder);
     void invalidateActiveCommandEncoder(CommandEncoder *encoder);
+
+    id<MTLRenderCommandEncoder> makeMetalRenderCommandEncoder(const RenderPassDesc &desc);
 
   private:
     void set(id<MTLCommandBuffer> metalBuffer);
@@ -119,6 +122,9 @@ class CommandBuffer final : public WrappedObject<id<MTLCommandBuffer>>, angle::N
     CommandQueue &mCmdQueue;
 
     std::atomic<CommandEncoder *> mActiveCommandEncoder{nullptr};
+
+    // Cached Objective-C render pass desc to avoid re-allocate every frame.
+    mtl::AutoObjCObj<MTLRenderPassDescriptor> mCachedRenderPassDescObjC;
 
     uint64_t mQueueSerial = 0;
 
@@ -287,17 +293,29 @@ class BlitCommandEncoder final : public CommandEncoder
                                             MTLOrigin dstOrigin,
                                             MTLBlitOption blitOption);
 
-    BlitCommandEncoder &copyTexture(const TextureRef &dst,
-                                    uint32_t dstSlice,
-                                    uint32_t dstLevel,
-                                    MTLOrigin dstOrigin,
-                                    MTLSize dstSize,
-                                    const TextureRef &src,
+    BlitCommandEncoder &copyTextureToBuffer(const TextureRef &src,
+                                            uint32_t srcSlice,
+                                            uint32_t srcLevel,
+                                            MTLOrigin srcOrigin,
+                                            MTLSize srcSize,
+                                            const BufferRef &dst,
+                                            size_t dstOffset,
+                                            size_t dstBytesPerRow,
+                                            size_t dstBytesPerImage,
+                                            MTLBlitOption blitOption);
+
+    BlitCommandEncoder &copyTexture(const TextureRef &src,
                                     uint32_t srcSlice,
                                     uint32_t srcLevel,
-                                    MTLOrigin srcOrigin);
+                                    MTLOrigin srcOrigin,
+                                    MTLSize srcSize,
+                                    const TextureRef &dst,
+                                    uint32_t dstSlice,
+                                    uint32_t dstLevel,
+                                    MTLOrigin dstOrigin);
 
     BlitCommandEncoder &generateMipmapsForTexture(const TextureRef &texture);
+    BlitCommandEncoder &synchronizeResource(const BufferRef &buffer);
     BlitCommandEncoder &synchronizeResource(const TextureRef &texture);
 
   private:

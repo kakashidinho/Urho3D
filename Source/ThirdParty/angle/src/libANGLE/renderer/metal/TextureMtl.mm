@@ -115,15 +115,15 @@ gl::TextureType GetTextureImageType(gl::TextureType texType)
     }
 }
 
-angle::Result UploadTextureContentsToStagingBuffer(ContextMtl *contextMtl,
-                                                   const angle::Format &textureAngleFormat,
-                                                   const angle::Format &stagingAngleFormat,
-                                                   const MTLSize &regionSize,
-                                                   const uint8_t *data,
-                                                   size_t bytesPerRow,
-                                                   size_t *bufferRowPitchOut,
-                                                   size_t *buffer2DImageSizeOut,
-                                                   mtl::BufferRef *bufferOut)
+angle::Result CopyTextureContentsToStagingBuffer(ContextMtl *contextMtl,
+                                                 const angle::Format &textureAngleFormat,
+                                                 const angle::Format &stagingAngleFormat,
+                                                 const MTLSize &regionSize,
+                                                 const uint8_t *data,
+                                                 size_t bytesPerRow,
+                                                 size_t *bufferRowPitchOut,
+                                                 size_t *buffer2DImageSizeOut,
+                                                 mtl::BufferRef *bufferOut)
 {
     // NOTE(hqle): 3D textures not supported yet.
     ASSERT(regionSize.depth == 1);
@@ -138,12 +138,11 @@ angle::Result UploadTextureContentsToStagingBuffer(ContextMtl *contextMtl,
 
     if (textureAngleFormat.id == stagingAngleFormat.id)
     {
-        const uint8_t *psrc = data;
         for (NSUInteger r = 0; r < regionSize.height; ++r)
         {
-            memcpy(pdst, psrc, stagingBufferRowPitch);
-            pdst += stagingBufferRowPitch;
-            psrc += bytesPerRow;
+            const uint8_t *pCopySrc = data + r * bytesPerRow;
+            uint8_t *pCopyDst       = pdst + r * stagingBufferRowPitch;
+            memcpy(pCopyDst, pCopySrc, stagingBufferRowPitch);
         }
     }
     else
@@ -204,7 +203,7 @@ angle::Result UploadTextureContentsWithStagingBuffer(ContextMtl *contextMtl,
     size_t stagingBufferRowPitch;
     size_t stagingBuffer2DImageSize;
     mtl::BufferRef stagingBuffer;
-    ANGLE_TRY(UploadTextureContentsToStagingBuffer(
+    ANGLE_TRY(CopyTextureContentsToStagingBuffer(
         contextMtl, textureAngleFormat, textureAngleFormat, region.size, data, bytesPerRow,
         &stagingBufferRowPitch, &stagingBuffer2DImageSize, &stagingBuffer));
 
@@ -249,8 +248,7 @@ angle::Result UploadPackedDepthStencilTextureContentsWithStagingBuffer(
             stagingStencilBufferFormatId = angle::FormatID::S8_UINT;
             break;
         default:
-            UNREACHABLE();
-            ANGLE_MTL_TRY(contextMtl, false);
+            ANGLE_MTL_UNREACHABLE(contextMtl);
     }
 
     const angle::Format &angleStagingDepthFormat = angle::Format::Get(stagingDepthBufferFormatId);
@@ -261,11 +259,11 @@ angle::Result UploadPackedDepthStencilTextureContentsWithStagingBuffer(
     size_t stagingDepthBuffer2DImageSize, stagingStencilBuffer2DImageSize;
     mtl::BufferRef stagingDepthbuffer, stagingStencilBuffer;
 
-    ANGLE_TRY(UploadTextureContentsToStagingBuffer(
+    ANGLE_TRY(CopyTextureContentsToStagingBuffer(
         contextMtl, textureAngleFormat, angleStagingDepthFormat, region.size, data, bytesPerRow,
         &stagingDepthBufferRowPitch, &stagingDepthBuffer2DImageSize, &stagingDepthbuffer));
 
-    ANGLE_TRY(UploadTextureContentsToStagingBuffer(
+    ANGLE_TRY(CopyTextureContentsToStagingBuffer(
         contextMtl, textureAngleFormat, angleStagingStencilFormat, region.size, data, bytesPerRow,
         &stagingStencilBufferRowPitch, &stagingStencilBuffer2DImageSize, &stagingStencilBuffer));
 
@@ -345,7 +343,7 @@ void TextureMtl::releaseTexture(bool releaseImages)
         {
             for (auto &mipRenderTarget : sliceRenderTargets.second)
             {
-                mipRenderTarget.set(nullptr);
+                mipRenderTarget.reset();
             }
         }
     }
@@ -376,15 +374,17 @@ angle::Result TextureMtl::ensureTextureCreated(const gl::Context *context)
         case gl::TextureType::_2D:
             layers = 1;
             ANGLE_TRY(mtl::Texture::Make2DTexture(contextMtl, mFormat, desc.size.width,
-                                                  desc.size.height, mips, false, true,
-                                                  &mNativeTexture));
+                                                  desc.size.height, mips,
+                                                  /** renderTargetOnly */ false,
+                                                  /** allowFormatView */ false, &mNativeTexture));
             mLayeredTextureViews.resize(1);
             mLayeredTextureViews[0] = mNativeTexture;
             break;
         case gl::TextureType::CubeMap:
             layers = 6;
             ANGLE_TRY(mtl::Texture::MakeCubeTexture(contextMtl, mFormat, desc.size.width, mips,
-                                                    false, true, &mNativeTexture));
+                                                    /** renderTargetOnly */ false,
+                                                    /** allowFormatView */ false, &mNativeTexture));
             mLayeredTextureViews.resize(gl::kCubeFaceCount);
             for (uint32_t f = 0; f < gl::kCubeFaceCount; ++f)
             {
@@ -419,8 +419,8 @@ angle::Result TextureMtl::ensureTextureCreated(const gl::Context *context)
                 {
                     encoder = contextMtl->getBlitCommandEncoder();
                 }
-                encoder->copyTexture(mNativeTexture, layer, mip, mtlOrigin, mtlSize,
-                                     imageToTransfer, 0, 0, mtlOrigin);
+                encoder->copyTexture(imageToTransfer, 0, 0, mtlOrigin, mtlSize, mNativeTexture,
+                                     layer, mip, mtlOrigin);
             }
 
             imageToTransfer = nullptr;
@@ -429,7 +429,7 @@ angle::Result TextureMtl::ensureTextureCreated(const gl::Context *context)
             // directly.
             mTexImages[layer][mip] = mNativeTexture->createSliceMipView(layer, mip);
 
-            mTexImageRenderTargets[layer][mip].set(mTexImages[layer][mip], 0, 0, mFormat);
+            mTexImageRenderTargets[layer][mip].reset(mTexImages[layer][mip], 0, 0, mFormat);
         }
     }
 
@@ -447,14 +447,15 @@ angle::Result TextureMtl::ensureSamplerStateCreated(const gl::Context *context)
     }
 
     ContextMtl *contextMtl = mtl::GetImpl(context);
-    DisplayMtl *diplayMtl  = contextMtl->getDisplay();
+    DisplayMtl *displayMtl = contextMtl->getDisplay();
 
     mtl::SamplerDesc samplerDesc(mState.getSamplerState());
 
-    if (mFormat.actualAngleFormat().depthBits)
+    if (mFormat.actualAngleFormat().depthBits &&
+        !displayMtl->getFeatures().hasDepthTextureFiltering.enabled)
     {
-#if !TARGET_OS_OSX && !TARGET_OS_MACCATALYST
-        // Only MacOS supports filtering for depth textures, we need to convert to nearest here.
+        // On devices not supporting filtering for depth textures, we need to convert to nearest
+        // here.
         samplerDesc.minFilter = MTLSamplerMinMagFilterNearest;
         samplerDesc.magFilter = MTLSamplerMinMagFilterNearest;
         if (samplerDesc.mipFilter != MTLSamplerMipFilterNotMipmapped)
@@ -463,11 +464,10 @@ angle::Result TextureMtl::ensureSamplerStateCreated(const gl::Context *context)
         }
 
         samplerDesc.maxAnisotropy = 1;
-#endif
     }
 
     mMetalSamplerState =
-        diplayMtl->getStateCache().getSamplerState(diplayMtl->getMetalDevice(), samplerDesc);
+        displayMtl->getStateCache().getSamplerState(displayMtl->getMetalDevice(), samplerDesc);
 
     return angle::Result::Continue;
 }
@@ -932,13 +932,15 @@ angle::Result TextureMtl::redefineImage(const gl::Context *context,
             case gl::TextureType::_2D:
             case gl::TextureType::CubeMap:
                 ANGLE_TRY(mtl::Texture::Make2DTexture(contextMtl, mtlFormat, size.width,
-                                                      size.height, 1, false, false, &image));
+                                                      size.height, 1,
+                                                      /** renderTargetOnly */ false,
+                                                      /** allowFormatView */ false, &image));
                 break;
             default:
                 UNREACHABLE();
         }
 
-        imageRtt.set(image, 0, 0, mtlFormat);
+        imageRtt.reset(image, 0, 0, mtlFormat);
     }
 
     // Make sure emulated channels are properly initialized

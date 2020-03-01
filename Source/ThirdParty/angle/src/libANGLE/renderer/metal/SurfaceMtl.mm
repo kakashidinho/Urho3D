@@ -226,7 +226,13 @@ void SurfaceMtl::destroy(const egl::Display *display)
     mDepthTexture    = nullptr;
     mStencilTexture  = nullptr;
     mCurrentDrawable = nil;
-    mMetalLayer      = nil;
+    if (mMetalLayer && mMetalLayer.get() != mLayer)
+    {
+        // If we created metal layer in SurfaceMtl::initialize(),
+        // we need to detach it from super layer now.
+        [mMetalLayer.get() removeFromSuperlayer];
+    }
+    mMetalLayer = nil;
 }
 
 egl::Error SurfaceMtl::initialize(const egl::Display *display)
@@ -250,7 +256,7 @@ egl::Error SurfaceMtl::initialize(const egl::Display *display)
 
         mMetalLayer.get().device          = metalDevice;
         mMetalLayer.get().pixelFormat     = mColorFormat.metalFormat;
-        mMetalLayer.get().framebufferOnly = NO;  // This to allow readPixels
+        mMetalLayer.get().framebufferOnly = NO;  // Support blitting and glReadPixels
 
 #if TARGET_OS_OSX || TARGET_OS_MACCATALYST
         // Autoresize with parent layer.
@@ -436,9 +442,10 @@ angle::Result SurfaceMtl::ensureDepthStencilSizeCorrect(const gl::Context *conte
     if (mDepthFormat.valid() && (!mDepthTexture || mDepthTexture->size() != size))
     {
         ANGLE_TRY(mtl::Texture::Make2DTexture(contextMtl, mDepthFormat, size.width, size.height, 1,
-                                              true, false, &mDepthTexture));
+                                              /** renderTargetOnly */ true,
+                                              /** allowFormatView */ false, &mDepthTexture));
 
-        mDepthRenderTarget.set(mDepthTexture, 0, 0, mDepthFormat);
+        mDepthRenderTarget.reset(mDepthTexture, 0, 0, mDepthFormat);
     }
 
     if (mStencilFormat.valid() && (!mStencilTexture || mStencilTexture->size() != size))
@@ -450,10 +457,12 @@ angle::Result SurfaceMtl::ensureDepthStencilSizeCorrect(const gl::Context *conte
         else
         {
             ANGLE_TRY(mtl::Texture::Make2DTexture(contextMtl, mStencilFormat, size.width,
-                                                  size.height, 1, true, false, &mStencilTexture));
+                                                  size.height, 1,
+                                                  /** renderTargetOnly */ true,
+                                                  /** allowFormatView */ false, &mStencilTexture));
         }
 
-        mStencilRenderTarget.set(mStencilTexture, 0, 0, mStencilFormat);
+        mStencilRenderTarget.reset(mStencilTexture, 0, 0, mStencilFormat);
     }
 
     return angle::Result::Continue;
@@ -509,7 +518,7 @@ angle::Result SurfaceMtl::obtainNextDrawable(const gl::Context *context)
         if (!mDrawableTexture)
         {
             mDrawableTexture = mtl::Texture::MakeFromMetal(mCurrentDrawable.get().texture);
-            mColorRenderTarget.set(mDrawableTexture, 0, 0, mColorFormat);
+            mColorRenderTarget.reset(mDrawableTexture, 0, 0, mColorFormat);
         }
         else
         {

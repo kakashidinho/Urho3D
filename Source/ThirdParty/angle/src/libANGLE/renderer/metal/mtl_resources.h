@@ -60,6 +60,9 @@ class Resource : angle::NonCopyable
 
     // Flag indicate whether we should synchornize the content to CPU after GPU changed this
     // resource's content.
+    bool isCPUReadMemNeedSync() const { return mUsageRef->cpuReadMemNeedSync; }
+    void resetCPUReadMemNeedSync() { mUsageRef->cpuReadMemNeedSync = false; }
+
     bool isCPUReadMemDirty() const { return mUsageRef->cpuReadMemDirty; }
     void resetCPUReadMemDirty() { mUsageRef->cpuReadMemDirty = false; }
 
@@ -67,6 +70,8 @@ class Resource : angle::NonCopyable
     Resource();
     // Share the GPU usage ref with other resource
     Resource(Resource *other);
+
+    void reset();
 
   private:
     struct UsageRef
@@ -77,6 +82,9 @@ class Resource : angle::NonCopyable
         // NOTE(hqle): resource dirty handle is not threadsafe.
         // This flag means the resource was issued to be modified by GPU, if CPU wants to read
         // its content, explicit synchornization call must be invoked.
+        bool cpuReadMemNeedSync = false;
+
+        // This flag is useful for BufferMtl to know whether it should update the shadow copy
         bool cpuReadMemDirty = false;
     };
 
@@ -99,7 +107,7 @@ class Texture final : public Resource,
                                        uint32_t height,
                                        uint32_t mips /** use zero to create full mipmaps chain */,
                                        bool renderTargetOnly,
-                                       bool allowTextureView,
+                                       bool allowFormatView,
                                        TextureRef *refOut);
 
     static angle::Result MakeCubeTexture(ContextMtl *context,
@@ -107,13 +115,18 @@ class Texture final : public Resource,
                                          uint32_t size,
                                          uint32_t mips /** use zero to create full mipmaps chain */,
                                          bool renderTargetOnly,
-                                         bool allowTextureView,
+                                         bool allowFormatView,
                                          TextureRef *refOut);
 
     static TextureRef MakeFromMetal(id<MTLTexture> metalTexture);
 
     // Allow CPU to read & write data directly to this texture?
     bool isCPUAccessible() const;
+    // Allow shaders to read/sample this texture?
+    // Texture created with renderTargetOnly flag won't be readable
+    bool isShaderReadable() const;
+
+    bool supportFormatView() const;
 
     void replaceRegion(ContextMtl *context,
                        MTLRegion region,
@@ -154,10 +167,22 @@ class Texture final : public Resource,
     // Get stencil view
     TextureRef getStencilView();
 
+    // Get reading copy. Used for reading non-readable texture or reading stencil value from
+    // packed depth & stencil texture.
+    // NOTE: this only copies 1 depth slice of the 3D texture.
+    // The texels will be copied to region(0, 0, 0, areaToCopy.size) of the returned texture.
+    // The returned pointer will be retained by the original texture object.
+    // Calling getReadableCopy() will overwrite previously returned texture.
+    TextureRef getReadableCopy(ContextMtl *context,
+                               mtl::BlitCommandEncoder *encoder,
+                               const uint32_t levelToCopy,
+                               const uint32_t sliceToCopy,
+                               const MTLRegion &areaToCopy);
+
     // Change the wrapped metal object. Special case for swapchain image
     void set(id<MTLTexture> metalTexture);
 
-    // sync content between CPU and GPU
+    // Explicitly sync content between CPU and GPU
     void syncContent(ContextMtl *context, mtl::BlitCommandEncoder *encoder);
 
   private:
@@ -168,7 +193,7 @@ class Texture final : public Resource,
             MTLTextureDescriptor *desc,
             uint32_t mips,
             bool renderTargetOnly,
-            bool supportTextureView);
+            bool allowFormatView);
 
     // Create a texture view
     Texture(Texture *original, MTLPixelFormat format);
@@ -180,25 +205,48 @@ class Texture final : public Resource,
     std::shared_ptr<MTLColorWriteMask> mColorWritableMask;
 
     TextureRef mStencilView;
+    TextureRef mReadCopy;
 };
 
-class Buffer final : public Resource, public WrappedObject<id<MTLBuffer>>
+class Buffer final : public Resource,
+                     public WrappedObject<id<MTLBuffer>>,
+                     public std::enable_shared_from_this<Buffer>
 {
   public:
+    // This function is equivalent to MakeBuffer(useSharedMem = false)
     static angle::Result MakeBuffer(ContextMtl *context,
                                     size_t size,
                                     const uint8_t *data,
                                     BufferRef *bufferOut);
 
-    angle::Result reset(ContextMtl *context, size_t size, const uint8_t *data);
+    static angle::Result MakeBuffer(ContextMtl *context,
+                                    bool useSharedMem,
+                                    size_t size,
+                                    const uint8_t *data,
+                                    BufferRef *bufferOut);
 
+    // This function is equivalent to reset(useSharedMem = false)
+    angle::Result reset(ContextMtl *context, size_t size, const uint8_t *data);
+    angle::Result reset(ContextMtl *context, bool useSharedMem, size_t size, const uint8_t *data);
+
+    const uint8_t *mapReadOnly(ContextMtl *context);
     uint8_t *map(ContextMtl *context);
+    uint8_t *map(ContextMtl *context, bool noSync);
+    uint8_t *map(ContextMtl *context, bool readonly, bool noSync);
+
     void unmap(ContextMtl *context);
+    void unmap(ContextMtl *context, size_t offsetWritten, size_t sizeWritten);
 
     size_t size() const;
+    bool useSharedMem() const;
+
+    // Explicitly sync content between CPU and GPU
+    void syncContent(ContextMtl *context, mtl::BlitCommandEncoder *encoder);
 
   private:
-    Buffer(ContextMtl *context, size_t size, const uint8_t *data);
+    Buffer(ContextMtl *context, bool useSharedMem, size_t size, const uint8_t *data);
+
+    bool mMapReadOnly = true;
 };
 
 }  // namespace mtl

@@ -201,7 +201,8 @@ struct RenderPipelineOutputDesc
 };
 
 // Some SDK levels don't declare MTLPrimitiveTopologyClass. Needs to do compile time check here:
-#if !(TARGET_OS_OSX || TARGET_OS_MACCATALYST) && ANGLE_IOS_DEPLOY_TARGET < __IPHONE_12_0
+#if !(TARGET_OS_OSX || TARGET_OS_MACCATALYST) && \
+    (!defined(__IPHONE_12_0) || ANGLE_IOS_DEPLOY_TARGET < __IPHONE_12_0)
 #    define ANGLE_MTL_PRIMITIVE_TOPOLOGY_CLASS_AVAILABLE 0
 using PrimitiveTopologyClass                                     = uint32_t;
 constexpr PrimitiveTopologyClass kPrimitiveTopologyClassTriangle = 0;
@@ -237,6 +238,9 @@ struct RenderPipelineDesc
 
 struct RenderPassAttachmentTextureTargetDesc
 {
+    RenderPassAttachmentTextureTargetDesc() = default;
+    RenderPassAttachmentTextureTargetDesc(const RenderPassAttachmentTextureTargetDesc &src) =
+        default;
     TextureRef getTextureRef() const { return texture.lock(); }
 
     TextureWeakRef texture;
@@ -307,11 +311,18 @@ struct RenderPassStencilAttachmentDesc : public RenderPassAttachmentDesc
     uint32_t clearStencil = 0;
 };
 
+//
+// This is C++ equivalent of Objective-C MTLRenderPassDescriptor.
+// We could use MTLRenderPassDescriptor directly, however, using C++ struct has benefits of fast
+// copy, stack allocation, inlined comparing function, etc.
+//
 struct RenderPassDesc
 {
     RenderPassColorAttachmentDesc colorAttachments[kMaxRenderTargets];
     RenderPassDepthAttachmentDesc depthAttachment;
     RenderPassStencilAttachmentDesc stencilAttachment;
+
+    void convertToMetalDesc(MTLRenderPassDescriptor *objCDesc) const;
 
     // This will populate the RenderPipelineOutputDesc with default blend state and
     // MTLColorWriteMaskAll
@@ -331,8 +342,6 @@ struct RenderPassDesc
     uint32_t numColorAttachments = 0;
 };
 
-// convert to Metal object
-AutoObjCObj<MTLRenderPassDescriptor> ToMetalObj(const RenderPassDesc &desc);
 }  // namespace mtl
 }  // namespace rx
 

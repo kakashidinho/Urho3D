@@ -54,6 +54,13 @@
 #ifdef GL_ES_VERSION_2_0
 #define GL_DEPTH_COMPONENT24 GL_DEPTH_COMPONENT24_OES
 #define glClearDepth glClearDepthf
+
+#ifdef GL_CLIP_DISTANCE0_EXT
+#define GL_CLIP_PLANE0 GL_CLIP_DISTANCE0_EXT
+#elif defined(GL_CLIP_DISTANCE0_APPLE)
+#define GL_CLIP_PLANE0 GL_CLIP_DISTANCE0_APPLE
+#endif
+
 #endif
 
 #if defined(__EMSCRIPTEN__) || defined(URHO3D_ANGLE_METAL)
@@ -1154,28 +1161,32 @@ void Graphics::SetShaders(ShaderVariation* vs, ShaderVariation* ps)
         }
     }
 
-    // Update the clip plane uniform on GL3, and set constant buffers
-#ifndef GL_ES_VERSION_2_0
-    if (gl3Support && impl_->shaderProgram_)
+    // Update the clip plane uniform, and set constant buffers
+    if (impl_->shaderProgram_)
     {
-        const SharedPtr<ConstantBuffer>* constantBuffers = impl_->shaderProgram_->GetConstantBuffers();
-        for (unsigned i = 0; i < MAX_SHADER_PARAMETER_GROUPS * 2; ++i)
+#ifndef GL_ES_VERSION_2_0
+        if (gl3Support)
         {
-            ConstantBuffer* buffer = constantBuffers[i].Get();
-            if (buffer != impl_->constantBuffers_[i])
+            const SharedPtr<ConstantBuffer>* constantBuffers = impl_->shaderProgram_->GetConstantBuffers();
+            for (unsigned i = 0; i < MAX_SHADER_PARAMETER_GROUPS * 2; ++i)
             {
-                unsigned object = buffer ? buffer->GetGPUObjectName() : 0;
-                glBindBufferBase(GL_UNIFORM_BUFFER, i, object);
-                // Calling glBindBufferBase also affects the generic buffer binding point
-                impl_->boundUBO_ = object;
-                impl_->constantBuffers_[i] = buffer;
-                ShaderProgram::ClearGlobalParameterSource((ShaderParameterGroup)(i % MAX_SHADER_PARAMETER_GROUPS));
+                ConstantBuffer* buffer = constantBuffers[i].Get();
+                if (buffer != impl_->constantBuffers_[i])
+                {
+                    unsigned object = buffer ? buffer->GetGPUObjectName() : 0;
+                    glBindBufferBase(GL_UNIFORM_BUFFER, i, object);
+                    // Calling glBindBufferBase also affects the generic buffer binding point
+                    impl_->boundUBO_ = object;
+                    impl_->constantBuffers_[i] = buffer;
+                    ShaderProgram::ClearGlobalParameterSource((ShaderParameterGroup)(i % MAX_SHADER_PARAMETER_GROUPS));
+                }
             }
         }
-
-        SetShaderParameter(VSP_CLIPPLANE, useClipPlane_ ? clipPlane_ : Vector4(0.0f, 0.0f, 0.0f, 1.0f));
-    }
 #endif
+
+        if (clipDistanceSupport_)
+            SetShaderParameter(VSP_CLIPPLANE, useClipPlane_ ? clipPlane_ : Vector4(0.0f, 0.0f, 0.0f, 1.0f));
+    }  // if (impl_->shaderProgram_)
 
     // Store shader combination if shader dumping in progress
     if (shaderPrecache_)
@@ -2003,7 +2014,12 @@ void Graphics::SetScissorTest(bool enable, const IntRect& rect)
 
 void Graphics::SetClipPlane(bool enable, const Plane& clipPlane, const Matrix3x4& view, const Matrix4& projection)
 {
-#ifndef GL_ES_VERSION_2_0
+#ifdef GL_ES_VERSION_2_0
+    if (!clipDistanceSupport_)
+        return;
+#endif
+
+#ifdef GL_CLIP_PLANE0
     if (enable != useClipPlane_)
     {
         if (enable)
@@ -2019,6 +2035,7 @@ void Graphics::SetClipPlane(bool enable, const Plane& clipPlane, const Matrix3x4
         Matrix4 viewProj = projection * view;
         clipPlane_ = clipPlane.Transformed(viewProj).ToVector4();
 
+#ifndef GL_ES_VERSION_2_0
         if (!gl3Support)
         {
             GLdouble planeData[4];
@@ -2029,8 +2046,9 @@ void Graphics::SetClipPlane(bool enable, const Plane& clipPlane, const Matrix3x4
 
             glClipPlane(GL_CLIP_PLANE0, &planeData[0]);
         }
-    }
 #endif
+#endif  // GL_CLIP_PLANE0
+    }
 }
 
 void Graphics::SetStencilTest(bool enable, CompareMode mode, StencilOp pass, StencilOp fail, StencilOp zFail, unsigned stencilRef,
@@ -2788,6 +2806,7 @@ void Graphics::CheckFeatureSupport()
         anisotropySupport_ = true;
         sRGBSupport_ = true;
         sRGBWriteSupport_ = true;
+        clipDistanceSupport_ = true;
 
         glGetIntegerv(GL_MAX_COLOR_ATTACHMENTS, &numSupportedRTs);
     }
@@ -2835,7 +2854,10 @@ void Graphics::CheckFeatureSupport()
     instancingSupport_ = CheckExtension("ANGLE_instanced_arrays");
 #   endif
 #endif
-
+    // Check if gl_ClipDistance is supproted
+    clipDistanceEXTSupport_ = CheckExtension("GL_EXT_clip_cull_distance");
+    clipDistanceAPPLESupport_ = CheckExtension("GL_APPLE_clip_distance");
+    clipDistanceSupport_ = clipDistanceEXTSupport_ || clipDistanceAPPLESupport_;
     // Check for best supported depth renderbuffer format for GLES2
     if (CheckExtension("GL_OES_depth24"))
         glesDepthStencilFormat = GL_DEPTH_COMPONENT24_OES;

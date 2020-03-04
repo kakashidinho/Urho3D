@@ -40,7 +40,9 @@ uniform mat4 cZone;
 #ifdef NUMVERTEXLIGHTS
     uniform vec4 cVertexLights[4*3];
 #endif
-#ifdef GL3
+#if defined GL3 || \
+    (defined (GL_APPLE_clip_distance) && GL_APPLE_clip_distance) || \
+    (defined (GL_EXT_clip_cull_distance) && GL_EXT_clip_cull_distance)
     uniform vec4 cClipPlane;
 #endif
 #endif

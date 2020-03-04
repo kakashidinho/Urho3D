@@ -115,6 +115,13 @@ bool ShaderVariation::Create()
     {
             shaderCode += "#extension GL_OES_standard_derivatives : enable \n";
     }
+    if (type_ == VS)
+    {
+        if (graphics_->clipDistanceEXTSupport())
+            shaderCode += "#extension GL_EXT_clip_cull_distance : enable \n";
+        else if (graphics_->clipDistanceAPPLESupport())
+            shaderCode += "#extension GL_APPLE_clip_distance : enable \n";
+    }
 #endif
 
     // Check if the shader code contains a version define

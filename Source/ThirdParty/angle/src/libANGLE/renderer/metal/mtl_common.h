@@ -100,7 +100,8 @@ constexpr size_t kDefaultAttributeSize = 4 * sizeof(float);
 // Metal limits
 constexpr uint32_t kMaxShaderBuffers     = 31;
 constexpr uint32_t kMaxShaderSamplers    = 16;
-constexpr size_t kDefaultUniformsMaxSize = 4 * 1024;
+constexpr size_t kInlineConstDataMaxSize = 4 * 1024;
+constexpr size_t kDefaultUniformsMaxSize = kInlineConstDataMaxSize;
 constexpr uint32_t kMaxViewports         = 1;
 
 constexpr uint32_t kVertexAttribBufferStrideAlignment = 4;
@@ -123,6 +124,11 @@ constexpr uint32_t kDriverUniformsBindingIndex = kDefaultAttribsBindingIndex + 1
 constexpr uint32_t kDefaultUniformsBindingIndex = kDefaultAttribsBindingIndex + 3;
 
 constexpr uint32_t kStencilMaskAll = 0xff;  // Only 8 bits stencil is supported
+
+// This special constant is used to indicate that a particular vertex descriptor's buffer layout
+// index is unused.
+constexpr MTLVertexStepFunction kVertexStepFunctionInvalid =
+    static_cast<MTLVertexStepFunction>(0xffffffff);
 
 constexpr float kEmulatedAlphaValue = 1.0f;
 

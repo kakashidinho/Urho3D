@@ -100,7 +100,7 @@ void Water::CreateScene()
     light->SetLightType(LIGHT_DIRECTIONAL);
     light->SetCastShadows(true);
     light->SetShadowBias(BiasParameters(0.00025f, 0.5f));
-    light->SetShadowCascade(CascadeParameters(10.0f, 50.0f, 200.0f, 0.0f, 0.8f));
+    light->SetShadowCascade(CascadeParameters(10.0f, 50.0f, 200.0f, 750.0f, 0.8f));
     light->SetSpecularIntensity(0.5f);
     // Apply slightly overbright lighting to match the skybox
     light->SetColor(Color(1.2f, 1.2f, 1.2f));

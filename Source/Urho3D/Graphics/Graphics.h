@@ -531,6 +531,11 @@ public:
     /// Return whether  the extention GL_OES_standard_derivatives is supported
     bool glOESStandardDerivativesSupport(){return glOESStandardDerivativesSupport_;}
 
+    /// Return whether GL_EXT_clip_cull_distance is supproted in shader
+    bool clipDistanceEXTSupport() const { return clipDistanceEXTSupport_; }
+    /// Return whether GL_APPLE_clip_distance is supported
+    bool clipDistanceAPPLESupport() const { return clipDistanceAPPLESupport_; }
+
     /// Return the API-specific alpha texture format.
     static unsigned GetAlphaFormat();
     /// Return the API-specific luminance texture format.
@@ -694,6 +699,12 @@ private:
     bool sRGBSupport_{};
     /// sRGB conversion on write support flag.
     bool sRGBWriteSupport_{};
+    /// gl_ClipDistance supported in shader flag
+    bool clipDistanceSupport_{};
+    /// GL_EXT_clip_cull_distance
+    bool clipDistanceEXTSupport_{};
+    /// GL_APPLE_clip_distance
+    bool clipDistanceAPPLESupport_{};
     /// Number of primitives this frame.
     unsigned numPrimitives_{};
     /// Number of batches this frame.

@@ -2531,11 +2531,7 @@ void View::SetupShadowCameras(LightQueryResult& query)
                 // If split is completely beyond camera far clip, we are done
                 if (nearSplit > cullCamera_->GetFarClip())
                     break;
-                #if defined(URHO3D_ANGLE_METAL)
-                    farSplit = cullCamera_->GetFarClip();
-                #else
-                    farSplit = Min(cullCamera_->GetFarClip(), cascade.splits_[splits]);
-                #endif
+                farSplit = Min(cullCamera_->GetFarClip(), cascade.splits_[splits]);
                 if (farSplit <= nearSplit)
                     break;
 

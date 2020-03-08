@@ -151,6 +151,13 @@ bool ShaderVariation::Create()
     // Distinguish between VS and PS compile in case the shader code wants to include/omit different things
     shaderCode += type_ == VS ? "#define COMPILEVS\n" : "#define COMPILEPS\n";
 
+#if defined(GL_ES_VERSION_2_0)
+    if (graphics_->GetDrawBuffersSupport())
+    {
+        shaderCode += "#extension GL_EXT_draw_buffers: enable\n";
+    }
+#endif
+
     // Add define for the maximum number of supported bones
     shaderCode += "#define MAXBONES " + String(Graphics::GetMaxBones()) + "\n";
 

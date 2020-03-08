@@ -67,11 +67,16 @@
 // Emscripten provides even all GL extension functions via static linking. However there is
 // no GLES2-specific extension header at the moment to include instanced rendering declarations,
 // so declare them manually from GLES3 gl2ext.h. Emscripten will provide these when linking final output.
+
+#define glDrawBuffers glDrawBuffersEXT
+#define GL_EXT_draw_buffers
+
 extern "C"
 {
     GL_APICALL void GL_APIENTRY glDrawArraysInstancedANGLE (GLenum mode, GLint first, GLsizei count, GLsizei primcount);
     GL_APICALL void GL_APIENTRY glDrawElementsInstancedANGLE (GLenum mode, GLsizei count, GLenum type, const void *indices, GLsizei primcount);
     GL_APICALL void GL_APIENTRY glVertexAttribDivisorANGLE (GLuint index, GLuint divisor);
+    GL_APICALL void GL_APIENTRY glDrawBuffersEXT(GLsizei n, const GLenum *bufs);
 }
 #endif
 
@@ -2796,8 +2801,8 @@ void Graphics::CheckFeatureSupport()
     lightPrepassSupport_ = false;
     deferredSupport_ = false;
 
-#ifndef GL_ES_VERSION_2_0
     int numSupportedRTs = 1;
+#ifndef GL_ES_VERSION_2_0
     if (gl3Support)
     {
         // Work around GLEW failure to check extensions properly from a GL3 context
@@ -2820,12 +2825,7 @@ void Graphics::CheckFeatureSupport()
 
         glGetIntegerv(GL_MAX_COLOR_ATTACHMENTS_EXT, &numSupportedRTs);
     }
-
-    // Must support 2 rendertargets for light pre-pass, and 4 for deferred
-    if (numSupportedRTs >= 2)
-        lightPrepassSupport_ = true;
-    if (numSupportedRTs >= 4)
-        deferredSupport_ = true;
+    drawBuffersSupport_ = true;
 
 #if defined(__APPLE__) && !defined(IOS) && !defined(TVOS)
     // On macOS check for an Intel driver and use shadow map RGBA dummy color textures, because mixing
@@ -2858,6 +2858,15 @@ void Graphics::CheckFeatureSupport()
     clipDistanceEXTSupport_ = CheckExtension("GL_EXT_clip_cull_distance");
     clipDistanceAPPLESupport_ = CheckExtension("GL_APPLE_clip_distance");
     clipDistanceSupport_ = clipDistanceEXTSupport_ || clipDistanceAPPLESupport_;
+
+#ifdef GL_EXT_draw_buffers
+    if (CheckExtension("GL_EXT_draw_buffers"))
+    {
+        drawBuffersSupport_ = true;
+        glGetIntegerv(GL_MAX_COLOR_ATTACHMENTS_EXT, &numSupportedRTs);
+    }
+#endif
+
     // Check for best supported depth renderbuffer format for GLES2
     if (CheckExtension("GL_OES_depth24"))
         glesDepthStencilFormat = GL_DEPTH_COMPONENT24_OES;
@@ -2887,6 +2896,12 @@ void Graphics::CheckFeatureSupport()
 #endif
     }
 #endif
+
+    // Must support 2 rendertargets for light pre-pass, and 4 for deferred
+    if (numSupportedRTs >= 2)
+        lightPrepassSupport_ = true;
+    if (numSupportedRTs >= 4)
+        deferredSupport_ = true;
 
     // Consider OpenGL shadows always hardware sampled, if supported at all
     hardwareShadowSupport_ = shadowMapFormat_ != 0;
@@ -2981,39 +2996,44 @@ void Graphics::PrepareDraw()
             glReadBuffer(GL_NONE);
             i->second_.readBuffers_ = GL_NONE;
         }
+#endif
 
-        // Calculate the bit combination of non-zero color rendertargets to first check if the combination changed
-        unsigned newDrawBuffers = 0;
-        for (unsigned j = 0; j < MAX_RENDERTARGETS; ++j)
+#if !defined(GL_ES_VERSION_2_0) || defined(GL_EXT_draw_buffers)
+        if (drawBuffersSupport_)
         {
-            if (renderTargets_[j])
-                newDrawBuffers |= 1u << j;
-        }
-
-        if (newDrawBuffers != i->second_.drawBuffers_)
-        {
-            // Check for no color rendertargets (depth rendering only)
-            if (!newDrawBuffers)
-                glDrawBuffer(GL_NONE);
-            else
+            // Calculate the bit combination of non-zero color rendertargets to first check if the combination changed
+            unsigned newDrawBuffers = 0;
+            for (unsigned j = 0; j < MAX_RENDERTARGETS; ++j)
             {
-                int drawBufferIds[MAX_RENDERTARGETS];
-                unsigned drawBufferCount = 0;
-
-                for (unsigned j = 0; j < MAX_RENDERTARGETS; ++j)
-                {
-                    if (renderTargets_[j])
-                    {
-                        if (!gl3Support)
-                            drawBufferIds[drawBufferCount++] = GL_COLOR_ATTACHMENT0_EXT + j;
-                        else
-                            drawBufferIds[drawBufferCount++] = GL_COLOR_ATTACHMENT0 + j;
-                    }
-                }
-                glDrawBuffers(drawBufferCount, (const GLenum*)drawBufferIds);
+                if (renderTargets_[j])
+                    newDrawBuffers |= 1u << j;
             }
 
-            i->second_.drawBuffers_ = newDrawBuffers;
+            if (newDrawBuffers != i->second_.drawBuffers_)
+            {
+                // Check for no color rendertargets (depth rendering only)
+                if (!newDrawBuffers)
+                    glDrawBuffers(0, nullptr);
+                else
+                {
+                    int drawBufferIds[MAX_RENDERTARGETS];
+                    unsigned drawBufferCount = 0;
+
+                    for (unsigned j = 0; j < MAX_RENDERTARGETS; ++j)
+                    {
+                        if (renderTargets_[j])
+                        {
+                            if (!gl3Support)
+                                drawBufferIds[drawBufferCount++] = GL_COLOR_ATTACHMENT0_EXT + j;
+                            else
+                                drawBufferIds[drawBufferCount++] = GL_COLOR_ATTACHMENT0 + j;
+                        }
+                    }
+                    glDrawBuffers(drawBufferCount, (const GLenum*)drawBufferIds);
+                }
+
+                i->second_.drawBuffers_ = newDrawBuffers;
+            }
         }
 #endif
 

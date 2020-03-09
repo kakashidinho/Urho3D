@@ -453,12 +453,10 @@ namespace Urho3D
 - %Port : int
 
 ### NetworkNatMasterConnectionFailed
-- %Address : String
-- %Port : int
 
 ### NetworkNatMasterConnectionSucceeded
-- %Address : String
-- %Port : int
+
+### NetworkNatMasterDisconnected
 
 ## %Physics2D events
 
@@ -16069,7 +16067,7 @@ Methods:
 - bool HasSubscribedToEvent(const String&)
 - Vector3 ScreenToWorldPoint(int, int, float) const
 - void SendEvent(const String&, VariantMap& = VariantMap ( ))
-- void SetRenderPath(XMLFile@)
+- bool SetRenderPath(XMLFile@)
 - IntVector2 WorldToScreenPoint(const Vector3&) const
 
 Properties:

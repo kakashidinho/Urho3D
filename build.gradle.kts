@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2008-2019 the Urho3D project.
+// Copyright (c) 2008-2020 the Urho3D project.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -82,12 +82,16 @@ fun describeCommit(sha: String? = null) = ByteArrayOutputStream().also {
  * Bump the semantic versioning on the specified index, 0 for major version, 1 for minor version, and so on.
  */
 fun bumpSemVer(version: String, index: Int) = version
-        .split('.')
-        .mapIndexed { i: Int, s: String ->
-            when {
-                i < index -> s
-                i == index -> if (s.contains('-')) s else (s.toInt() + 1).toString()
-                else -> "0"
-            }
+    .split('.')
+    .mapIndexed { i: Int, s: String ->
+        when {
+            i < index -> s
+            i == index -> if (s.contains('-')) s else (s.toInt() + 1).toString()
+            else -> "0"
         }
-        .joinToString(".")
+    }
+    .joinToString(".")
+
+tasks.wrapper {
+    distributionType = Wrapper.DistributionType.ALL
+}

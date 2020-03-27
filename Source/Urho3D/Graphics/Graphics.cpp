@@ -494,6 +494,11 @@ void Graphics::AdjustScreenMode(int& newWidth, int& newHeight, ScreenModeParams&
     params.highDPI_ = false;
 #endif;
 
+ /* TBD ELIX22, needs more investigation to enable high DPI for MetalAngle  */
+#if defined(URHO3D_ANGLE_METAL)
+    params.highDPI_ = false;
+#endif
+
 #if defined(IOS) || defined(TVOS)
     // iOS and tvOS app always take the fullscreen (and with status bar hidden)
     params.fullscreen_ = true;

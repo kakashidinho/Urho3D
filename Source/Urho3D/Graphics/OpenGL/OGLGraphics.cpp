@@ -281,34 +281,11 @@ bool Graphics::SetScreenMode(int width, int height, const ScreenModeParams& para
 {
     URHO3D_PROFILE(SetScreenMode);
 
-/* TBD ELIX22, needs more investigation to enable high DPI for MetalAngle  */
-#if defined(URHO3D_ANGLE_METAL)
-    highDPI = false;
-#endif
-    
-#if defined(IOS) || defined(TVOS)
-    // iOS and tvOS app always take the fullscreen (and with status bar hidden)
-    fullscreen = true;
-#endif
+    // Ensure that parameters are properly filled
+    ScreenModeParams newParams = params;
+    AdjustScreenMode(width, height, newParams, maximize);
 
-    // Make sure monitor index is not bigger than the currently detected monitors
-    int monitors = SDL_GetNumVideoDisplays();
-    if (monitor >= monitors || monitor < 0)
-        monitor = 0; // this monitor is not present, use first monitor
-
-    // Fullscreen or Borderless can not be resizable
-    if (fullscreen || borderless)
-        resizable = false;
-
-    // Borderless cannot be fullscreen, they are mutually exclusive
-    if (borderless)
-        fullscreen = false;
-
-    multiSample = Clamp(multiSample, 1, 16);
-
-    if (IsInitialized() && width == width_ && height == height_ && fullscreen == fullscreen_ && borderless == borderless_ &&
-        resizable == resizable_ && vsync == vsync_ && tripleBuffer == tripleBuffer_ && multiSample == multiSample_ &&
-        monitor == monitor_ && refreshRate == refreshRate_)
+    if (IsInitialized() && width == width_ && height == height_ && screenParams_ == newParams)
         return true;
 
     // If only vsync changes, do not destroy/recreate the context

@@ -388,12 +388,20 @@ set(libangle_metal_sources
   src/libANGLE/renderer/metal/FrameBufferMtl.mm
   src/libANGLE/renderer/metal/ProgramMtl.h
   src/libANGLE/renderer/metal/ProgramMtl.mm
+  src/libANGLE/renderer/metal/QueryMtl.h
+  src/libANGLE/renderer/metal/QueryMtl.mm
   src/libANGLE/renderer/metal/RenderBufferMtl.h
   src/libANGLE/renderer/metal/RenderBufferMtl.mm
   src/libANGLE/renderer/metal/RenderTargetMtl.h
   src/libANGLE/renderer/metal/RenderTargetMtl.mm
+  src/libANGLE/renderer/metal/TransformFeedbackMtl.h
+  src/libANGLE/renderer/metal/TransformFeedbackMtl.mm
   src/libANGLE/renderer/metal/ShaderMtl.h
   src/libANGLE/renderer/metal/ShaderMtl.mm
+  src/libANGLE/renderer/metal/SamplerMtl.h
+  src/libANGLE/renderer/metal/SamplerMtl.mm
+  src/libANGLE/renderer/metal/SyncMtl.h
+  src/libANGLE/renderer/metal/SyncMtl.mm
   src/libANGLE/renderer/metal/SurfaceMtl.h
   src/libANGLE/renderer/metal/SurfaceMtl.mm
   src/libANGLE/renderer/metal/TextureMtl.h
@@ -411,6 +419,8 @@ set(libangle_metal_sources
   src/libANGLE/renderer/metal/mtl_format_utils.mm
   src/libANGLE/renderer/metal/mtl_glslang_utils.h
   src/libANGLE/renderer/metal/mtl_glslang_utils.mm
+  src/libANGLE/renderer/metal/mtl_occlusion_query_pool.h
+  src/libANGLE/renderer/metal/mtl_occlusion_query_pool.mm
   src/libANGLE/renderer/metal/mtl_render_utils.h
   src/libANGLE/renderer/metal/mtl_render_utils.mm
   src/libANGLE/renderer/metal/mtl_resources.h

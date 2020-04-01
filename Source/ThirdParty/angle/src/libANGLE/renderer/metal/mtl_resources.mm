@@ -18,6 +18,7 @@
 #include "libANGLE/renderer/metal/DisplayMtl.h"
 #include "libANGLE/renderer/metal/mtl_command_buffer.h"
 #include "libANGLE/renderer/metal/mtl_format_utils.h"
+#include "libANGLE/renderer/metal/mtl_utils.h"
 
 namespace rx
 {
@@ -28,30 +29,6 @@ namespace
 inline NSUInteger GetMipSize(NSUInteger baseSize, NSUInteger level)
 {
     return std::max<NSUInteger>(1, baseSize >> level);
-}
-
-void SetTextureSwizzle(ContextMtl *context,
-                       const Format &format,
-                       MTLTextureDescriptor *textureDescOut)
-{
-// Texture swizzle functions's declarations are only available if macos 10.15 sdk is present
-#if defined(__MAC_10_15)
-    if (context->getDisplay()->getFeatures().hasTextureSwizzle.enabled)
-    {
-        // Work around Metal doesn't have native support for DXT1 without alpha.
-        switch (format.intendedFormatId)
-        {
-            case angle::FormatID::BC1_RGB_UNORM_BLOCK:
-            case angle::FormatID::BC1_RGB_UNORM_SRGB_BLOCK:
-                textureDescOut.swizzle =
-                    MTLTextureSwizzleChannelsMake(MTLTextureSwizzleRed, MTLTextureSwizzleGreen,
-                                                  MTLTextureSwizzleBlue, MTLTextureSwizzleOne);
-                break;
-            default:
-                break;
-        }
-    }
-#endif
 }
 
 template <class T>
@@ -76,7 +53,7 @@ void EnsureContentSynced(ContextMtl *context, const std::shared_ptr<T> &resource
     // Make sure GPU & CPU contents are synchronized.
     // NOTE: Only MacOS has separated storage for resource on CPU and GPU and needs explicit
     // synchronization
-    if (resource->isCPUReadMemNeedSync())
+    if (resource->get().storageMode == MTLStorageModeManaged && resource->isCPUReadMemNeedSync())
     {
         mtl::BlitCommandEncoder *blitEncoder = context->getBlitCommandEncoder();
         SyncContent(context, blitEncoder, resource);
@@ -106,25 +83,20 @@ bool Resource::isBeingUsedByGPU(Context *context) const
     return context->cmdQueue().isResourceBeingUsedByGPU(this);
 }
 
+bool Resource::hasPendingWorks(Context *context) const
+{
+    return context->cmdQueue().resourceHasPendingWorks(this);
+}
+
 void Resource::setUsedByCommandBufferWithQueueSerial(uint64_t serial, bool writing)
 {
-    auto curSerial = mUsageRef->cmdBufferQueueSerial.load(std::memory_order_relaxed);
-    do
-    {
-        if (curSerial >= serial)
-        {
-            return;
-        }
-    } while (!mUsageRef->cmdBufferQueueSerial.compare_exchange_weak(
-        curSerial, serial, std::memory_order_release, std::memory_order_relaxed));
-
-    // NOTE(hqle): This is not thread safe, if multiple command buffers on multiple threads
-    // are writing to it.
     if (writing)
     {
         mUsageRef->cpuReadMemNeedSync = true;
         mUsageRef->cpuReadMemDirty    = true;
     }
+
+    mUsageRef->cmdBufferQueueSerial = std::max(mUsageRef->cmdBufferQueueSerial, serial);
 }
 
 // Texture implemenetation
@@ -146,16 +118,8 @@ angle::Result Texture::Make2DTexture(ContextMtl *context,
                                                               height:height
                                                            mipmapped:mips == 0 || mips > 1];
 
-        SetTextureSwizzle(context, format, desc);
-        refOut->reset(new Texture(context, desc, mips, renderTargetOnly, allowFormatView));
+        return MakeTexture(context, format, desc, mips, renderTargetOnly, allowFormatView, refOut);
     }  // ANGLE_MTL_OBJC_SCOPE
-
-    if (!refOut || !refOut->get())
-    {
-        ANGLE_MTL_CHECK(context, false, GL_OUT_OF_MEMORY);
-    }
-
-    return angle::Result::Continue;
 }
 
 /** static */
@@ -173,13 +137,111 @@ angle::Result Texture::MakeCubeTexture(ContextMtl *context,
             [MTLTextureDescriptor textureCubeDescriptorWithPixelFormat:format.metalFormat
                                                                   size:size
                                                              mipmapped:mips == 0 || mips > 1];
-        SetTextureSwizzle(context, format, desc);
-        refOut->reset(new Texture(context, desc, mips, renderTargetOnly, allowFormatView));
+
+        return MakeTexture(context, format, desc, mips, renderTargetOnly, allowFormatView, refOut);
     }  // ANGLE_MTL_OBJC_SCOPE
+}
+
+/** static */
+angle::Result Texture::Make2DMSTexture(ContextMtl *context,
+                                       const Format &format,
+                                       uint32_t width,
+                                       uint32_t height,
+                                       uint32_t samples,
+                                       bool renderTargetOnly,
+                                       bool allowFormatView,
+                                       TextureRef *refOut)
+{
+    ANGLE_MTL_OBJC_SCOPE
+    {
+        MTLTextureDescriptor *desc = [[MTLTextureDescriptor new] ANGLE_MTL_AUTORELEASE];
+        desc.textureType           = MTLTextureType2DMultisample;
+        desc.pixelFormat           = format.metalFormat;
+        desc.width                 = width;
+        desc.height                = height;
+        desc.mipmapLevelCount      = 1;
+        desc.sampleCount           = samples;
+
+        return MakeTexture(context, format, desc, 1, renderTargetOnly, allowFormatView, refOut);
+    }  // ANGLE_MTL_OBJC_SCOPE
+}
+
+/** static */
+angle::Result Texture::Make2DArrayTexture(ContextMtl *context,
+                                          const Format &format,
+                                          uint32_t width,
+                                          uint32_t height,
+                                          uint32_t mips,
+                                          uint32_t arrayLength,
+                                          bool renderTargetOnly,
+                                          bool allowFormatView,
+                                          TextureRef *refOut)
+{
+    ANGLE_MTL_OBJC_SCOPE
+    {
+        // Use texture2DDescriptorWithPixelFormat to calculate full range mipmap range:
+        MTLTextureDescriptor *desc =
+            [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:format.metalFormat
+                                                               width:width
+                                                              height:height
+                                                           mipmapped:mips == 0 || mips > 1];
+
+        desc.textureType = MTLTextureType2DArray;
+        desc.arrayLength = arrayLength;
+
+        return MakeTexture(context, format, desc, mips, renderTargetOnly, allowFormatView, refOut);
+    }  // ANGLE_MTL_OBJC_SCOPE
+}
+
+/** static */
+angle::Result Texture::Make3DTexture(ContextMtl *context,
+                                     const Format &format,
+                                     uint32_t width,
+                                     uint32_t height,
+                                     uint32_t depth,
+                                     uint32_t mips,
+                                     bool renderTargetOnly,
+                                     bool allowFormatView,
+                                     TextureRef *refOut)
+{
+    ANGLE_MTL_OBJC_SCOPE
+    {
+        // Use texture2DDescriptorWithPixelFormat to calculate full range mipmap range:
+        uint32_t maxDimen = std::max(width, height);
+        maxDimen          = std::max(maxDimen, depth);
+        MTLTextureDescriptor *desc =
+            [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:format.metalFormat
+                                                               width:maxDimen
+                                                              height:maxDimen
+                                                           mipmapped:mips == 0 || mips > 1];
+
+        desc.textureType = MTLTextureType3D;
+        desc.width       = width;
+        desc.height      = height;
+        desc.depth       = depth;
+
+        return MakeTexture(context, format, desc, mips, renderTargetOnly, allowFormatView, refOut);
+    }  // ANGLE_MTL_OBJC_SCOPE
+}
+
+/** static */
+angle::Result Texture::MakeTexture(ContextMtl *context,
+                                   const Format &mtlFormat,
+                                   MTLTextureDescriptor *desc,
+                                   uint32_t mips,
+                                   bool renderTargetOnly,
+                                   bool allowFormatView,
+                                   TextureRef *refOut)
+{
+    refOut->reset(new Texture(context, desc, mips, renderTargetOnly, allowFormatView));
 
     if (!refOut || !refOut->get())
     {
         ANGLE_MTL_CHECK(context, false, GL_OUT_OF_MEMORY);
+    }
+    if (!mtlFormat.hasDepthAndStencilBits())
+    {
+        refOut->get()->setColorWritableMask(GetEmulatedColorWriteMask(mtlFormat));
     }
 
     return angle::Result::Continue;
@@ -216,19 +278,25 @@ Texture::Texture(ContextMtl *context,
         // Every texture will support being rendered for now
         desc.usage = 0;
 
-        if (Format::FormatRenderable(desc.pixelFormat))
+        if (context->getNativeFormatCaps(desc.pixelFormat).isRenderable())
         {
             desc.usage |= MTLTextureUsageRenderTarget;
         }
 
-        if (!Format::FormatCPUReadable(desc.pixelFormat))
+        if (context->getNativeFormatCaps(desc.pixelFormat).depthRenderable ||
+            desc.textureType == MTLTextureType2DMultisample)
         {
+            // Metal doesn't support host access to depth stencil texture's data
             desc.resourceOptions = MTLResourceStorageModePrivate;
         }
 
         if (!renderTargetOnly)
         {
             desc.usage = desc.usage | MTLTextureUsageShaderRead;
+            if (context->getNativeFormatCaps(desc.pixelFormat).writable)
+            {
+                desc.usage = desc.usage | MTLTextureUsageShaderWrite;
+            }
         }
 
         if (allowFormatView)
@@ -252,7 +320,7 @@ Texture::Texture(Texture *original, MTLPixelFormat format)
     }
 }
 
-Texture::Texture(Texture *original, MTLTextureType type, NSRange mipmapLevelRange, uint32_t slice)
+Texture::Texture(Texture *original, MTLTextureType type, NSRange mipmapLevelRange, NSRange slices)
     : Resource(original),
       mColorWritableMask(original->mColorWritableMask)  // Share color write mask property
 {
@@ -261,10 +329,31 @@ Texture::Texture(Texture *original, MTLTextureType type, NSRange mipmapLevelRang
         auto view = [original->get() newTextureViewWithPixelFormat:original->pixelFormat()
                                                        textureType:type
                                                             levels:mipmapLevelRange
-                                                            slices:NSMakeRange(slice, 1)];
+                                                            slices:slices];
 
         set([view ANGLE_MTL_AUTORELEASE]);
     }
+}
+
+Texture::Texture(Texture *original, const TextureSwizzleChannels &swizzle)
+    : Resource(original),
+      mColorWritableMask(original->mColorWritableMask)  // Share color write mask property
+{
+#if defined(__IPHONE_13_0) || defined(__MAC_10_15)
+    ANGLE_MTL_OBJC_SCOPE
+    {
+        auto view = [original->get()
+            newTextureViewWithPixelFormat:original->pixelFormat()
+                              textureType:original->textureType()
+                                   levels:NSMakeRange(0, original->mipmapLevels())
+                                   slices:NSMakeRange(0, original->cubeFacesOrArrayLength())
+                                  swizzle:swizzle];
+
+        set([view ANGLE_MTL_AUTORELEASE]);
+    }
+#else
+    UNREACHABLE();
+#endif
 }
 
 void Texture::syncContent(ContextMtl *context, mtl::BlitCommandEncoder *blitEncoder)
@@ -299,11 +388,22 @@ bool Texture::supportFormatView() const
 }
 
 void Texture::replaceRegion(ContextMtl *context,
-                            MTLRegion region,
+                            const MTLRegion &region,
                             uint32_t mipmapLevel,
                             uint32_t slice,
                             const uint8_t *data,
                             size_t bytesPerRow)
+{
+    replaceRegion(context, region, mipmapLevel, slice, data, bytesPerRow, 0);
+}
+
+void Texture::replaceRegion(ContextMtl *context,
+                            const MTLRegion &region,
+                            uint32_t mipmapLevel,
+                            uint32_t slice,
+                            const uint8_t *data,
+                            size_t bytesPerRow,
+                            size_t bytesPer2DImage)
 {
     if (mipmapLevel >= this->mipmapLevels())
     {
@@ -324,18 +424,25 @@ void Texture::replaceRegion(ContextMtl *context,
 
     cmdQueue.ensureResourceReadyForCPU(this);
 
+    if (textureType() != MTLTextureType3D)
+    {
+        bytesPer2DImage = 0;
+    }
+
     [get() replaceRegion:region
              mipmapLevel:mipmapLevel
                    slice:slice
                withBytes:data
              bytesPerRow:bytesPerRow
-           bytesPerImage:0];
+           bytesPerImage:bytesPer2DImage];
 }
 
 void Texture::getBytes(ContextMtl *context,
                        size_t bytesPerRow,
-                       MTLRegion region,
+                       size_t bytesPer2DInage,
+                       const MTLRegion &region,
                        uint32_t mipmapLevel,
+                       uint32_t slice,
                        uint8_t *dataOut)
 {
     ASSERT(isCPUAccessible());
@@ -352,7 +459,12 @@ void Texture::getBytes(ContextMtl *context,
 
     cmdQueue.ensureResourceReadyForCPU(this);
 
-    [get() getBytes:dataOut bytesPerRow:bytesPerRow fromRegion:region mipmapLevel:mipmapLevel];
+    [get() getBytes:dataOut
+          bytesPerRow:bytesPerRow
+        bytesPerImage:bytesPer2DInage
+           fromRegion:region
+          mipmapLevel:mipmapLevel
+                slice:slice];
 }
 
 TextureRef Texture::createCubeFaceView(uint32_t face)
@@ -362,8 +474,8 @@ TextureRef Texture::createCubeFaceView(uint32_t face)
         switch (textureType())
         {
             case MTLTextureTypeCube:
-                return TextureRef(
-                    new Texture(this, MTLTextureType2D, NSMakeRange(0, mipmapLevels()), face));
+                return TextureRef(new Texture(
+                    this, MTLTextureType2D, NSMakeRange(0, mipmapLevels()), NSMakeRange(face, 1)));
             default:
                 UNREACHABLE();
                 return nullptr;
@@ -379,8 +491,9 @@ TextureRef Texture::createSliceMipView(uint32_t slice, uint32_t level)
         {
             case MTLTextureTypeCube:
             case MTLTextureType2D:
-                return TextureRef(
-                    new Texture(this, MTLTextureType2D, NSMakeRange(level, 1), slice));
+            case MTLTextureType2DArray:
+                return TextureRef(new Texture(this, MTLTextureType2D, NSMakeRange(level, 1),
+                                              NSMakeRange(slice, 1)));
             default:
                 UNREACHABLE();
                 return nullptr;
@@ -388,10 +501,31 @@ TextureRef Texture::createSliceMipView(uint32_t slice, uint32_t level)
     }
 }
 
+TextureRef Texture::createMipView(uint32_t level)
+{
+    ANGLE_MTL_OBJC_SCOPE
+    {
+        NSUInteger slices = textureType() == MTLTextureTypeCube ? 6 : arrayLength();
+        return TextureRef(
+            new Texture(this, textureType(), NSMakeRange(level, 1), NSMakeRange(0, slices)));
+    }
+}
+
 TextureRef Texture::createViewWithDifferentFormat(MTLPixelFormat format)
 {
     ASSERT(supportFormatView());
     return TextureRef(new Texture(this, format));
+}
+
+TextureRef Texture::createSwizzleView(const TextureSwizzleChannels &swizzle)
+{
+#if defined(__IPHONE_13_0) || defined(__MAC_10_15)
+    return TextureRef(new Texture(this, swizzle));
+#else
+    WARN() << "Texture swizzle is not supported on pre iOS 13.0 and macOS 15.0";
+    UNIMPLEMENTED();
+    return shared_from_this();
+#endif
 }
 
 MTLPixelFormat Texture::pixelFormat() const
@@ -409,6 +543,20 @@ uint32_t Texture::mipmapLevels() const
     return static_cast<uint32_t>(get().mipmapLevelCount);
 }
 
+uint32_t Texture::arrayLength() const
+{
+    return static_cast<uint32_t>(get().arrayLength);
+}
+
+uint32_t Texture::cubeFacesOrArrayLength() const
+{
+    if (textureType() == MTLTextureTypeCube)
+    {
+        return 6;
+    }
+    return arrayLength();
+}
+
 uint32_t Texture::width(uint32_t level) const
 {
     return static_cast<uint32_t>(GetMipSize(get().width, level));
@@ -419,23 +567,37 @@ uint32_t Texture::height(uint32_t level) const
     return static_cast<uint32_t>(GetMipSize(get().height, level));
 }
 
+uint32_t Texture::depth(uint32_t level) const
+{
+    return static_cast<uint32_t>(GetMipSize(get().depth, level));
+}
+
 gl::Extents Texture::size(uint32_t level) const
 {
     gl::Extents re;
 
     re.width  = width(level);
     re.height = height(level);
-    re.depth  = static_cast<uint32_t>(GetMipSize(get().depth, level));
+    re.depth  = depth(level);
 
     return re;
 }
 
 gl::Extents Texture::size(const gl::ImageIndex &index) const
 {
-    // Only support these texture types for now
-    ASSERT(!get() || textureType() == MTLTextureType2D || textureType() == MTLTextureTypeCube);
+    gl::Extents extents = size(index.getLevelIndex());
 
-    return size(index.getLevelIndex());
+    if (index.hasLayer())
+    {
+        extents.depth = 1;
+    }
+
+    return extents;
+}
+
+uint32_t Texture::samples() const
+{
+    return static_cast<uint32_t>(get().sampleCount);
 }
 
 TextureRef Texture::getStencilView()
@@ -538,9 +700,30 @@ angle::Result Buffer::MakeBuffer(ContextMtl *context,
     return angle::Result::Continue;
 }
 
+angle::Result Buffer::MakeBuffer(ContextMtl *context,
+                                 MTLResourceOptions options,
+                                 size_t size,
+                                 const uint8_t *data,
+                                 BufferRef *bufferOut)
+{
+    bufferOut->reset(new Buffer(context, options, size, data));
+
+    if (!bufferOut || !bufferOut->get())
+    {
+        ANGLE_MTL_CHECK(context, false, GL_OUT_OF_MEMORY);
+    }
+
+    return angle::Result::Continue;
+}
+
 Buffer::Buffer(ContextMtl *context, bool useSharedMem, size_t size, const uint8_t *data)
 {
     (void)reset(context, useSharedMem, size, data);
+}
+
+Buffer::Buffer(ContextMtl *context, MTLResourceOptions options, size_t size, const uint8_t *data)
+{
+    (void)reset(context, options, size, data);
 }
 
 angle::Result Buffer::reset(ContextMtl *context, size_t size, const uint8_t *data)
@@ -553,24 +736,32 @@ angle::Result Buffer::reset(ContextMtl *context,
                             size_t size,
                             const uint8_t *data)
 {
+    MTLResourceOptions options;
+
+    options = 0;
+#if TARGET_OS_OSX || TARGET_OS_MACCATALYST
+    if (!useSharedMem)
+    {
+        options |= MTLResourceStorageModeManaged;
+    }
+    else
+#endif
+    {
+        options |= MTLResourceStorageModeShared;
+    }
+
+    return reset(context, options, size, data);
+}
+
+angle::Result Buffer::reset(ContextMtl *context,
+                            MTLResourceOptions options,
+                            size_t size,
+                            const uint8_t *data)
+{
     ANGLE_MTL_OBJC_SCOPE
     {
-        MTLResourceOptions options;
-
         id<MTLBuffer> newBuffer;
         id<MTLDevice> metalDevice = context->getMetalDevice();
-
-        options = 0;
-#if TARGET_OS_OSX || TARGET_OS_MACCATALYST
-        if (!useSharedMem)
-        {
-            options |= MTLResourceStorageModeManaged;
-        }
-        else
-#endif
-        {
-            options |= MTLResourceStorageModeShared;
-        }
 
         if (data)
         {

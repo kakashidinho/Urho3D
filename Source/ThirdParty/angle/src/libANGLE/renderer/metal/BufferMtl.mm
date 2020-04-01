@@ -45,33 +45,40 @@ angle::Result GetFirstLastIndices(const IndexType *indices,
 }  // namespace
 
 // ConversionBufferMtl implementation.
-ConversionBufferMtl::ConversionBufferMtl(const gl::Context *context,
+ConversionBufferMtl::ConversionBufferMtl(ContextMtl *contextMtl,
                                          size_t initialSize,
                                          size_t alignment)
     : dirty(true), convertedBuffer(nullptr), convertedOffset(0)
 {
-    ContextMtl *contextMtl = mtl::GetImpl(context);
     data.initialize(contextMtl, initialSize, alignment);
 }
 
 ConversionBufferMtl::~ConversionBufferMtl() = default;
 
 // IndexConversionBufferMtl implementation.
-IndexConversionBufferMtl::IndexConversionBufferMtl(const gl::Context *context,
-                                                   gl::DrawElementsType typeIn,
+IndexConversionBufferMtl::IndexConversionBufferMtl(ContextMtl *context,
+                                                   gl::DrawElementsType elemTypeIn,
+                                                   bool primitiveRestartEnabledIn,
                                                    size_t offsetIn)
     : ConversionBufferMtl(context,
                           kConvertedElementArrayBufferInitialSize,
                           mtl::kIndexBufferOffsetAlignment),
-      type(typeIn),
+      elemType(elemTypeIn),
+      offset(offsetIn),
+      primitiveRestartEnabled(primitiveRestartEnabledIn)
+{}
+
+// UniformConversionBufferMtl implementation
+UniformConversionBufferMtl::UniformConversionBufferMtl(ContextMtl *context, size_t offsetIn)
+    : ConversionBufferMtl(context, 0, mtl::kUniformBufferSettingOffsetMinAlignment),
       offset(offsetIn)
 {}
 
-// BufferMtl::VertexConversionBuffer implementation.
-BufferMtl::VertexConversionBuffer::VertexConversionBuffer(const gl::Context *context,
-                                                          angle::FormatID formatIDIn,
-                                                          GLuint strideIn,
-                                                          size_t offsetIn)
+// VertexConversionBufferMtl implementation.
+VertexConversionBufferMtl::VertexConversionBufferMtl(ContextMtl *context,
+                                                     angle::FormatID formatIDIn,
+                                                     GLuint strideIn,
+                                                     size_t offsetIn)
     : ConversionBufferMtl(context, 0, mtl::kVertexAttribBufferStrideAlignment),
       formatID(formatIDIn),
       stride(strideIn),
@@ -158,14 +165,16 @@ angle::Result BufferMtl::mapRange(const gl::Context *context,
 
     if (mapPtr)
     {
+        ContextMtl *contextMtl = mtl::GetImpl(context);
         if (mBufferPool.getMaxBuffers() == 1)
         {
-            *mapPtr = mBuffer->map(mtl::GetImpl(context), (access & GL_MAP_WRITE_BIT) == 0,
-                                   access & GL_MAP_UNSYNCHRONIZED_BIT);
+            *mapPtr = mBuffer->map(contextMtl, (access & GL_MAP_WRITE_BIT) == 0,
+                                   access & GL_MAP_UNSYNCHRONIZED_BIT) +
+                      offset;
         }
         else
         {
-            *mapPtr = syncAndObtainShadowCopy(context) + offset;
+            *mapPtr = syncAndObtainShadowCopy(contextMtl) + offset;
         }
     }
 
@@ -227,13 +236,13 @@ angle::Result BufferMtl::getIndexRange(const gl::Context *context,
     return angle::Result::Continue;
 }
 
-angle::Result BufferMtl::getFirstLastIndices(const gl::Context *context,
+angle::Result BufferMtl::getFirstLastIndices(ContextMtl *contextMtl,
                                              gl::DrawElementsType type,
                                              size_t offset,
                                              size_t count,
                                              std::pair<uint32_t, uint32_t> *outIndices)
 {
-    const uint8_t *indices = getClientShadowCopyData(context) + offset;
+    const uint8_t *indices = getClientShadowCopyData(contextMtl) + offset;
 
     switch (type)
     {
@@ -254,43 +263,42 @@ angle::Result BufferMtl::getFirstLastIndices(const gl::Context *context,
 }
 
 /* public */
-const uint8_t *BufferMtl::getClientShadowCopyData(const gl::Context *context)
+const uint8_t *BufferMtl::getClientShadowCopyData(ContextMtl *contextMtl)
 {
     if (mBufferPool.getMaxBuffers() == 1)
     {
         // Don't need shadow copy in this case, use the buffer directly
-        return mBuffer->mapReadOnly(mtl::GetImpl(context));
+        return mBuffer->mapReadOnly(contextMtl);
     }
-    return syncAndObtainShadowCopy(context);
+    return syncAndObtainShadowCopy(contextMtl);
 }
 
-void BufferMtl::ensureShadowCopySyncedFromGPU(const gl::Context *context)
+void BufferMtl::ensureShadowCopySyncedFromGPU(ContextMtl *contextMtl)
 {
     if (mBuffer->isCPUReadMemDirty())
     {
-        ContextMtl *contextMtl = mtl::GetImpl(context);
-        const uint8_t *ptr     = mBuffer->mapReadOnly(contextMtl);
+        const uint8_t *ptr = mBuffer->mapReadOnly(contextMtl);
         memcpy(mShadowCopy.data(), ptr, size());
         mBuffer->unmap(contextMtl);
 
         mBuffer->resetCPUReadMemDirty();
     }
 }
-uint8_t *BufferMtl::syncAndObtainShadowCopy(const gl::Context *context)
+uint8_t *BufferMtl::syncAndObtainShadowCopy(ContextMtl *contextMtl)
 {
     ASSERT(mShadowCopy.size());
 
-    ensureShadowCopySyncedFromGPU(context);
+    ensureShadowCopySyncedFromGPU(contextMtl);
 
     return mShadowCopy.data();
 }
 
-ConversionBufferMtl *BufferMtl::getVertexConversionBuffer(const gl::Context *context,
+ConversionBufferMtl *BufferMtl::getVertexConversionBuffer(ContextMtl *context,
                                                           angle::FormatID formatID,
                                                           GLuint stride,
                                                           size_t offset)
 {
-    for (VertexConversionBuffer &buffer : mVertexConversionBuffers)
+    for (VertexConversionBufferMtl &buffer : mVertexConversionBuffers)
     {
         if (buffer.formatID == formatID && buffer.stride == stride && buffer.offset == offset)
         {
@@ -302,30 +310,55 @@ ConversionBufferMtl *BufferMtl::getVertexConversionBuffer(const gl::Context *con
     return &mVertexConversionBuffers.back();
 }
 
-IndexConversionBufferMtl *BufferMtl::getIndexConversionBuffer(const gl::Context *context,
-                                                              gl::DrawElementsType type,
+IndexConversionBufferMtl *BufferMtl::getIndexConversionBuffer(ContextMtl *context,
+                                                              gl::DrawElementsType elemType,
+                                                              bool primitiveRestartEnabled,
                                                               size_t offset)
 {
     for (auto &buffer : mIndexConversionBuffers)
     {
-        if (buffer.type == type && buffer.offset == offset)
+        if (buffer.elemType == elemType && buffer.offset == offset &&
+            buffer.primitiveRestartEnabled == primitiveRestartEnabled)
         {
             return &buffer;
         }
     }
 
-    mIndexConversionBuffers.emplace_back(context, type, offset);
+    mIndexConversionBuffers.emplace_back(context, elemType, primitiveRestartEnabled, offset);
     return &mIndexConversionBuffers.back();
+}
+
+ConversionBufferMtl *BufferMtl::getUniformConversionBuffer(ContextMtl *context, size_t offset)
+{
+    for (UniformConversionBufferMtl &buffer : mUniformConversionBuffers)
+    {
+        if (buffer.offset == offset)
+        {
+            return &buffer;
+        }
+    }
+
+    mUniformConversionBuffers.emplace_back(context, offset);
+    return &mUniformConversionBuffers.back();
 }
 
 void BufferMtl::markConversionBuffersDirty()
 {
-    for (VertexConversionBuffer &buffer : mVertexConversionBuffers)
+    for (VertexConversionBufferMtl &buffer : mVertexConversionBuffers)
     {
-        buffer.dirty = true;
+        buffer.dirty           = true;
+        buffer.convertedBuffer = nullptr;
+        buffer.convertedOffset = 0;
     }
 
-    for (auto &buffer : mIndexConversionBuffers)
+    for (IndexConversionBufferMtl &buffer : mIndexConversionBuffers)
+    {
+        buffer.dirty           = true;
+        buffer.convertedBuffer = nullptr;
+        buffer.convertedOffset = 0;
+    }
+
+    for (UniformConversionBufferMtl &buffer : mUniformConversionBuffers)
     {
         buffer.dirty           = true;
         buffer.convertedBuffer = nullptr;
@@ -337,6 +370,7 @@ void BufferMtl::clearConversionBuffers()
 {
     mVertexConversionBuffers.clear();
     mIndexConversionBuffers.clear();
+    mUniformConversionBuffers.clear();
 }
 
 angle::Result BufferMtl::setDataImpl(const gl::Context *context,
@@ -466,7 +500,7 @@ angle::Result BufferMtl::setSubDataImpl(const gl::Context *context,
     {
         ASSERT(mShadowCopy.size());
 
-        ensureShadowCopySyncedFromGPU(context);
+        ensureShadowCopySyncedFromGPU(contextMtl);
 
         std::copy(srcPtr, srcPtr + sizeToCopy, mShadowCopy.data() + offset);
 
@@ -495,6 +529,7 @@ angle::Result BufferMtl::commitShadowCopy(const gl::Context *context, size_t siz
     else
     {
         uint8_t *ptr = nullptr;
+        mBufferPool.releaseInFlightBuffers(contextMtl);
         ANGLE_TRY(
             mBufferPool.allocate(contextMtl, mShadowCopy.size(), &ptr, &mBuffer, nullptr, nullptr));
 

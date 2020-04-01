@@ -21,6 +21,12 @@
 namespace rx
 {
 
+struct ImageDefinitionMtl
+{
+    mtl::TextureRef image;
+    angle::FormatID formatID = angle::FormatID::NONE;
+};
+
 class TextureMtl : public TextureImpl
 {
   public:
@@ -148,25 +154,39 @@ class TextureMtl : public TextureImpl
     // to the actual texture.
     angle::Result ensureTextureCreated(const gl::Context *context);
 
-    angle::Result bindVertexShader(const gl::Context *context,
-                                   mtl::RenderCommandEncoder *cmdEncoder,
-                                   int textureSlotIndex,
-                                   int samplerSlotIndex);
-    angle::Result bindFragmentShader(const gl::Context *context,
-                                     mtl::RenderCommandEncoder *cmdEncoder,
-                                     int textureSlotIndex,
-                                     int samplerSlotIndex);
+    angle::Result bindToShader(const gl::Context *context,
+                               mtl::RenderCommandEncoder *cmdEncoder,
+                               gl::ShaderType shaderType,
+                               gl::Sampler *sampler, /** nullable */
+                               int textureSlotIndex,
+                               int samplerSlotIndex);
 
     const mtl::Format &getFormat() const { return mFormat; }
 
   private:
     void releaseTexture(bool releaseImages);
+    void releaseTexture(bool releaseImages, bool releaseTextureObjectsOnly);
+    angle::Result createNativeTexture(const gl::Context *context,
+                                      gl::TextureType type,
+                                      GLuint mips,
+                                      const gl::Extents &size);
+    angle::Result onBaseMaxLevelsChanged(const gl::Context *context);
     angle::Result ensureSamplerStateCreated(const gl::Context *context);
     // Ensure image at given index is created:
     angle::Result ensureImageCreated(const gl::Context *context, const gl::ImageIndex &index);
+    // Ensure all image views at all faces/levels are retained.
+    void retainImageDefinitions();
+    mtl::TextureRef createImageViewFromNativeTexture(GLuint cubeFaceOrZero, GLuint nativeLevel);
+    angle::Result ensureNativeLevelViewsCreated();
     angle::Result checkForEmulatedChannels(const gl::Context *context,
                                            const mtl::Format &mtlFormat,
                                            const mtl::TextureRef &texture);
+    int getNativeLevel(const gl::ImageIndex &imageIndex) const;
+    mtl::TextureRef &getImage(const gl::ImageIndex &imageIndex);
+    ImageDefinitionMtl &getImageDefinition(const gl::ImageIndex &imageIndex);
+    RenderTargetMtl &getRenderTarget(const gl::ImageIndex &imageIndex);
+    mtl::TextureRef &getImplicitMSTexture(const gl::ImageIndex &imageIndex);
+    bool isIndexWithinMinMaxLevels(const gl::ImageIndex &imageIndex) const;
 
     // If levels = 0, this function will create full mipmaps texture.
     angle::Result setStorageImpl(const gl::Context *context,
@@ -193,6 +213,7 @@ class TextureMtl : public TextureImpl
                                   const gl::InternalFormat &formatInfo,
                                   GLenum type,
                                   const gl::PixelUnpackState &unpack,
+                                  gl::Buffer *unpackBuffer,
                                   const uint8_t *pixels);
 
     angle::Result copySubImageImpl(const gl::Context *context,
@@ -214,14 +235,30 @@ class TextureMtl : public TextureImpl
                                   const gl::InternalFormat &internalFormat,
                                   gl::Framebuffer *source);
 
+    angle::Result setPerSliceSubImage(const gl::Context *context,
+                                      int slice,
+                                      const MTLRegion &mtlArea,
+                                      const gl::InternalFormat &internalFormat,
+                                      GLenum type,
+                                      const angle::Format &pixelsAngleFormat,
+                                      size_t pixelsRowPitch,
+                                      size_t pixelsDepthPitch,
+                                      gl::Buffer *unpackBuffer,
+                                      const uint8_t *pixels,
+                                      const mtl::TextureRef &image);
+
     // Convert pixels to suported format before uploading to texture
-    angle::Result convertAndSetSubImage(const gl::Context *context,
-                                        const gl::ImageIndex &index,
-                                        const MTLRegion &mtlArea,
-                                        const gl::InternalFormat &internalFormat,
-                                        const angle::Format &pixelsFormat,
-                                        size_t pixelsRowPitch,
-                                        const uint8_t *pixels);
+    angle::Result convertAndSetPerSliceSubImage(const gl::Context *context,
+                                                int slice,
+                                                const MTLRegion &mtlArea,
+                                                const gl::InternalFormat &internalFormat,
+                                                GLenum type,
+                                                const angle::Format &pixelsAngleFormat,
+                                                size_t pixelsRowPitch,
+                                                size_t pixelsDepthPitch,
+                                                gl::Buffer *unpackBuffer,
+                                                const uint8_t *pixels,
+                                                const mtl::TextureRef &image);
 
     angle::Result generateMipmapCPU(const gl::Context *context);
 
@@ -230,13 +267,30 @@ class TextureMtl : public TextureImpl
     mtl::TextureRef mNativeTexture;
     id<MTLSamplerState> mMetalSamplerState = nil;
 
-    // Full mipmap views of texture at each slice/cube face:
-    std::vector<mtl::TextureRef> mLayeredTextureViews;
+    // Number of slices
+    uint32_t mSlices = 1;
 
     // Stored images array defined by glTexImage/glCopy*.
     // Once the images array is complete, they will be transferred to real texture object.
-    std::map<int, gl::TexLevelArray<mtl::TextureRef>> mTexImages;
-    std::map<int, gl::TexLevelArray<RenderTargetMtl>> mTexImageRenderTargets;
+    // NOTE:
+    //  - The second dimension is indexed by configured base level + actual native level
+    //  - For Cube map, there will be at most 6 entries in the map table, one for each face. This is
+    //  because the Cube map's image is defined per face & per level.
+    //  - For other texture types, there will be only one entry in the map table. All other textures
+    //  except Cube map has texture image defined per level (all slices included).
+    //  - These three variables' second dimension are indexed by image index (base level included).
+    std::map<int, gl::TexLevelArray<ImageDefinitionMtl>> mTexImageDefs;
+    std::map<int, gl::TexLevelArray<RenderTargetMtl>> mPerLayerRenderTargets;
+    std::map<int, gl::TexLevelArray<mtl::TextureRef>> mImplicitMSTextures;
+
+    // Mipmap views are indexed by native level (ignored base level):
+    gl::TexLevelArray<mtl::TextureRef> mNativeLevelViews;
+
+    // The swizzled view used for shader sampling.
+    mtl::TextureRef mNativeSwizzleSamplingView;
+
+    GLuint mCurrentBaseLevel = 0;
+    GLuint mCurrentMaxLevel  = 1000;
 
     bool mIsPow2 = false;
 };

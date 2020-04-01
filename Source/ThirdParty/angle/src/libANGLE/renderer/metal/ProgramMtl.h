@@ -17,13 +17,21 @@
 #include "common/Optional.h"
 #include "common/utilities.h"
 #include "libANGLE/renderer/ProgramImpl.h"
+#include "libANGLE/renderer/metal/mtl_buffer_pool.h"
 #include "libANGLE/renderer/metal/mtl_command_buffer.h"
+#include "libANGLE/renderer/metal/mtl_glslang_utils.h"
 #include "libANGLE/renderer/metal/mtl_resources.h"
 #include "libANGLE/renderer/metal/mtl_state_cache.h"
 
 namespace rx
 {
 class ContextMtl;
+
+struct ProgramArgumentBufferEncoderMtl
+{
+    mtl::AutoObjCPtr<id<MTLArgumentEncoder>> metalArgBufferEncoder;
+    mtl::BufferPool bufferPool;
+};
 
 class ProgramMtl : public ProgramImpl
 {
@@ -107,8 +115,10 @@ class ProgramMtl : public ProgramImpl
     // shader program changed.
     angle::Result setupDraw(const gl::Context *glContext,
                             mtl::RenderCommandEncoder *cmdEncoder,
-                            const Optional<mtl::RenderPipelineDesc> &changedPipelineDesc,
-                            bool forceTexturesSetting);
+                            const mtl::RenderPipelineDesc &pipelineDesc,
+                            bool pipelineDescChanged,
+                            bool forceTexturesSetting,
+                            bool uniformBuffersDirty);
 
   private:
     template <int cols, int rows>
@@ -123,19 +133,48 @@ class ProgramMtl : public ProgramImpl
     void setUniformImpl(GLint location, GLsizei count, const T *v, GLenum entryPointType);
 
     angle::Result initDefaultUniformBlocks(const gl::Context *glContext);
+    angle::Result resizeDefaultUniformBlocksMemory(const gl::Context *glContext,
+                                                   const gl::ShaderMap<size_t> &requiredBufferSize);
+    void saveDefaultUniformBlocksInfo(gl::BinaryOutputStream *stream);
+    angle::Result loadDefaultUniformBlocksInfo(const gl::Context *glContext,
+                                               gl::BinaryInputStream *stream);
 
     angle::Result commitUniforms(ContextMtl *context, mtl::RenderCommandEncoder *cmdEncoder);
     angle::Result updateTextures(const gl::Context *glContext,
                                  mtl::RenderCommandEncoder *cmdEncoder,
                                  bool forceUpdate);
 
+    angle::Result updateUniformBuffers(ContextMtl *context,
+                                       mtl::RenderCommandEncoder *cmdEncoder,
+                                       const mtl::RenderPipelineDesc &pipelineDesc);
+    angle::Result legalizeUniformBufferOffsets(ContextMtl *context,
+                                               const std::vector<gl::InterfaceBlock> &blocks);
+    angle::Result bindUniformBuffersToDiscreteSlots(ContextMtl *context,
+                                                    mtl::RenderCommandEncoder *cmdEncoder,
+                                                    const std::vector<gl::InterfaceBlock> &blocks,
+                                                    gl::ShaderType shaderType);
+    angle::Result encodeUniformBuffersInfoArgumentBuffer(
+        ContextMtl *context,
+        mtl::RenderCommandEncoder *cmdEncoder,
+        const std::vector<gl::InterfaceBlock> &blocks,
+        gl::ShaderType shaderType);
+
     void reset(ContextMtl *context);
+
+    void saveTranslatedShaders(gl::BinaryOutputStream *stream);
+    void loadTranslatedShaders(gl::BinaryInputStream *stream);
+
+    void saveShaderInternalInfo(gl::BinaryOutputStream *stream);
+    void loadShaderInternalInfo(gl::BinaryInputStream *stream);
+
     void linkResources(const gl::ProgramLinkedResources &resources);
-    angle::Result linkImpl(const gl::Context *glContext, gl::InfoLog &infoLog);
-    angle::Result convertToMsl(const gl::Context *glContext,
-                               gl::ShaderType shaderType,
-                               gl::InfoLog &infoLog,
-                               std::vector<uint32_t> *sprivCode);
+    angle::Result linkImpl(const gl::Context *glContext,
+                           const gl::ShaderMap<std::string> &shaderSource,
+                           gl::InfoLog &infoLog);
+
+    angle::Result linkTranslatedShaders(const gl::Context *glContext,
+                                        gl::BinaryInputStream *stream,
+                                        gl::InfoLog &infoLog);
 
     angle::Result createMslShader(const gl::Context *glContext,
                                   gl::ShaderType shaderType,
@@ -160,8 +199,25 @@ class ProgramMtl : public ProgramImpl
     gl::ShaderBitSet mSamplerBindingsDirty;
     gl::ShaderMap<DefaultUniformBlock> mDefaultUniformBlocks;
 
-    // We keep the translated linked shader sources to use with shader draw call patching.
-    gl::ShaderMap<std::string> mShaderSource;
+    gl::ShaderMap<std::string> mTranslatedMslShader;
+
+    gl::ShaderMap<mtl::TranslatedShaderInfo> mMslShaderTranslateInfo;
+
+    uint32_t mShadowCompareModes[mtl::kMaxShaderSamplers] = {0};
+
+    // One with emulated rasterization discard, one without.
+    std::array<ProgramArgumentBufferEncoderMtl, 2> mVertexArgumentBufferEncoders;
+    // One for sample coverage mask enabled, one with it disabled.
+    std::array<ProgramArgumentBufferEncoderMtl, 2> mFragmentArgumentBufferEncoders;
+    gl::ShaderMap<ProgramArgumentBufferEncoderMtl *> mCurrentArgumentBufferEncoders;
+
+    // Scratch data:
+    // Legalized buffers and their offsets. For example, uniform buffer's offset=1 is not a valid
+    // offset, it will be converted to legal offset and the result is stored in this array.
+    std::vector<std::pair<mtl::BufferRef, uint32_t>> mLegalizedOffsetedUniformBuffers;
+    // Stores the render stages usage of each uniform buffer. Only used if the buffers are encoded
+    // into an argument buffer.
+    std::vector<uint32_t> mArgumentBufferRenderStageUsages;
 
     mtl::RenderPipelineCache mMetalRenderPipelineCache;
 };

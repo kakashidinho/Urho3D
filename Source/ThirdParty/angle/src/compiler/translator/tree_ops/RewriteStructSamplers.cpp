@@ -360,7 +360,8 @@ class Traverser final : public TIntermTraverser, public ArrayTraverser
             ASSERT(asSymbol);
             const TVariable &variable = asSymbol->variable();
             ASSERT(variable.symbolType() != SymbolType::Empty);
-            extractSampler(variable.name(), variable.getType(), newSequence, 0);
+            extractSampler(variable.name(), variable.symbolType(), variable.getType(), newSequence,
+                           0);
             mMultiReplacements.emplace_back(getParentNode()->getAsBlock(), decl, *newSequence);
         }
 
@@ -586,6 +587,8 @@ class Traverser final : public TIntermTraverser, public ArrayTraverser
         newSequence->push_back(structDecl);
 
         mSymbolTable->declare(newStruct);
+
+        mReplacedStructs[structure] = newStruct;
     }
 
     // Returns true if the type is a struct that was removed because we extracted all the members.
@@ -616,8 +619,41 @@ class Traverser final : public TIntermTraverser, public ArrayTraverser
 
         if (nonSamplerCount > 0)
         {
-            // Keep the old declaration around if it has other members.
-            newSequence->push_back(oldDeclaration);
+            // Keep the old declaration with replaced type around if it has other members.
+            std::unordered_map<const TStructure *, const TStructure *>::iterator ite =
+                mReplacedStructs.find(structure);
+            if (ite == mReplacedStructs.end())
+            {
+                newSequence->push_back(oldDeclaration);
+            }
+            else
+            {
+                // Replace the type of the declared variables.
+                // NOTE(hqle): Remove this once merged with upstream. Since updated code from
+                // upstream already deals with this.
+                const TStructure *replacementStruct = ite->second;
+                TIntermDeclaration *varDecl         = new TIntermDeclaration;
+                for (TIntermNode *var : *(oldDeclaration->getSequence()))
+                {
+                    TIntermSymbol *declaratorSymbol = var->getAsSymbolNode();
+                    ASSERT(declaratorSymbol);
+                    const TVariable &declaratorVar = declaratorSymbol->variable();
+                    const TType &oldType           = declaratorVar.getType();
+                    TType *newStructType           = new TType(replacementStruct, true);
+                    newStructType->setQualifier(oldType.getQualifier());
+                    if (oldType.getArraySizes())
+                    {
+                        newStructType->makeArrays(*oldType.getArraySizes());
+                    }
+                    TVariable *newDeclaratorVar = new TVariable(
+                        declaratorVar.uniqueId(), declaratorVar.name(), declaratorVar.symbolType(),
+                        TExtension::UNDEFINED, newStructType);
+                    TIntermSymbol *newDeclarator = new TIntermSymbol(newDeclaratorVar);
+                    varDecl->appendDeclarator(newDeclarator);
+                }
+
+                newSequence->push_back(varDecl);
+            }
         }
         else
         {
@@ -652,7 +688,7 @@ class Traverser final : public TIntermTraverser, public ArrayTraverser
 
             if (fieldType.isSampler())
             {
-                extractSampler(newPrefix, fieldType, newSequence, 0);
+                extractSampler(newPrefix, SymbolType::AngleInternal, fieldType, newSequence, 0);
             }
             else
             {
@@ -676,6 +712,7 @@ class Traverser final : public TIntermTraverser, public ArrayTraverser
 
     // Extracts a sampler from a struct. Declares the new extracted sampler.
     void extractSampler(const ImmutableString &newName,
+                        SymbolType symbolType,
                         const TType &fieldType,
                         TIntermSequence *newSequence,
                         size_t arrayLevel)
@@ -692,16 +729,27 @@ class Traverser final : public TIntermTraverser, public ArrayTraverser
             newType->makeArray(static_cast<unsigned int>(mCumulativeArraySizeStack.back()));
         }
         newType->setQualifier(EvqUniform);
-        TVariable *newVariable =
-            new TVariable(mSymbolTable, newName, newType, SymbolType::AngleInternal);
-        TIntermSymbol *newRef = new TIntermSymbol(newVariable);
+        TVariable *newVariable = new TVariable(mSymbolTable, newName, newType, symbolType);
+        TIntermSymbol *newRef  = new TIntermSymbol(newVariable);
 
         TIntermDeclaration *samplerDecl = new TIntermDeclaration;
         samplerDecl->appendDeclarator(newRef);
 
         newSequence->push_back(samplerDecl);
 
-        mSymbolTable->declareInternal(newVariable);
+        // TODO(syoussefi): Use a SymbolType::Empty name instead of generating a name as currently
+        // done.  There is no guarantee that these generated names cannot clash.  Create a mapping
+        // from the previous name to the name assigned to the SymbolType::Empty variable so
+        // ShaderVariable::mappedName can be updated post-transformation.
+        // http://anglebug.com/4301
+        if (symbolType == SymbolType::AngleInternal)
+        {
+            mSymbolTable->declareInternal(newVariable);
+        }
+        else
+        {
+            mSymbolTable->declare(newVariable);
+        }
 
         GenerateArrayStrides(mArraySizeStack, &mVariableExtraData.arrayStrideMap[newVariable]);
 
@@ -1002,6 +1050,7 @@ class Traverser final : public TIntermTraverser, public ArrayTraverser
 
     int mRemovedUniformsCount;
     std::set<ImmutableString> mRemovedStructs;
+    std::unordered_map<const TStructure *, const TStructure *> mReplacedStructs;
     FunctionInstantiations mFunctionInstantiations;
     FunctionMap mFunctionMap;
     VariableExtraData mVariableExtraData;

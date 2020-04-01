@@ -14,6 +14,7 @@
 
 #include "common/MemoryBuffer.h"
 #include "libANGLE/renderer/metal/ContextMtl.h"
+#include "libANGLE/renderer/metal/RenderTargetMtl.h"
 
 namespace rx
 {
@@ -26,53 +27,185 @@ angle::Result InitializeTextureContents(const gl::Context *context,
                                         const gl::ImageIndex &index)
 {
     ASSERT(texture && texture->valid());
-    ASSERT(texture->textureType() == MTLTextureType2D ||
-           texture->textureType() == MTLTextureTypeCube);
     ContextMtl *contextMtl = mtl::GetImpl(context);
 
+    const angle::Format &actualAngleFormat           = textureObjFormat.actualAngleFormat();
     const gl::InternalFormat &intendedInternalFormat = textureObjFormat.intendedInternalFormat();
 
     // This function is called in many places to initialize the content of a texture.
     // So it's better we do the sanity check here instead of let the callers do it themselves:
-    if (!textureObjFormat.valid() || intendedInternalFormat.compressed ||
-        intendedInternalFormat.depthBits > 0 || intendedInternalFormat.stencilBits > 0)
+    if (!textureObjFormat.valid() || actualAngleFormat.isBlock || actualAngleFormat.depthBits > 0 ||
+        actualAngleFormat.stencilBits > 0)
     {
+        // If dst format is compressed, ignore.
         return angle::Result::Continue;
     }
 
     gl::Extents size = texture->size(index);
 
     // Intialize the content to black
-    const angle::Format &srcFormat =
-        angle::Format::Get(intendedInternalFormat.alphaBits > 0 ? angle::FormatID::R8G8B8A8_UNORM
-                                                                : angle::FormatID::R8G8B8_UNORM);
-    const size_t srcRowPitch = srcFormat.pixelBytes * size.width;
-    angle::MemoryBuffer srcRow;
-    ANGLE_CHECK_GL_ALLOC(contextMtl, srcRow.resize(srcRowPitch));
-    memset(srcRow.data(), 0, srcRowPitch);
-
-    const angle::Format &dstFormat = angle::Format::Get(textureObjFormat.actualFormatId);
-    const size_t dstRowPitch       = dstFormat.pixelBytes * size.width;
-    angle::MemoryBuffer conversionRow;
-    ANGLE_CHECK_GL_ALLOC(contextMtl, conversionRow.resize(dstRowPitch));
-
-    CopyImageCHROMIUM(srcRow.data(), srcRowPitch, srcFormat.pixelBytes, 0,
-                      srcFormat.pixelReadFunction, conversionRow.data(), dstRowPitch,
-                      dstFormat.pixelBytes, 0, dstFormat.pixelWriteFunction,
-                      intendedInternalFormat.format, dstFormat.componentType, size.width, 1, 1,
-                      false, false, false);
-
-    auto mtlRowRegion = MTLRegionMake2D(0, 0, size.width, 1);
-
-    for (NSUInteger r = 0; r < static_cast<NSUInteger>(size.height); ++r)
+    GLint layer      = 0;
+    GLint startDepth = 0;
+    if (index.hasLayer())
     {
-        mtlRowRegion.origin.y = r;
-
-        // Upload to texture
-        texture->replaceRegion(contextMtl, mtlRowRegion, index.getLevelIndex(),
-                               index.hasLayer() ? index.cubeMapFaceIndex() : 0,
-                               conversionRow.data(), dstRowPitch);
+        switch (index.getType())
+        {
+            case gl::TextureType::CubeMap:
+                layer = index.cubeMapFaceIndex();
+                break;
+            case gl::TextureType::_2DArray:
+                layer = index.getLayerIndex();
+                break;
+            case gl::TextureType::_3D:
+                startDepth = index.getLayerIndex();
+                break;
+            default:
+                UNREACHABLE();
+                break;
+        }
     }
+
+    if (texture->isCPUAccessible() && index.getType() != gl::TextureType::_2DMultisample &&
+        index.getType() != gl::TextureType::_2DMultisampleArray)
+    {
+        const angle::Format &dstFormat = angle::Format::Get(textureObjFormat.actualFormatId);
+        const size_t dstRowPitch       = dstFormat.pixelBytes * size.width;
+        angle::MemoryBuffer conversionRow;
+        ANGLE_CHECK_GL_ALLOC(contextMtl, conversionRow.resize(dstRowPitch));
+
+        if (textureObjFormat.initFunction)
+        {
+            textureObjFormat.initFunction(size.width, 1, 1, conversionRow.data(), dstRowPitch, 0);
+        }
+        else
+        {
+            if (!textureObjFormat.valid() || intendedInternalFormat.compressed ||
+                intendedInternalFormat.depthBits > 0 || intendedInternalFormat.stencilBits > 0)
+            {
+                // If source format is compressed, ignore.
+                return angle::Result::Continue;
+            }
+
+            const angle::Format &srcFormat = angle::Format::Get(
+                intendedInternalFormat.alphaBits > 0 ? angle::FormatID::R8G8B8A8_UNORM
+                                                     : angle::FormatID::R8G8B8_UNORM);
+            const size_t srcRowPitch = srcFormat.pixelBytes * size.width;
+            angle::MemoryBuffer srcRow;
+            ANGLE_CHECK_GL_ALLOC(contextMtl, srcRow.resize(srcRowPitch));
+            memset(srcRow.data(), 0, srcRowPitch);
+
+            CopyImageCHROMIUM(srcRow.data(), srcRowPitch, srcFormat.pixelBytes, 0,
+                              srcFormat.pixelReadFunction, conversionRow.data(), dstRowPitch,
+                              dstFormat.pixelBytes, 0, dstFormat.pixelWriteFunction,
+                              intendedInternalFormat.format, dstFormat.componentType, size.width, 1,
+                              1, false, false, false);
+        }
+
+        auto mtlRowRegion = MTLRegionMake2D(0, 0, size.width, 1);
+
+        for (NSUInteger d = 0; d < static_cast<NSUInteger>(size.depth); ++d)
+        {
+            mtlRowRegion.origin.z = d + startDepth;
+            for (NSUInteger r = 0; r < static_cast<NSUInteger>(size.height); ++r)
+            {
+                mtlRowRegion.origin.y = r;
+
+                // Upload to texture
+                texture->replaceRegion(contextMtl, mtlRowRegion, index.getLevelIndex(), layer,
+                                       conversionRow.data(), dstRowPitch);
+            }
+        }
+    }  // if (texture->isCPUAccessible())
+    else
+    {
+        // Use clear render command
+        RenderTargetMtl tempRtt;
+        tempRtt.set(texture, index.getLevelIndex(), std::max(layer, startDepth), textureObjFormat);
+
+        // temporarily enable all color channels. Some emulated format has some channels write mask
+        // disabled when the texture is created.
+        MTLColorWriteMask enableAllChannels = MTLColorWriteMaskAll;
+        MTLColorWriteMask oldMask           = texture->getColorWritableMask();
+        texture->setColorWritableMask(enableAllChannels);
+
+        Optional<MTLClearColor> blackColor = MTLClearColorMake(0, 0, 0, 1);
+        RenderCommandEncoder *encoder = contextMtl->getRenderCommandEncoder(tempRtt, blackColor);
+        ANGLE_UNUSED_VARIABLE(encoder);
+        contextMtl->endEncoding(true);
+
+        // Restore texture's intended write mask
+        texture->setColorWritableMask(oldMask);
+
+    }  // if (texture->isCPUAccessible())
+
+    return angle::Result::Continue;
+}
+
+angle::Result ReadTexturePerSliceBytes(const gl::Context *context,
+                                       const TextureRef &texture,
+                                       size_t bytesPerRow,
+                                       const gl::Rectangle &fromRegion,
+                                       uint32_t mipLevel,
+                                       uint32_t sliceOrDepth,
+                                       uint8_t *dataOut)
+{
+    ASSERT(texture && texture->valid());
+    ContextMtl *contextMtl = mtl::GetImpl(context);
+    GLint layer            = 0;
+    GLint startDepth       = 0;
+    switch (texture->textureType())
+    {
+        case MTLTextureTypeCube:
+        case MTLTextureType2DArray:
+            layer = sliceOrDepth;
+            break;
+        case MTLTextureType3D:
+            startDepth = sliceOrDepth;
+            break;
+        default:
+            break;
+    }
+
+    MTLRegion mtlRegion = MTLRegionMake3D(fromRegion.x, fromRegion.y, startDepth, fromRegion.width,
+                                          fromRegion.height, 1);
+
+    texture->getBytes(contextMtl, bytesPerRow, 0, mtlRegion, mipLevel, layer, dataOut);
+
+    return angle::Result::Continue;
+}
+
+angle::Result ReadTexturePerSliceBytesToBuffer(const gl::Context *context,
+                                               const TextureRef &texture,
+                                               size_t bytesPerRow,
+                                               const gl::Rectangle &fromRegion,
+                                               uint32_t mipLevel,
+                                               uint32_t sliceOrDepth,
+                                               uint32_t dstOffset,
+                                               const BufferRef &dstBuffer)
+{
+    ASSERT(texture && texture->valid());
+    ContextMtl *contextMtl = mtl::GetImpl(context);
+    GLint layer            = 0;
+    GLint startDepth       = 0;
+    switch (texture->textureType())
+    {
+        case MTLTextureTypeCube:
+        case MTLTextureType2DArray:
+            layer = sliceOrDepth;
+            break;
+        case MTLTextureType3D:
+            startDepth = sliceOrDepth;
+            break;
+        default:
+            break;
+    }
+
+    MTLRegion mtlRegion = MTLRegionMake3D(fromRegion.x, fromRegion.y, startDepth, fromRegion.width,
+                                          fromRegion.height, 1);
+
+    BlitCommandEncoder *blitEncoder = contextMtl->getBlitCommandEncoder();
+    blitEncoder->copyTextureToBuffer(texture, layer, mipLevel, mtlRegion.origin, mtlRegion.size,
+                                     dstBuffer, dstOffset, bytesPerRow, 0, MTLBlitOptionNone);
 
     return angle::Result::Continue;
 }
@@ -431,6 +564,83 @@ MTLIndexType GetIndexType(gl::DrawElementsType type)
         default:
             return MTLIndexTypeInvalid;
     }
+}
+
+#if defined(__IPHONE_13_0) || defined(__MAC_10_15)
+MTLTextureSwizzle GetTextureSwizzle(GLenum swizzle)
+{
+    switch (swizzle)
+    {
+        case GL_RED:
+            return MTLTextureSwizzleRed;
+        case GL_GREEN:
+            return MTLTextureSwizzleGreen;
+        case GL_BLUE:
+            return MTLTextureSwizzleBlue;
+        case GL_ALPHA:
+            return MTLTextureSwizzleAlpha;
+        case GL_ZERO:
+            return MTLTextureSwizzleZero;
+        case GL_ONE:
+            return MTLTextureSwizzleOne;
+        default:
+            UNREACHABLE();
+            return MTLTextureSwizzleZero;
+    }
+}
+#endif
+
+MTLColorWriteMask GetEmulatedColorWriteMask(const mtl::Format &mtlFormat, bool *emulatedChannelsOut)
+{
+    const angle::Format &intendedFormat = mtlFormat.intendedAngleFormat();
+    const angle::Format &actualFormat   = mtlFormat.actualAngleFormat();
+    bool emulatedChannels               = false;
+    MTLColorWriteMask colorWritableMask = MTLColorWriteMaskAll;
+    if (intendedFormat.alphaBits == 0 && actualFormat.alphaBits)
+    {
+        emulatedChannels = true;
+        // Disable alpha write to this texture
+        colorWritableMask = colorWritableMask & (~MTLColorWriteMaskAlpha);
+    }
+    if (intendedFormat.luminanceBits == 0)
+    {
+        if (intendedFormat.redBits == 0 && actualFormat.redBits)
+        {
+            emulatedChannels = true;
+            // Disable red write to this texture
+            colorWritableMask = colorWritableMask & (~MTLColorWriteMaskRed);
+        }
+        if (intendedFormat.greenBits == 0 && actualFormat.greenBits)
+        {
+            emulatedChannels = true;
+            // Disable green write to this texture
+            colorWritableMask = colorWritableMask & (~MTLColorWriteMaskGreen);
+        }
+        if (intendedFormat.blueBits == 0 && actualFormat.blueBits)
+        {
+            emulatedChannels = true;
+            // Disable blue write to this texture
+            colorWritableMask = colorWritableMask & (~MTLColorWriteMaskBlue);
+        }
+    }
+
+    *emulatedChannelsOut = emulatedChannels;
+
+    return colorWritableMask;
+}
+
+MTLColorWriteMask GetEmulatedColorWriteMask(const mtl::Format &mtlFormat)
+{
+    // Ignore emulatedChannels boolean value
+    bool emulatedChannels;
+    return GetEmulatedColorWriteMask(mtlFormat, &emulatedChannels);
+}
+
+bool IsFormatEmulated(const mtl::Format &mtlFormat)
+{
+    bool emulatedChannels;
+    (void)GetEmulatedColorWriteMask(mtlFormat, &emulatedChannels);
+    return emulatedChannels;
 }
 
 MTLClearColor EmulatedAlphaClearColor(MTLClearColor color, MTLColorWriteMask colorMask)

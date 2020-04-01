@@ -18,7 +18,8 @@
 #include "libANGLE/renderer/metal/mtl_resources.h"
 #include "libANGLE/renderer/metal/mtl_utils.h"
 
-#define ANGLE_OBJC_CP_PROPERTY(DST, SRC, PROPERTY) (DST).PROPERTY = ToObjC((SRC).PROPERTY)
+#define ANGLE_OBJC_CP_PROPERTY(DST, SRC, PROPERTY) \
+    (DST).PROPERTY = static_cast<__typeof__((DST).PROPERTY)>(ToObjC((SRC).PROPERTY))
 
 #define ANGLE_PROP_EQ(LHS, RHS, PROP) ((LHS).PROP == (RHS).PROP)
 
@@ -73,6 +74,7 @@ MTLSamplerDescriptor *ToObjC(const SamplerDesc &desc)
     ANGLE_OBJC_CP_PROPERTY(objCDesc, desc, magFilter);
     ANGLE_OBJC_CP_PROPERTY(objCDesc, desc, mipFilter);
     ANGLE_OBJC_CP_PROPERTY(objCDesc, desc, maxAnisotropy);
+    ANGLE_OBJC_CP_PROPERTY(objCDesc, desc, compareFunction);
 
     return [objCDesc ANGLE_MTL_AUTORELEASE];
 }
@@ -159,6 +161,7 @@ MTLRenderPipelineDescriptor *ToObjC(id<MTLFunction> vertexShader,
     }
     ANGLE_OBJC_CP_PROPERTY(objCDesc, desc.outputDescriptor, depthAttachmentPixelFormat);
     ANGLE_OBJC_CP_PROPERTY(objCDesc, desc.outputDescriptor, stencilAttachmentPixelFormat);
+    ANGLE_OBJC_CP_PROPERTY(objCDesc, desc.outputDescriptor, sampleCount);
 
 #if ANGLE_MTL_PRIMITIVE_TOPOLOGY_CLASS_AVAILABLE
     ANGLE_OBJC_CP_PROPERTY(objCDesc, desc, inputPrimitiveTopology);
@@ -177,9 +180,44 @@ id<MTLTexture> ToObjC(const TextureRef &texture)
 void BaseRenderPassAttachmentDescToObjC(MTLRenderPassAttachmentDescriptor *dst,
                                         const RenderPassAttachmentDesc &src)
 {
-    dst.texture = ToObjC(src.texture());
-    dst.level   = src.level();
-    dst.slice   = src.slice();
+    auto implicitMsTexture = src.implicitMSTexture();
+
+    if (implicitMsTexture)
+    {
+        dst.texture        = ToObjC(implicitMsTexture);
+        dst.level          = 0;
+        dst.slice          = 0;
+        dst.resolveTexture = ToObjC(src.texture());
+        dst.resolveLevel   = src.level();
+        if (dst.resolveTexture.textureType == MTLTextureType3D)
+        {
+            dst.resolveDepthPlane = src.sliceOrDepth();
+            dst.resolveSlice      = 0;
+        }
+        else
+        {
+            dst.resolveSlice      = src.sliceOrDepth();
+            dst.resolveDepthPlane = 0;
+        }
+    }
+    else
+    {
+        dst.texture = ToObjC(src.texture());
+        dst.level   = src.level();
+        if (dst.texture.textureType == MTLTextureType3D)
+        {
+            dst.depthPlane = src.sliceOrDepth();
+            dst.slice      = 0;
+        }
+        else
+        {
+            dst.slice      = src.sliceOrDepth();
+            dst.depthPlane = 0;
+        }
+        dst.resolveTexture = nil;
+        dst.resolveLevel   = 0;
+        dst.resolveSlice   = 0;
+    }
 
     ANGLE_OBJC_CP_PROPERTY(dst, src, loadAction);
     ANGLE_OBJC_CP_PROPERTY(dst, src, storeAction);
@@ -415,6 +453,8 @@ SamplerDesc::SamplerDesc(const gl::SamplerState &glState) : SamplerDesc()
     mipFilter = GetMipmapFilter(glState.getMinFilter());
 
     maxAnisotropy = static_cast<uint32_t>(glState.getMaxAnisotropy());
+
+    compareFunction = GetCompareFunc(glState.getCompareFunc());
 }
 
 SamplerDesc &SamplerDesc::operator=(const SamplerDesc &src)
@@ -434,6 +474,8 @@ void SamplerDesc::reset()
     mipFilter = MTLSamplerMipFilterNearest;
 
     maxAnisotropy = 1;
+
+    compareFunction = MTLCompareFunctionNever;
 }
 
 bool SamplerDesc::operator==(const SamplerDesc &rhs) const
@@ -444,7 +486,10 @@ bool SamplerDesc::operator==(const SamplerDesc &rhs) const
            ANGLE_PROP_EQ(*this, rhs, minFilter) && ANGLE_PROP_EQ(*this, rhs, magFilter) &&
            ANGLE_PROP_EQ(*this, rhs, mipFilter) &&
 
-           ANGLE_PROP_EQ(*this, rhs, maxAnisotropy);
+           ANGLE_PROP_EQ(*this, rhs, maxAnisotropy) &&
+
+           ANGLE_PROP_EQ(*this, rhs, compareFunction);
+    ;
 }
 
 size_t SamplerDesc::hash() const
@@ -599,7 +644,8 @@ void RenderPipelineOutputDesc::updateEnabledDrawBuffers(gl::DrawBufferMask enabl
 RenderPipelineDesc::RenderPipelineDesc()
 {
     memset(this, 0, sizeof(*this));
-    rasterizationEnabled = true;
+    outputDescriptor.sampleCount = 1;
+    rasterizationEnabled         = true;
 }
 
 RenderPipelineDesc::RenderPipelineDesc(const RenderPipelineDesc &src)
@@ -649,7 +695,8 @@ bool RenderPassAttachmentDesc::equalIgnoreLoadStoreOptions(
     const RenderPassAttachmentDesc &other) const
 {
     return renderTarget == other.renderTarget ||
-           (texture() == other.texture() && level() == other.level() && slice() == other.slice());
+           (texture() == other.texture() && level() == other.level() &&
+            sliceOrDepth() == other.sliceOrDepth());
 }
 
 bool RenderPassAttachmentDesc::operator==(const RenderPassAttachmentDesc &other) const
@@ -675,6 +722,9 @@ void RenderPassDesc::convertToMetalDesc(MTLRenderPassDescriptor *objCDesc) const
         {
             // Inactive render target
             objCDesc.colorAttachments[i].texture     = nil;
+            objCDesc.colorAttachments[i].level       = 0;
+            objCDesc.colorAttachments[i].slice       = 0;
+            objCDesc.colorAttachments[i].depthPlane  = 0;
             objCDesc.colorAttachments[i].loadAction  = MTLLoadActionDontCare;
             objCDesc.colorAttachments[i].storeAction = MTLStoreActionDontCare;
         }
@@ -704,6 +754,7 @@ void RenderPassDesc::populateRenderPipelineOutputDesc(const BlendDesc &blendStat
 {
     auto &outputDescriptor               = *outDesc;
     outputDescriptor.numColorAttachments = this->numColorAttachments;
+    outputDescriptor.sampleCount         = this->sampleCount;
     for (uint32_t i = 0; i < this->numColorAttachments; ++i)
     {
         auto &renderPassColorAttachment = this->colorAttachments[i];
@@ -789,9 +840,11 @@ RenderPipelineCache::RenderPipelineCache() {}
 
 RenderPipelineCache::~RenderPipelineCache() {}
 
-void RenderPipelineCache::setVertexShader(Context *context, id<MTLFunction> shader)
+void RenderPipelineCache::setVertexShader(Context *context,
+                                          id<MTLFunction> shader,
+                                          bool emulatedRasterDiscard)
 {
-    mVertexShader.retainAssign(shader);
+    mVertexShaders[emulatedRasterDiscard ? 1 : 0].retainAssign(shader);
 
     if (!shader)
     {
@@ -802,9 +855,11 @@ void RenderPipelineCache::setVertexShader(Context *context, id<MTLFunction> shad
     recreatePipelineStates(context);
 }
 
-void RenderPipelineCache::setFragmentShader(Context *context, id<MTLFunction> shader)
+void RenderPipelineCache::setFragmentShader(Context *context,
+                                            id<MTLFunction> shader,
+                                            bool withCoverageMaskWrite)
 {
-    mFragmentShader.retainAssign(shader);
+    mFragmentShaders[withCoverageMaskWrite ? 1 : 0].retainAssign(shader);
 
     if (!shader)
     {
@@ -870,11 +925,26 @@ AutoObjCPtr<id<MTLRenderPipelineState>> RenderPipelineCache::createRenderPipelin
 {
     ANGLE_MTL_OBJC_SCOPE
     {
-        auto metalDevice = context->getMetalDevice();
-        AutoObjCObj<MTLRenderPipelineDescriptor> objCDesc =
-            ToObjC(mVertexShader, mFragmentShader, desc);
+        // Disable coverage if the render pipeline's sample count is only 1.
+        int coverageMaskEnabled     = desc.coverageMaskEnabled;
+        bool alphaToCoverageEnabled = desc.alphaToCoverageEnabled;
+        bool emulatedRasterDiscard  = desc.emulatedRasterizatonDiscard;
+        if (desc.outputDescriptor.sampleCount == 1)
+        {
+            coverageMaskEnabled    = 0;
+            alphaToCoverageEnabled = false;
+        }
 
-        // special attribute slot for default attribute
+        auto metalDevice = context->getMetalDevice();
+
+        // Convert to Objective-C desc:
+        AutoObjCObj<MTLRenderPipelineDescriptor> objCDesc = ToObjC(
+            mVertexShaders[emulatedRasterDiscard], mFragmentShaders[coverageMaskEnabled], desc);
+
+        // MSAA settings
+        objCDesc.get().alphaToCoverageEnabled = alphaToCoverageEnabled;
+
+        // Special attribute slot for default attribute
         if (insertDefaultAttribLayout)
         {
             MTLVertexBufferLayoutDescriptor *defaultAttribLayoutObjCDesc =
@@ -918,8 +988,10 @@ void RenderPipelineCache::recreatePipelineStates(Context *context)
 
 void RenderPipelineCache::clear()
 {
-    mVertexShader   = nil;
-    mFragmentShader = nil;
+    mVertexShaders[0]   = nil;
+    mVertexShaders[1]   = nil;
+    mFragmentShaders[0] = nil;
+    mFragmentShaders[1] = nil;
     clearPipelineStates();
 }
 

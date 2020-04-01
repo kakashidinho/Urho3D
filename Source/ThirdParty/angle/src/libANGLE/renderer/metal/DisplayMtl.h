@@ -97,12 +97,19 @@ class DisplayMtl : public DisplayImpl
     const gl::Limitations &getNativeLimitations() const { return mNativeLimitations; }
     const angle::FeaturesMtl &getFeatures() const { return mFeatures; }
 
+    // Check whether either of the specified iOS or Mac GPU family is supported
+    bool supportEitherGPUFamily(uint8_t iOSFamily, uint8_t macFamily) const;
+    bool supportiOSGPUFamily(uint8_t iOSFamily) const;
+    bool supportMacGPUFamily(uint8_t macFamily) const;
+
     id<MTLDevice> getMetalDevice() const { return mMetalDevice; }
 
     mtl::CommandQueue &cmdQueue() { return mCmdQueue; }
     const mtl::FormatTable &getFormatTable() const { return mFormatTable; }
     mtl::RenderUtils &getUtils() { return mUtils; }
     mtl::StateCache &getStateCache() { return mStateCache; }
+
+    id<MTLLibrary> getDefaultShadersLib() const { return mDefaultShaders; }
 
     id<MTLDepthStencilState> getDepthStencilState(const mtl::DepthStencilDesc &desc)
     {
@@ -113,11 +120,13 @@ class DisplayMtl : public DisplayImpl
         return mStateCache.getSamplerState(getMetalDevice(), desc);
     }
 
-    const mtl::TextureRef &getNullTexture(const gl::Context *context, gl::TextureType type);
-
     const mtl::Format &getPixelFormat(angle::FormatID angleFormatId) const
     {
         return mFormatTable.getPixelFormat(angleFormatId);
+    }
+    const mtl::FormatCaps &getNativeFormatCaps(MTLPixelFormat mtlFormat) const
+    {
+        return mFormatTable.getNativeFormatCaps(mtlFormat);
     }
 
     // See mtl::FormatTable::getVertexFormat()
@@ -126,7 +135,9 @@ class DisplayMtl : public DisplayImpl
     {
         return mFormatTable.getVertexFormat(angleFormatId, tightlyPacked);
     }
-
+#if defined(__IPHONE_12_0) || defined(__MAC_10_14)
+    mtl::AutoObjCObj<MTLSharedEventListener> getOrCreateSharedEventListener();
+#endif
   protected:
     void generateExtensions(egl::DisplayExtensions *outExtensions) const override;
     void generateCaps(egl::Caps *outCaps) const override;
@@ -138,16 +149,21 @@ class DisplayMtl : public DisplayImpl
     void initializeExtensions() const;
     void initializeTextureCaps() const;
     void initializeFeatures();
+    angle::Result initializeShaderLibrary();
 
     mtl::AutoObjCPtr<id<MTLDevice>> mMetalDevice = nil;
 
     mtl::CommandQueue mCmdQueue;
 
-    mtl::FormatTable mFormatTable;
+    mutable mtl::FormatTable mFormatTable;
     mtl::StateCache mStateCache;
     mtl::RenderUtils mUtils;
 
-    angle::PackedEnumMap<gl::TextureType, mtl::TextureRef> mNullTextures;
+    // Built-in Shaders
+    mtl::AutoObjCPtr<id<MTLLibrary>> mDefaultShaders = nil;
+#if defined(__IPHONE_12_0) || defined(__MAC_10_14)
+    mtl::AutoObjCObj<MTLSharedEventListener> mSharedEventListener;
+#endif
 
     mutable bool mCapsInitialized;
     mutable gl::TextureCapsMap mNativeTextureCaps;

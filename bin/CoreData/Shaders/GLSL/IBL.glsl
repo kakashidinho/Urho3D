@@ -20,7 +20,7 @@
     vec3 FixCubeLookup(vec3 v) 
     {
         float M = max(max(abs(v.x), abs(v.y)), abs(v.z));
-        float scale = (1024 - 1) / 1024;
+        float scale = (1024.0 - 1.0) / 1024.0;
 
         if (abs(v.x) != M) v.x += scale;
         if (abs(v.y) != M) v.y += scale;

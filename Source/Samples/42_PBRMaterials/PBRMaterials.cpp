@@ -65,10 +65,8 @@ void PBRMaterials::Start()
     auto* renderer = GetSubsystem<Renderer>();
     auto* graphics = GetSubsystem<Graphics>();
 
-#ifdef DESKTOP_GRAPHICS
     if (graphics->GetDeferredSupport())
         renderer->SetDefaultRenderPath(cache->GetResource<XMLFile>("RenderPaths/PBRDeferred.xml"));
-#endif
 
     // Create the scene content
     CreateScene();

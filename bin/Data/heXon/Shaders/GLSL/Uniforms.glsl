@@ -51,7 +51,11 @@ uniform mat4 cZone;
 
 // Fragment shader uniforms
 #ifdef GL_ES
+#ifdef MOBILE_GRAPHICS
     precision mediump float;
+#else
+    precision highp float;
+#endif
 #endif
 
 uniform vec4 cAmbientColor;

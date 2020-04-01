@@ -150,8 +150,14 @@ option (URHO3D_NAVIGATION "Enable navigation support" TRUE)
 cmake_dependent_option (URHO3D_NETWORK "Enable networking support" TRUE "NOT WEB" FALSE)
 option (URHO3D_PHYSICS "Enable physics support" TRUE)
 option (URHO3D_URHO2D "Enable 2D graphics and physics support" TRUE)
+option (URHO3D_GLES3 "Enable GLES3" FALSE)
 option (URHO3D_WEBP "Enable WebP support" TRUE)
 option (URHO3D_ANGLE_METAL "Enable Angle Metal graphics backend" FALSE)
+
+if (NOT URHO3D_GLES3)
+    set(URHO3D_GLES2 TRUE)
+endif ()
+
 if (ARM AND NOT ANDROID AND NOT RPI AND NOT APPLE)
     set (ARM_ABI_FLAGS "" CACHE STRING "Specify ABI compiler flags (ARM on Linux platform only); e.g. Orange-Pi Mini 2 could use '-mcpu=cortex-a7 -mfpu=neon-vfpv4'")
 endif ()
@@ -461,6 +467,7 @@ foreach (OPT
         URHO3D_PROFILING
         URHO3D_THREADING
         URHO3D_URHO2D
+        URHO3D_GLES3
         URHO3D_WEBP
         URHO3D_WIN32_CONSOLE
         URHO3D_ANGLE_METAL)
@@ -943,15 +950,22 @@ macro (define_dependency_libs TARGET)
         endif ()
 
         # Graphics
-        if (URHO3D_OPENGL AND NOT URHO3D_ANGLE_METAL)
+        if (URHO3D_OPENGL)
+            if (NOT (ANDROID OR WEB OR IOS OR TVOS OR URHO3D_ANGLE_METAL))
+                set (URHO3D_GLES3 FALSE)
+            endif()
             if (APPLE)
                 # Do nothing
             elseif (WIN32)
                 list (APPEND LIBS opengl32)
             elseif (RPI)
                 list (APPEND LIBS brcmGLESv2)
-            elseif (ANDROID OR ARM)
-                list (APPEND LIBS GLESv1_CM GLESv2)
+            elseif (ANDROID OR (ARM AND NOT URHO3D_ANGLE_METAL))
+                if (URHO3D_GLES3)
+                    list (APPEND LIBS GLESv3)
+                else ()
+                    list (APPEND LIBS GLESv1_CM GLESv2)
+                endif ()
             else ()
                 list (APPEND LIBS GL)
             endif ()

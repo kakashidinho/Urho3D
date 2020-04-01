@@ -11,8 +11,8 @@ uniform sampler2D sLightSpotMap;
 uniform samplerCube sLightCubeMap;
 #if !defined(GL_ES) || (defined(GL_EXT_draw_buffers) && GL_EXT_draw_buffers) || __VERSION__ > 100
 #   if !defined(GL_ES) || __VERSION__ > 100
-    uniform sampler3D sVolumeMap;
-    uniform sampler3D sZoneVolumeMap;
+    uniform highp sampler3D sVolumeMap;
+    uniform highp sampler3D sZoneVolumeMap;
 #   endif
 
 #   define HAS_G_BUFFER
@@ -22,9 +22,9 @@ uniform samplerCube sLightCubeMap;
     uniform sampler2D sLightBuffer;
 
     #if defined(VSM_SHADOW) || (defined(GL_ES) && __VERSION__ == 100)
-        uniform sampler2D sShadowMap;
+        uniform highp sampler2D sShadowMap;
     #else
-        uniform sampler2DShadow sShadowMap;
+        uniform highp sampler2DShadow sShadowMap;
     #endif
     uniform samplerCube sFaceSelectCubeMap;
     uniform samplerCube sIndirectionCubeMap;
@@ -56,7 +56,7 @@ vec3 DecodeNormal(vec4 normalInput)
 
 vec3 EncodeDepth(float depth)
 {
-    #ifndef GL3
+    #if !defined(GL3) || (defined(GL_ES) && __VERSION__ < 300)
         vec3 ret;
         depth *= 255.0;
         ret.x = floor(depth);
@@ -73,7 +73,7 @@ vec3 EncodeDepth(float depth)
 
 float DecodeDepth(vec3 depth)
 {
-    #ifndef GL3
+    #if !defined(GL3) || (defined(GL_ES) && __VERSION__ < 300)
         const vec3 dotValues = vec3(1.0, 1.0 / 255.0, 1.0 / (255.0 * 255.0));
         return dot(depth, dotValues);
     #else

@@ -59,9 +59,7 @@ vec4 GetClipPos(vec3 worldPos)
     // While getting the clip coordinate, also automatically set gl_ClipVertex for user clip planes
     #if !defined(GL_ES) && !defined(GL3)
         gl_ClipVertex = ret;
-    #elif defined(GL3) || \
-        (defined (GL_APPLE_clip_distance) && GL_APPLE_clip_distance) || \
-        (defined (GL_EXT_clip_cull_distance) && GL_EXT_clip_cull_distance)
+    #elif defined(GL3) || (defined (GL_APPLE_clip_distance) && GL_APPLE_clip_distance) || (defined (GL_EXT_clip_cull_distance) && GL_EXT_clip_cull_distance)
         gl_ClipDistance[0] = dot(cClipPlane, ret);
     #endif
     return ret;

@@ -15,6 +15,7 @@
 #include "common/apple_platform_utils.h"
 #include "compiler/translator/TranslatorMetal.h"
 #include "libANGLE/renderer/glslang_wrapper_utils.h"
+#include "libANGLE/renderer/metal/DisplayMtl.h"
 
 namespace rx
 {
@@ -277,7 +278,9 @@ std::string PostProcessTranslatedMsl(bool hasDepthSampler, const std::string &tr
 class SpirvToMslCompiler : public spirv_cross::CompilerMSL
 {
   public:
-    SpirvToMslCompiler(std::vector<uint32_t> &&spriv) : spirv_cross::CompilerMSL(spriv) {}
+    SpirvToMslCompiler(Context *context, std::vector<uint32_t> &&spriv)
+        : spirv_cross::CompilerMSL(spriv), mContext(context)
+    {}
 
     std::string compileEx(gl::ShaderType shaderType,
                           const std::unordered_map<std::string, uint32_t> &uboOriginalBindings,
@@ -368,6 +371,13 @@ class SpirvToMslCompiler : public spirv_cross::CompilerMSL
         // - spriv_cross always translates shadow texture's sampling to sample_compare() and doesn't
         // take into account GL_TEXTURE_COMPARE_MODE=GL_NONE.
         // - on macOS, explicit level of detail parameter is not supported in sample_compare().
+        // - on devices prior to iOS GPU family 3, changing sampler's compare mode outside shader is
+        // not supported.
+        if (!mContext->getDisplay()->getFeatures().allowRuntimeSamplerCompareMode.enabled)
+        {
+            statement("#define ANGLE_MTL_NO_SAMPLER_RUNTIME_COMPARE_MODE");
+        }
+
         statement("enum class ANGLECompareMode : uint");
         statement("{");
         statement("    None = 0,");
@@ -416,6 +426,7 @@ class SpirvToMslCompiler : public spirv_cross::CompilerMSL
         statement("inline T ANGLEtexturePCF(depth2d<T> texture, sampler s, float2 coord, float "
                   "compare_value, Opt options, int2 offset, UniformOrUInt shadowCompareMode)");
         statement("{");
+        statement("#if defined(__METAL_MACOS__)");
         statement("    float2 dims = float2(texture.get_width(), texture.get_height());");
         statement("    float2 imgCoord = coord * dims;");
         statement("    float2 texelSize = 1.0 / dims;");
@@ -431,6 +442,10 @@ class SpirvToMslCompiler : public spirv_cross::CompilerMSL
         statement("    float top = mix(tl, tr, weight.x);");
         statement("    float bottom = mix(bl, br, weight.x);");
         statement("    return mix(top, bottom, weight.y);");
+        statement("#else  // if defined(__METAL_MACOS__)");
+        statement("    return ANGLEcompare(texture.sample(s, coord, options, offset), "
+                  "compare_value, shadowCompareMode);");
+        statement("#endif  // if defined(__METAL_MACOS__)");
         statement("}");
         statement("");
 
@@ -452,6 +467,7 @@ class SpirvToMslCompiler : public spirv_cross::CompilerMSL
             "array, float compare_value, Opt options, int2 offset, UniformOrUInt "
             "shadowCompareMode)");
         statement("{");
+        statement("#if defined(__METAL_MACOS__)");
         statement("    float2 dims = float2(texture.get_width(), texture.get_height());");
         statement("    float2 imgCoord = coord * dims;");
         statement("    float2 texelSize = 1.0 / dims;");
@@ -462,11 +478,15 @@ class SpirvToMslCompiler : public spirv_cross::CompilerMSL
                   "array, options, offset), compare_value, shadowCompareMode);");
         statement("    float bl = ANGLEcompare(texture.sample(s, coord + float2(0.0, texelSize.y), "
                   "array, options, offset), compare_value, shadowCompareMode);");
-        statement("    float br = ANGLEcompare(texture.sample(s, coord + texelSize, options, "
-                  "offset), array, compare_value, shadowCompareMode);");
+        statement("    float br = ANGLEcompare(texture.sample(s, coord + texelSize, array, "
+                  "options, offset), compare_value, shadowCompareMode);");
         statement("    float top = mix(tl, tr, weight.x);");
         statement("    float bottom = mix(bl, br, weight.x);");
         statement("    return mix(top, bottom, weight.y);");
+        statement("#else  // if defined(__METAL_MACOS__)");
+        statement("    return ANGLEcompare(texture.sample(s, coord, array, options, offset), "
+                  "compare_value, shadowCompareMode);");
+        statement("#endif  // if defined(__METAL_MACOS__)");
         statement("}");
         statement("");
 
@@ -475,7 +495,8 @@ class SpirvToMslCompiler : public spirv_cross::CompilerMSL
         statement("inline T ANGLEtextureCompare(depth2d<T> texture, sampler s, float2 coord, float "
                   "compare_value, Opt options, int2 offset, UniformOrUInt shadowCompareMode)");
         statement("{");
-        statement("#ifdef __METAL_MACOS__");
+        statement(
+            "#if defined(__METAL_MACOS__) || defined(ANGLE_MTL_NO_SAMPLER_RUNTIME_COMPARE_MODE)");
         statement("    return ANGLEtexturePCF(texture, s, coord, compare_value, options, offset, "
                   "shadowCompareMode);");
         statement("#else");
@@ -493,13 +514,27 @@ class SpirvToMslCompiler : public spirv_cross::CompilerMSL
         statement("}");
         statement("");
 
+        statement("template <typename T, typename UniformOrUInt>");
+        statement("inline T ANGLEtextureCompare(depth2d<T> texture, sampler s, float2 coord, float "
+                  "compare_value, int2 offset, UniformOrUInt shadowCompareMode)");
+        statement("{");
+        statement("#if defined(ANGLE_MTL_NO_SAMPLER_RUNTIME_COMPARE_MODE)");
+        statement("    return ANGLEtexturePCF(texture, s, coord, compare_value, level(0), offset, "
+                  "shadowCompareMode);");
+        statement("#else");
+        statement("    return texture.sample_compare(s, coord, compare_value, offset);");
+        statement("#endif");
+        statement("}");
+        statement("");
+
         // Cube texture's sample_compare() wrapper
         statement("template <typename T, typename Opt, typename UniformOrUInt>");
         statement(
             "inline T ANGLEtextureCompare(depthcube<T> texture, sampler s, float3 coord, float "
             "compare_value, Opt options, UniformOrUInt shadowCompareMode)");
         statement("{");
-        statement("#ifdef __METAL_MACOS__");
+        statement(
+            "#if defined(__METAL_MACOS__) || defined(ANGLE_MTL_NO_SAMPLER_RUNTIME_COMPARE_MODE)");
         statement("    return ANGLEtexturePCF(texture, s, coord, compare_value, options, "
                   "shadowCompareMode);");
         statement("#else");
@@ -508,14 +543,28 @@ class SpirvToMslCompiler : public spirv_cross::CompilerMSL
         statement("}");
         statement("");
 
+        statement("template <typename T, typename UniformOrUInt>");
+        statement(
+            "inline T ANGLEtextureCompare(depthcube<T> texture, sampler s, float3 coord, float "
+            "compare_value, UniformOrUInt shadowCompareMode)");
+        statement("{");
+        statement("#if defined(ANGLE_MTL_NO_SAMPLER_RUNTIME_COMPARE_MODE)");
+        statement("    return ANGLEtexturePCF(texture, s, coord, compare_value, level(0), "
+                  "shadowCompareMode);");
+        statement("#else");
+        statement("    return texture.sample_compare(s, coord, compare_value);");
+        statement("#endif");
+        statement("}");
+        statement("");
+
         // 2D array texture's sample_compare() wrapper
-        statement("// Wrapper functions for shadow texture functions");
         statement("template <typename T, typename Opt, typename UniformOrUInt>");
         statement("inline T ANGLEtextureCompare(depth2d_array<T> texture, sampler s, float2 coord, "
                   "uint array, float compare_value, Opt options, int2 offset, UniformOrUInt "
                   "shadowCompareMode)");
         statement("{");
-        statement("#ifdef __METAL_MACOS__");
+        statement(
+            "#if defined(__METAL_MACOS__) || defined(ANGLE_MTL_NO_SAMPLER_RUNTIME_COMPARE_MODE)");
         statement("    return ANGLEtexturePCF(texture, s, coord, array, compare_value, options, "
                   "offset, shadowCompareMode);");
         statement("#else");
@@ -534,14 +583,30 @@ class SpirvToMslCompiler : public spirv_cross::CompilerMSL
         statement("}");
         statement("");
 
+        statement("template <typename T, typename UniformOrUInt>");
+        statement("inline T ANGLEtextureCompare(depth2d_array<T> texture, sampler s, float2 coord, "
+                  "uint array, float compare_value, int2 offset, UniformOrUInt "
+                  "shadowCompareMode)");
+        statement("{");
+        statement("#if defined(ANGLE_MTL_NO_SAMPLER_RUNTIME_COMPARE_MODE)");
+        statement("    return ANGLEtexturePCF(texture, s, coord, array, compare_value, level(0), "
+                  "offset, shadowCompareMode);");
+        statement("#else");
+        statement("    return texture.sample_compare(s, coord, array, compare_value, offset);");
+        statement("#endif");
+        statement("}");
+        statement("");
+
         // 2D texture's generic sampling function
+        statement("// Wrapper functions for shadow texture functions");
         statement("template <typename T, typename UniformOrUInt>");
         statement("inline T ANGLEtexture(depth2d<T> texture, sampler s, float2 coord, int2 offset, "
                   "float compare_value, UniformOrUInt shadowCompareMode)");
         statement("{");
         statement("    if (shadowCompareMode)");
         statement("    {");
-        statement("        return texture.sample_compare(s, coord, compare_value, offset);");
+        statement("        return ANGLEtextureCompare(texture, s, coord, compare_value, offset, "
+                  "shadowCompareMode);");
         statement("    }");
         statement("    else");
         statement("    {");
@@ -591,7 +656,8 @@ class SpirvToMslCompiler : public spirv_cross::CompilerMSL
         statement("{");
         statement("    if (shadowCompareMode)");
         statement("    {");
-        statement("        return texture.sample_compare(s, coord, compare_value);");
+        statement("        return ANGLEtextureCompare(texture, s, coord, compare_value, "
+                  "shadowCompareMode);");
         statement("    }");
         statement("    else");
         statement("    {");
@@ -624,7 +690,8 @@ class SpirvToMslCompiler : public spirv_cross::CompilerMSL
         statement("{");
         statement("    if (shadowCompareMode)");
         statement("    {");
-        statement("        return texture.sample_compare(s, coord, array, compare_value, offset);");
+        statement("        return ANGLEtextureCompare(texture, s, coord, array, compare_value, "
+                  "offset, shadowCompareMode);");
         statement("    }");
         statement("    else");
         statement("    {");
@@ -996,6 +1063,7 @@ class SpirvToMslCompiler : public spirv_cross::CompilerMSL
         }
     }
 
+    Context *mContext;
     uint32_t mANGLEShadowCompareModesVarId = 0;
     bool mHasDepthSampler                  = false;
 };
@@ -1021,7 +1089,7 @@ angle::Result GlslangGetShaderSpirvCode(ErrorHandler *context,
         enableLineRasterEmulation, shaderSources, shaderCodeOut);
 }
 
-angle::Result SpirvCodeToMsl(ErrorHandler *context,
+angle::Result SpirvCodeToMsl(Context *context,
                              const gl::ProgramState &programState,
                              gl::ShaderMap<std::vector<uint32_t>> *sprivShaderCode,
                              gl::ShaderMap<TranslatedShaderInfo> *mslShaderInfoOut,
@@ -1060,7 +1128,7 @@ angle::Result SpirvCodeToMsl(ErrorHandler *context,
     for (gl::ShaderType shaderType : gl::AllGLES2ShaderTypes())
     {
         std::vector<uint32_t> &sprivCode = sprivShaderCode->at(shaderType);
-        SpirvToMslCompiler compilerMsl(std::move(sprivCode));
+        SpirvToMslCompiler compilerMsl(context, std::move(sprivCode));
 
         // NOTE(hqle): spirv-cross uses exceptions to report error, what should we do here
         // in case of error?

@@ -180,7 +180,8 @@ angle::Result FormatTable::initialize(const DisplayMtl *display)
         mPixelFormatTable[i].init(display, formatId);
         mPixelFormatTable[i].caps = &mNativePixelFormatCapsTable[mPixelFormatTable[i].metalFormat];
 
-        if (!mPixelFormatTable[i].caps->depthRenderable)
+        if (!mPixelFormatTable[i].caps->depthRenderable &&
+            mPixelFormatTable[i].actualFormatId != mPixelFormatTable[i].intendedFormatId)
         {
             mPixelFormatTable[i].textureLoadFunctions = angle::GetLoadFunctionsMap(
                 mPixelFormatTable[i].intendedAngleFormat().glInternalFormat,
@@ -254,6 +255,15 @@ void FormatTable::setCompressedFormatCaps(MTLPixelFormat formatId, bool filterab
 
 void FormatTable::initNativeFormatCaps(const DisplayMtl *display)
 {
+    const angle::FeaturesMtl &featuresMtl = display->getFeatures();
+    // Skip auto resolve if either hasDepth/StencilAutoResolve or allowMultisampleStoreAndResolve
+    // feature are disabled.
+    bool supportDepthAutoResolve = featuresMtl.hasDepthAutoResolve.enabled &&
+                                   featuresMtl.allowMultisampleStoreAndResolve.enabled;
+    bool supportStencilAutoResolve = featuresMtl.hasStencilAutoResolve.enabled &&
+                                     featuresMtl.allowMultisampleStoreAndResolve.enabled;
+    bool supportDepthStencilAutoResolve = supportDepthAutoResolve && supportStencilAutoResolve;
+
     // Source: https://developer.apple.com/metal/Metal-Feature-Set-Tables.pdf
     // clang-format off
 
@@ -325,12 +335,12 @@ void FormatTable::initNativeFormatCaps(const DisplayMtl *display)
     setFormatCaps(MTLPixelFormatRGBA32Float,     display->supportMacGPUFamily(1),   true,        display->supportMacGPUFamily(1), display->supportMacGPUFamily(1),  display->supportMacGPUFamily(1),         true);
 
     //            |  formatId                           | filterable                       |  writable  |  blendable |  multisample |  resolve                                | colorRenderable | depthRenderable                    |
-    setFormatCaps(MTLPixelFormatDepth32Float,               display->supportMacGPUFamily(1),   false,        false,           true,    display->supportEitherGPUFamily(3, 1),      false,            true);
+    setFormatCaps(MTLPixelFormatDepth32Float,               display->supportMacGPUFamily(1),   false,        false,           true,    supportDepthAutoResolve,                    false,            true);
     setFormatCaps(MTLPixelFormatStencil8,                   false,                             false,        false,           true,    false,                                      false,            true);
-    setFormatCaps(MTLPixelFormatDepth32Float_Stencil8,      display->supportMacGPUFamily(1),   false,        false,           true,    display->supportEitherGPUFamily(3, 1),      false,            true);
+    setFormatCaps(MTLPixelFormatDepth32Float_Stencil8,      display->supportMacGPUFamily(1),   false,        false,           true,    supportDepthStencilAutoResolve,             false,            true);
 #if TARGET_OS_OSX || TARGET_OS_MACCATALYST
-    setFormatCaps(MTLPixelFormatDepth16Unorm,               true,                              false,        false,           true,    display->supportEitherGPUFamily(3, 1),      false,            true);
-    setFormatCaps(MTLPixelFormatDepth24Unorm_Stencil8,      display->supportMacGPUFamily(1),   false,        false,           true,    display->supportMacGPUFamily(1),            false,            display->supportMacGPUFamily(1));
+    setFormatCaps(MTLPixelFormatDepth16Unorm,               true,                              false,        false,           true,    supportDepthAutoResolve,                    false,            true);
+    setFormatCaps(MTLPixelFormatDepth24Unorm_Stencil8,      display->supportMacGPUFamily(1),   false,        false,           true,    supportDepthStencilAutoResolve,             false,            display->supportMacGPUFamily(1));
 
     setCompressedFormatCaps(MTLPixelFormatBC1_RGBA, true);
     setCompressedFormatCaps(MTLPixelFormatBC1_RGBA_sRGB, true);

@@ -37,6 +37,7 @@ namespace
 #define SOURCE_TEXTURE2_TYPE_CONSTANT_NAME @"kSourceTexture2Type"
 #define COPY_FORMAT_TYPE_CONSTANT_NAME @"kCopyFormatType"
 #define PIXEL_COPY_TEXTURE_TYPE_CONSTANT_NAME @"kCopyTextureType"
+#define VISIBILITY_RESULT_KEEP_OLD_VAL_CONSTANT_NAME @"kCombineWithExistingResult"
 
 // See libANGLE/renderer/metal/shaders/clear.metal
 struct ClearParamsUniform
@@ -58,7 +59,20 @@ struct BlitParamsUniform
     uint8_t dstFlipX     = 0;
     uint8_t dstFlipY     = 0;
     uint8_t dstLuminance = 0;  // dest texture is luminace
-    float padding[2];
+    uint8_t padding[9];
+};
+
+struct BlitStencilToBufferParamsUniform
+{
+    float srcStartTexCoords[2];
+    float srcTexCoordSteps[2];
+    uint32_t srcLevel;
+    uint32_t srcLayer;
+
+    uint32_t dstSize[2];
+    uint32_t dstBufferRowPitch;
+
+    uint32_t padding[3];
 };
 
 // See libANGLE/renderer/metal/shaders/genIndices.metal
@@ -80,10 +94,9 @@ struct IndexConversionUniform
 // See libANGLE/renderer/metal/shaders/misc.metal
 struct CombineVisibilityResultUniform
 {
-    uint32_t keepOldValue;
     uint32_t startOffset;
     uint32_t numOffsets;
-    uint32_t padding;
+    uint32_t padding[2];
 };
 
 // See libANGLE/renderer/metal/shaders/gen_mipmap.metal
@@ -176,6 +189,46 @@ struct ScopedDisableOcclusionQuery
 
     angle::Result *mResultOut;
 };
+
+void GetBlitTexCoords(uint32_t srcWidth,
+                      uint32_t srcHeight,
+                      const gl::Rectangle &srcRect,
+                      bool srcYFlipped,
+                      bool unpackFlipX,
+                      bool unpackFlipY,
+                      float *u0,
+                      float *v0,
+                      float *u1,
+                      float *v1)
+{
+    int x0 = srcRect.x0();  // left
+    int x1 = srcRect.x1();  // right
+    int y0 = srcRect.y0();  // lower
+    int y1 = srcRect.y1();  // upper
+    if (srcYFlipped)
+    {
+        // If source's Y has been flipped, such as default framebuffer, then adjust the real source
+        // rectangle.
+        y0 = srcHeight - y1;
+        y1 = y0 + srcRect.height;
+        std::swap(y0, y1);
+    }
+
+    if (unpackFlipX)
+    {
+        std::swap(x0, x1);
+    }
+
+    if (unpackFlipY)
+    {
+        std::swap(y0, y1);
+    }
+
+    *u0 = static_cast<float>(x0) / srcWidth;
+    *u1 = static_cast<float>(x1) / srcWidth;
+    *v0 = static_cast<float>(y0) / srcHeight;
+    *v1 = static_cast<float>(y1) / srcHeight;
+}
 
 template <typename T>
 angle::Result GenTriFanFromClientElements(ContextMtl *contextMtl,
@@ -519,6 +572,25 @@ void ClearComputePipelineCache2DArray(T *pipelineCache2DArray)
 
 }  // namespace
 
+// StencilBlitViaBufferParams implementation
+StencilBlitViaBufferParams::StencilBlitViaBufferParams(const DepthStencilBlitParams &src)
+{
+    dstTextureSize = src.dstTextureSize;
+    dstRect        = src.dstRect;
+    dstScissorRect = src.dstScissorRect;
+    dstFlipY       = src.dstFlipY;
+    dstFlipX       = src.dstFlipX;
+    srcRect        = src.srcRect;
+    srcYFlipped    = src.srcYFlipped;
+    unpackFlipX    = src.unpackFlipX;
+    unpackFlipY    = src.unpackFlipY;
+
+    srcStencil      = src.srcStencil;
+    srcStencilLevel = src.srcStencilLevel;
+    srcStencilLayer = src.srcStencilLayer;
+}
+
+// RenderUtils implementation
 RenderUtils::RenderUtils(DisplayMtl *display)
     : Context(display),
       mClearUtils(
@@ -611,11 +683,38 @@ angle::Result RenderUtils::blitColorWithDraw(const gl::Context *context,
     return mColorBlitUtils[index].blitColorWithDraw(context, cmdEncoder, params);
 }
 
+angle::Result RenderUtils::blitColorWithDraw(const gl::Context *context,
+                                             RenderCommandEncoder *cmdEncoder,
+                                             const angle::Format &srcAngleFormat,
+                                             const TextureRef &srcTexture)
+{
+    if (!srcTexture)
+    {
+        return angle::Result::Continue;
+    }
+    ColorBlitParams params;
+    params.enabledBuffers.set(0);
+    params.src = srcTexture;
+    params.dstTextureSize =
+        gl::Extents(static_cast<int>(srcTexture->width()), static_cast<int>(srcTexture->height()),
+                    static_cast<int>(srcTexture->depth()));
+    params.dstRect = params.dstScissorRect = params.srcRect =
+        gl::Rectangle(0, 0, params.dstTextureSize.width, params.dstTextureSize.height);
+
+    return blitColorWithDraw(context, cmdEncoder, srcAngleFormat, params);
+}
+
 angle::Result RenderUtils::blitDepthStencilWithDraw(const gl::Context *context,
                                                     RenderCommandEncoder *cmdEncoder,
                                                     const DepthStencilBlitParams &params)
 {
     return mDepthStencilBlitUtils.blitDepthStencilWithDraw(context, cmdEncoder, params);
+}
+
+angle::Result RenderUtils::blitStencilViaCopyBuffer(const gl::Context *context,
+                                                    const StencilBlitViaBufferParams &params)
+{
+    return mDepthStencilBlitUtils.blitStencilViaCopyBuffer(context, params);
 }
 
 angle::Result RenderUtils::convertIndexBufferGPU(ContextMtl *contextMtl,
@@ -729,7 +828,7 @@ void ClearUtils::onDestroy()
     ClearRenderPipelineCacheArray(&mClearRenderPipelineCache);
 }
 
-void ClearUtils::ensureRenderPipelineStateInitialized(Context *ctx, uint32_t numOutputs)
+void ClearUtils::ensureRenderPipelineStateInitialized(ContextMtl *ctx, uint32_t numOutputs)
 {
     RenderPipelineCache &cache = mClearRenderPipelineCache[numOutputs];
     if (cache.getVertexShader() && cache.getFragmentShader())
@@ -922,7 +1021,7 @@ void ColorBlitUtils::onDestroy()
     ClearRenderPipelineCache2DArray(&mBlitUnmultiplyAlphaRenderPipelineCache);
 }
 
-void ColorBlitUtils::ensureRenderPipelineStateInitialized(Context *ctx,
+void ColorBlitUtils::ensureRenderPipelineStateInitialized(ContextMtl *ctx,
                                                           uint32_t numOutputs,
                                                           int alphaPremultiplyType,
                                                           int textureType,
@@ -1065,7 +1164,7 @@ angle::Result ColorBlitUtils::blitColorWithDraw(const gl::Context *context,
 
     angle::Result result;
     {
-        // Need to disable occlusion query, otherwise clearing will affect the occlusion counting
+        // Need to disable occlusion query, otherwise blitting will affect the occlusion counting
         ScopedDisableOcclusionQuery disableOcclusionQuery(contextMtl, cmdEncoder, &result);
         // Draw the screen aligned triangle
         cmdEncoder->draw(MTLPrimitiveTypeTriangle, 0, 3);
@@ -1083,9 +1182,13 @@ void DepthStencilBlitUtils::onDestroy()
     ClearRenderPipelineCacheArray(&mDepthBlitRenderPipelineCache);
     ClearRenderPipelineCacheArray(&mStencilBlitRenderPipelineCache);
     ClearRenderPipelineCache2DArray(&mDepthStencilBlitRenderPipelineCache);
+
+    ClearComputePipelineCacheArray(&mStencilBlitToBufferComPipelineCache);
+
+    mStencilCopyBuffer = nullptr;
 }
 
-void DepthStencilBlitUtils::ensureRenderPipelineStateInitialized(Context *ctx,
+void DepthStencilBlitUtils::ensureRenderPipelineStateInitialized(ContextMtl *ctx,
                                                                  int sourceDepthTextureType,
                                                                  int sourceStencilTextureType,
                                                                  RenderPipelineCache *cacheOut)
@@ -1142,6 +1245,33 @@ void DepthStencilBlitUtils::ensureRenderPipelineStateInitialized(Context *ctx,
     }
 }
 
+id<MTLComputePipelineState> DepthStencilBlitUtils::getStencilToBufferComputePipelineState(
+    ContextMtl *contextMtl,
+    const StencilBlitViaBufferParams &params)
+{
+    int sourceStencilTextureType = GetShaderTextureType(params.srcStencil);
+    AutoObjCPtr<id<MTLComputePipelineState>> &cache =
+        mStencilBlitToBufferComPipelineCache[sourceStencilTextureType];
+    if (cache)
+    {
+        return cache;
+    }
+
+    ANGLE_MTL_OBJC_SCOPE
+    {
+        auto funcConstants = [[[MTLFunctionConstantValues alloc] init] ANGLE_MTL_AUTORELEASE];
+
+        [funcConstants setConstantValue:&sourceStencilTextureType
+                                   type:MTLDataTypeInt
+                               withName:SOURCE_TEXTURE2_TYPE_CONSTANT_NAME];
+
+        EnsureSpecializedComputePipelineInitialized(
+            contextMtl->getDisplay(), @"blitStencilToBufferCS", funcConstants, &cache);
+    }
+
+    return cache;
+}
+
 id<MTLRenderPipelineState> DepthStencilBlitUtils::getDepthStencilBlitRenderPipelineState(
     const gl::Context *context,
     RenderCommandEncoder *cmdEncoder,
@@ -1190,7 +1320,6 @@ void DepthStencilBlitUtils::setupDepthStencilBlitWithDraw(const gl::Context *con
     ContextMtl *contextMtl = mtl::GetImpl(context);
 
     ASSERT(params.src || params.srcStencil);
-    ASSERT(!params.srcStencil || contextMtl->getDisplay()->getFeatures().hasStencilOutput.enabled);
 
     setupCommonBlitWithDraw(context, cmdEncoder, params, false);
 
@@ -1220,7 +1349,12 @@ void DepthStencilBlitUtils::setupDepthStencilBlitWithDraw(const gl::Context *con
     {
         cmdEncoder->setFragmentTexture(params.srcStencil, 1);
 
-        // Enable stencil write
+        if (!contextMtl->getDisplay()->getFeatures().hasStencilOutput.enabled)
+        {
+            // Hardware must support stencil writing directly in shader.
+            UNREACHABLE();
+        }
+        // Enable stencil write to framebuffer
         dsStateDesc.frontFaceStencil.stencilCompareFunction = MTLCompareFunctionAlways;
         dsStateDesc.backFaceStencil.stencilCompareFunction  = MTLCompareFunctionAlways;
 
@@ -1249,7 +1383,7 @@ angle::Result DepthStencilBlitUtils::blitDepthStencilWithDraw(const gl::Context 
 
     angle::Result result;
     {
-        // Need to disable occlusion query, otherwise clearing will affect the occlusion counting
+        // Need to disable occlusion query, otherwise blitting will affect the occlusion counting
         ScopedDisableOcclusionQuery disableOcclusionQuery(contextMtl, cmdEncoder, &result);
         // Draw the screen aligned triangle
         cmdEncoder->draw(MTLPrimitiveTypeTriangle, 0, 3);
@@ -1259,6 +1393,101 @@ angle::Result DepthStencilBlitUtils::blitDepthStencilWithDraw(const gl::Context 
     contextMtl->invalidateState(context);
 
     return result;
+}
+
+angle::Result DepthStencilBlitUtils::blitStencilViaCopyBuffer(
+    const gl::Context *context,
+    const StencilBlitViaBufferParams &params)
+{
+    // Depth texture must be omitted.
+    ASSERT(!params.src);
+    if (!params.srcStencil || !params.dstStencil)
+    {
+        return angle::Result::Continue;
+    }
+    ContextMtl *contextMtl = GetImpl(context);
+
+    // Create intermediate buffer.
+    uint32_t bufferRequiredRowPitch = static_cast<uint32_t>(params.dstRect.width);
+    uint32_t bufferRequiredSize =
+        bufferRequiredRowPitch * static_cast<uint32_t>(params.dstRect.height);
+    if (!mStencilCopyBuffer || mStencilCopyBuffer->size() < bufferRequiredSize)
+    {
+        ANGLE_TRY(Buffer::MakeBuffer(contextMtl, bufferRequiredSize, nullptr, &mStencilCopyBuffer));
+    }
+
+    // Copy stencil data to buffer via compute shader
+    ComputeCommandEncoder *cmdEncoder = contextMtl->getComputeCommandEncoder();
+    ASSERT(cmdEncoder);
+
+    id<MTLComputePipelineState> pipeline =
+        getStencilToBufferComputePipelineState(contextMtl, params);
+
+    cmdEncoder->setComputePipelineState(pipeline);
+
+    uint32_t srcWidth  = params.srcStencil->width(params.srcLevel);
+    uint32_t srcHeight = params.srcStencil->height(params.srcLevel);
+
+    float u0, v0, u1, v1;
+    bool unpackFlipX = params.unpackFlipX;
+    bool unpackFlipY = params.unpackFlipY;
+    if (params.dstFlipX)
+    {
+        unpackFlipX = !unpackFlipX;
+    }
+    if (params.dstFlipY)
+    {
+        unpackFlipY = !unpackFlipY;
+    }
+    GetBlitTexCoords(srcWidth, srcHeight, params.srcRect, params.srcYFlipped, unpackFlipX,
+                     unpackFlipY, &u0, &v0, &u1, &v1);
+
+    BlitStencilToBufferParamsUniform uniform;
+    uniform.srcTexCoordSteps[0]  = (u1 - u0) / params.dstRect.width;
+    uniform.srcTexCoordSteps[1]  = (v1 - v0) / params.dstRect.height;
+    uniform.srcStartTexCoords[0] = u0 + uniform.srcTexCoordSteps[0] * 0.5f;
+    uniform.srcStartTexCoords[1] = v0 + uniform.srcTexCoordSteps[1] * 0.5f;
+    uniform.srcLevel             = params.srcStencilLevel;
+    uniform.srcLayer             = params.srcStencilLayer;
+    uniform.dstSize[0]           = params.dstRect.width;
+    uniform.dstSize[1]           = params.dstRect.height;
+    uniform.dstBufferRowPitch    = bufferRequiredRowPitch;
+
+    cmdEncoder->setTexture(params.srcStencil, 1);
+
+    cmdEncoder->setData(uniform, 0);
+    cmdEncoder->setBufferForWrite(mStencilCopyBuffer, 0, 1);
+
+    NSUInteger w                  = pipeline.threadExecutionWidth;
+    MTLSize threadsPerThreadgroup = MTLSizeMake(w, 1, 1);
+    dispatchCompute(contextMtl, cmdEncoder, /** allowNonUniform */ true,
+                    MTLSizeMake(params.dstRect.width, params.dstRect.height, 1),
+                    threadsPerThreadgroup);
+
+    // Copy buffer to real destination texture
+    ASSERT(params.dstStencil->textureType() != MTLTextureType3D);
+
+    mtl::BlitCommandEncoder *blitEncoder = contextMtl->getBlitCommandEncoder();
+
+    // Only copy the scissored area of the buffer.
+    MTLScissorRect viewportRectMtl =
+        GetScissorRect(params.dstRect, params.dstTextureSize.height, params.dstFlipY);
+    MTLScissorRect scissorRectMtl =
+        GetScissorRect(params.dstScissorRect, params.dstTextureSize.height, params.dstFlipY);
+
+    uint32_t dx = static_cast<uint32_t>(scissorRectMtl.x - viewportRectMtl.x);
+    uint32_t dy = static_cast<uint32_t>(scissorRectMtl.y - viewportRectMtl.y);
+
+    uint32_t bufferStartReadableOffset = dx + bufferRequiredRowPitch * dy;
+    blitEncoder->copyBufferToTexture(
+        mStencilCopyBuffer, bufferStartReadableOffset, bufferRequiredRowPitch, 0,
+        MTLSizeMake(scissorRectMtl.width, scissorRectMtl.height, 1), params.dstStencil,
+        params.dstStencilLayer, params.dstStencilLevel,
+        MTLOriginMake(scissorRectMtl.x, scissorRectMtl.y, 0),
+        params.dstPackedDepthStencilFormat ? MTLBlitOptionStencilFromDepthStencil
+                                           : MTLBlitOptionNone);
+
+    return angle::Result::Continue;
 }
 
 // DrawBasedUtils implementation
@@ -1336,35 +1565,12 @@ void BaseBlitUtils::setupBlitWithDrawUniformData(RenderCommandEncoder *cmdEncode
         UNREACHABLE();
     }
 
-    int x0 = params.srcRect.x0();  // left
-    int x1 = params.srcRect.x1();  // right
-    int y0 = params.srcRect.y0();  // lower
-    int y1 = params.srcRect.y1();  // upper
-    if (params.srcYFlipped)
-    {
-        // If source's Y has been flipped, such as default framebuffer, then adjust the real source
-        // rectangle.
-        y0 = srcHeight - y1;
-        y1 = y0 + params.srcRect.height;
-        std::swap(y0, y1);
-    }
+    float u0, v0, u1, v1;
+    GetBlitTexCoords(srcWidth, srcHeight, params.srcRect, params.srcYFlipped, params.unpackFlipX,
+                     params.unpackFlipY, &u0, &v0, &u1, &v1);
 
-    if (params.unpackFlipX)
-    {
-        std::swap(x0, x1);
-    }
-
-    if (params.unpackFlipY)
-    {
-        std::swap(y0, y1);
-    }
-
-    auto u0 = static_cast<float>(x0) / srcWidth;
-    auto u1 = static_cast<float>(x1) / srcWidth;
-    auto v0 = static_cast<float>(y0) / srcHeight;
-    auto v1 = static_cast<float>(y1) / srcHeight;
-    auto du = static_cast<float>(x1 - x0) / srcWidth;
-    auto dv = static_cast<float>(y1 - y0) / srcHeight;
+    auto du = u1 - u0;
+    auto dv = v1 - v0;
 
     // lower left
     uniformParams.srcTexCoords[0][0] = u0;
@@ -1870,13 +2076,34 @@ angle::Result IndexGeneratorUtils::generateLineLoopLastSegmentFromElementsArrayC
 // VisibilityResultUtils implementation
 void VisibilityResultUtils::onDestroy()
 {
-    mVisibilityResultCombPipeline = nil;
+    ClearComputePipelineCacheArray(&mVisibilityResultCombPipelines);
 }
 
-void VisibilityResultUtils::ensureVisibilityResultCombPipelineInitialized(ContextMtl *contextMtl)
+AutoObjCPtr<id<MTLComputePipelineState>> VisibilityResultUtils::getVisibilityResultCombPipeline(
+    ContextMtl *contextMtl,
+    bool keepOldValue)
 {
-    EnsureComputePipelineInitialized(contextMtl->getDisplay(), @"combineVisibilityResult",
-                                     &mVisibilityResultCombPipeline);
+    // There is no guarantee Objective-C's BOOL is equal to bool, so casting just in case.
+    BOOL keepOldValueVal = keepOldValue;
+    AutoObjCPtr<id<MTLComputePipelineState>> &cache =
+        mVisibilityResultCombPipelines[keepOldValueVal];
+    if (cache)
+    {
+        return cache;
+    }
+    ANGLE_MTL_OBJC_SCOPE
+    {
+        auto funcConstants = [[[MTLFunctionConstantValues alloc] init] ANGLE_MTL_AUTORELEASE];
+
+        [funcConstants setConstantValue:&keepOldValueVal
+                                   type:MTLDataTypeBool
+                               withName:VISIBILITY_RESULT_KEEP_OLD_VAL_CONSTANT_NAME];
+
+        EnsureSpecializedComputePipelineInitialized(
+            contextMtl->getDisplay(), @"combineVisibilityResult", funcConstants, &cache);
+    }
+
+    return cache;
 }
 
 void VisibilityResultUtils::combineVisibilityResult(
@@ -1898,15 +2125,14 @@ void VisibilityResultUtils::combineVisibilityResult(
         return;
     }
 
-    ensureVisibilityResultCombPipelineInitialized(contextMtl);
-
     ComputeCommandEncoder *cmdEncoder = contextMtl->getComputeCommandEncoder();
     ASSERT(cmdEncoder);
 
-    cmdEncoder->setComputePipelineState(mVisibilityResultCombPipeline);
+    id<MTLComputePipelineState> pipeline =
+        getVisibilityResultCombPipeline(contextMtl, keepOldValue);
+    cmdEncoder->setComputePipelineState(pipeline);
 
     CombineVisibilityResultUniform options;
-    options.keepOldValue = keepOldValue ? 1 : 0;
     // Offset is viewed as 64 bit unit in compute shader.
     options.startOffset = renderPassResultBufOffsets.front() / kOcclusionQueryResultSize;
     options.numOffsets  = renderPassResultBufOffsets.size();
@@ -1915,7 +2141,7 @@ void VisibilityResultUtils::combineVisibilityResult(
     cmdEncoder->setBuffer(renderPassResultBuf, 0, 1);
     cmdEncoder->setBufferForWrite(finalResultBuf, 0, 2);
 
-    dispatchCompute(contextMtl, cmdEncoder, mVisibilityResultCombPipeline, 1);
+    dispatchCompute(contextMtl, cmdEncoder, pipeline, 1);
 }
 
 // MipmapUtils implementation

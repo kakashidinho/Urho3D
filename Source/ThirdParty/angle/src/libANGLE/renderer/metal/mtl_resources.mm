@@ -123,6 +123,24 @@ angle::Result Texture::Make2DTexture(ContextMtl *context,
 }
 
 /** static */
+angle::Result Texture::MakeMemoryLess2DTexture(ContextMtl *context,
+                                               const Format &format,
+                                               uint32_t width,
+                                               uint32_t height,
+                                               TextureRef *refOut)
+{
+    ANGLE_MTL_OBJC_SCOPE
+    {
+        MTLTextureDescriptor *desc =
+            [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:format.metalFormat
+                                                               width:width
+                                                              height:height
+                                                           mipmapped:NO];
+
+        return MakeTexture(context, format, desc, 1, true, false, true, refOut);
+    }  // ANGLE_MTL_OBJC_SCOPE
+}
+/** static */
 angle::Result Texture::MakeCubeTexture(ContextMtl *context,
                                        const Format &format,
                                        uint32_t size,
@@ -233,7 +251,20 @@ angle::Result Texture::MakeTexture(ContextMtl *context,
                                    bool allowFormatView,
                                    TextureRef *refOut)
 {
-    refOut->reset(new Texture(context, desc, mips, renderTargetOnly, allowFormatView));
+    return MakeTexture(context, mtlFormat, desc, mips, renderTargetOnly, allowFormatView, false,
+                       refOut);
+}
+
+angle::Result Texture::MakeTexture(ContextMtl *context,
+                                   const Format &mtlFormat,
+                                   MTLTextureDescriptor *desc,
+                                   uint32_t mips,
+                                   bool renderTargetOnly,
+                                   bool allowFormatView,
+                                   bool memoryLess,
+                                   TextureRef *refOut)
+{
+    refOut->reset(new Texture(context, desc, mips, renderTargetOnly, allowFormatView, memoryLess));
 
     if (!refOut || !refOut->get())
     {
@@ -264,6 +295,15 @@ Texture::Texture(ContextMtl *context,
                  uint32_t mips,
                  bool renderTargetOnly,
                  bool allowFormatView)
+    : Texture(context, desc, mips, renderTargetOnly, allowFormatView, false)
+{}
+
+Texture::Texture(ContextMtl *context,
+                 MTLTextureDescriptor *desc,
+                 uint32_t mips,
+                 bool renderTargetOnly,
+                 bool allowFormatView,
+                 bool memoryLess)
     : mColorWritableMask(std::make_shared<MTLColorWriteMask>(MTLColorWriteMaskAll))
 {
     ANGLE_MTL_OBJC_SCOPE
@@ -283,8 +323,16 @@ Texture::Texture(ContextMtl *context,
             desc.usage |= MTLTextureUsageRenderTarget;
         }
 
-        if (context->getNativeFormatCaps(desc.pixelFormat).depthRenderable ||
-            desc.textureType == MTLTextureType2DMultisample)
+        if (memoryLess)
+        {
+#if TARGET_OS_IOS && !TARGET_OS_MACCATALYST
+            desc.resourceOptions = MTLResourceStorageModeMemoryless;
+#else
+            desc.resourceOptions = MTLResourceStorageModePrivate;
+#endif
+        }
+        else if (context->getNativeFormatCaps(desc.pixelFormat).depthRenderable ||
+                 desc.textureType == MTLTextureType2DMultisample)
         {
             // Metal doesn't support host access to depth stencil texture's data
             desc.resourceOptions = MTLResourceStorageModePrivate;
@@ -638,8 +686,7 @@ TextureRef Texture::getReadableCopy(ContextMtl *context,
 {
     gl::Extents firstLevelSize = size(0);
     if (!mReadCopy || mReadCopy->get().width < static_cast<size_t>(firstLevelSize.width) ||
-        mReadCopy->get().height < static_cast<size_t>(firstLevelSize.height) ||
-        mReadCopy->get().depth < static_cast<size_t>(firstLevelSize.depth))
+        mReadCopy->get().height < static_cast<size_t>(firstLevelSize.height))
     {
         // Create a texture that big enough to store the first level data and any smaller level
         ANGLE_MTL_OBJC_SCOPE
@@ -652,6 +699,7 @@ TextureRef Texture::getReadableCopy(ContextMtl *context,
             desc.depth           = 1;
             desc.arrayLength     = 1;
             desc.resourceOptions = MTLResourceStorageModePrivate;
+            desc.sampleCount     = get().sampleCount;
             desc.usage           = MTLTextureUsageShaderRead | MTLTextureUsagePixelFormatView;
 
             id<MTLTexture> mtlTexture = [context->getMetalDevice() newTextureWithDescriptor:desc];

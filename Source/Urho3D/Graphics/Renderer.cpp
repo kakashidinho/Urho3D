@@ -1607,12 +1607,7 @@ void Renderer::Initialize()
     defaultMaterial_ = new Material(context_);
 
     defaultRenderPath_ = new RenderPath();
-#ifdef DESKTOP_GRAPHICS
-    if (graphics_->GetDeferredSupport())
-        defaultRenderPath_->Load(cache->GetResource<XMLFile>("RenderPaths/Deferred.xml"));
-    else
-#endif
-        defaultRenderPath_->Load(cache->GetResource<XMLFile>("RenderPaths/Forward.xml"));
+    defaultRenderPath_->Load(cache->GetResource<XMLFile>("RenderPaths/Forward.xml"));
 
     CreateGeometries();
     CreateInstancingBuffer();

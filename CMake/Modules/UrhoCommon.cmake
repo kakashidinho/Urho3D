@@ -150,11 +150,12 @@ option (URHO3D_NAVIGATION "Enable navigation support" TRUE)
 cmake_dependent_option (URHO3D_NETWORK "Enable networking support" TRUE "NOT WEB" FALSE)
 option (URHO3D_PHYSICS "Enable physics support" TRUE)
 option (URHO3D_URHO2D "Enable 2D graphics and physics support" TRUE)
+option (URHO3D_GLES2 "Enable GLES2" FALSE)
 option (URHO3D_GLES3 "Enable GLES3" TRUE)
 option (URHO3D_WEBP "Enable WebP support" TRUE)
 option (URHO3D_ANGLE_METAL "Enable Angle Metal graphics backend" FALSE)
 
-if (NOT URHO3D_GLES3)
+if ((ANDROID OR IOS OR URHO3D_ANGLE_METAL) AND NOT URHO3D_GLES3)
     set(URHO3D_GLES2 TRUE)
 endif ()
 
@@ -468,6 +469,7 @@ foreach (OPT
         URHO3D_THREADING
         URHO3D_URHO2D
         URHO3D_GLES3
+        URHO3D_GLES2
         URHO3D_WEBP
         URHO3D_WIN32_CONSOLE
         URHO3D_ANGLE_METAL)

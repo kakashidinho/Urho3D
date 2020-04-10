@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2008-2019 the Urho3D project.
+// Copyright (c) 2008-2020 the Urho3D project.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -455,9 +455,9 @@ bool TmxFile2D::EndLoad()
 
     XMLElement rootElem = loadXMLFile_->GetRoot("map");
     String version = rootElem.GetAttribute("version");
-    if (version != "1.0")
+    if (!version.StartsWith("1."))
     {
-        URHO3D_LOGERROR("Invalid version");
+        URHO3D_LOGERRORF("Invalid TMX version: %s", version.CString());
         return false;
     }
 

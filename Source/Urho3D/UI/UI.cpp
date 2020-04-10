@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2008-2019 the Urho3D project.
+// Copyright (c) 2008-2020 the Urho3D project.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -768,7 +768,10 @@ void UI::SetCustomSize(int width, int height)
 
 IntVector2 UI::GetCursorPosition() const
 {
-    return cursor_ ? cursor_->GetPosition() : GetSubsystem<Input>()->GetMousePosition();
+    if (cursor_)
+        return ConvertUIToSystem(cursor_->GetPosition());
+
+    return GetSubsystem<Input>()->GetMousePosition();
 }
 
 UIElement* UI::GetElementAt(const IntVector2& position, bool enabledOnly, IntVector2* elementScreenPosition)
@@ -844,6 +847,16 @@ UIElement* UI::GetElementAt(UIElement* root, const IntVector2& position, bool en
 UIElement* UI::GetElementAt(int x, int y, bool enabledOnly)
 {
     return GetElementAt(IntVector2(x, y), enabledOnly);
+}
+
+IntVector2 UI::ConvertSystemToUI(const IntVector2& systemPos) const
+{
+    return VectorFloorToInt(static_cast<Vector2>(systemPos) / GetScale());
+}
+
+IntVector2 UI::ConvertUIToSystem(const IntVector2& uiPos) const
+{
+    return VectorFloorToInt(static_cast<Vector2>(uiPos) * GetScale());
 }
 
 UIElement* UI::GetFrontElement() const
@@ -1044,7 +1057,7 @@ void UI::Render(VertexBuffer* buffer, const PODVector<UIBatch>& batches, unsigne
         ShaderVariation* ps;
         ShaderVariation* vs;
 
-        if (!batch.custom_material_)
+        if (!batch.customMaterial_)
         {
             if (!batch.texture_)
             {
@@ -1067,7 +1080,7 @@ void UI::Render(VertexBuffer* buffer, const PODVector<UIBatch>& batches, unsigne
             vs = diffTextureVS;
             ps = diffTexturePS;
 
-            Technique* technique = batch.custom_material_->GetTechnique(0);
+            Technique* technique = batch.customMaterial_->GetTechnique(0);
             if (technique)
             {
                 Pass* pass = nullptr;
@@ -1076,8 +1089,8 @@ void UI::Render(VertexBuffer* buffer, const PODVector<UIBatch>& batches, unsigne
                     pass = technique->GetPass(i);
                     if (pass)
                     {
-                        vs = graphics_->GetShader(VS, pass->GetVertexShader(), batch.custom_material_->GetVertexShaderDefines());
-                        ps = graphics_->GetShader(PS, pass->GetPixelShader(), batch.custom_material_->GetPixelShaderDefines());
+                        vs = graphics_->GetShader(VS, pass->GetVertexShader(), batch.customMaterial_->GetVertexShaderDefines());
+                        ps = graphics_->GetShader(PS, pass->GetPixelShader(), batch.customMaterial_->GetPixelShaderDefines());
                         break;
                     }
                 }
@@ -1115,22 +1128,22 @@ void UI::Render(VertexBuffer* buffer, const PODVector<UIBatch>& batches, unsigne
 
         graphics_->SetBlendMode(batch.blendMode_);
         graphics_->SetScissorTest(true, scissor);
-        if (!batch.custom_material_)
+        if (!batch.customMaterial_)
         {
             graphics_->SetTexture(0, batch.texture_);
         } else
         {
             // Update custom shader parameters if needed
-            if (graphics_->NeedParameterUpdate(SP_MATERIAL, reinterpret_cast<const void*>(batch.custom_material_->GetShaderParameterHash())))
+            if (graphics_->NeedParameterUpdate(SP_MATERIAL, reinterpret_cast<const void*>(batch.customMaterial_->GetShaderParameterHash())))
             {
-                auto shader_parameters = batch.custom_material_->GetShaderParameters();
+                auto shader_parameters = batch.customMaterial_->GetShaderParameters();
                 for (auto it = shader_parameters.Begin(); it != shader_parameters.End(); ++it)
                 {
                     graphics_->SetShaderParameter(it->second_.name_, it->second_.value_);
                 }
             }
             // Apply custom shader textures
-            auto textures = batch.custom_material_->GetTextures();
+            auto textures = batch.customMaterial_->GetTextures();
             for (auto it = textures.Begin(); it != textures.End(); ++it)
             {
                 graphics_->SetTexture(it->first_, it->second_);
@@ -1140,10 +1153,10 @@ void UI::Render(VertexBuffer* buffer, const PODVector<UIBatch>& batches, unsigne
         graphics_->Draw(TRIANGLE_LIST, batch.vertexStart_ / UI_VERTEX_SIZE,
             (batch.vertexEnd_ - batch.vertexStart_) / UI_VERTEX_SIZE);
 
-        if (batch.custom_material_)
+        if (batch.customMaterial_)
         {
             // Reset textures used by the batch custom material
-            auto textures = batch.custom_material_->GetTextures();
+            auto textures = batch.customMaterial_->GetTextures();
             for (auto it = textures.Begin(); it != textures.End(); ++it)
             {
                 graphics_->SetTexture(it->first_, 0);
@@ -1790,20 +1803,20 @@ void UI::HandleMouseMove(StringHash eventType, VariantMap& eventData)
     const IntVector2& rootSize = rootElement_->GetSize();
     const IntVector2& rootPos = rootElement_->GetPosition();
 
-    IntVector2 DeltaP = IntVector2(eventData[P_DX].GetInt(), eventData[P_DY].GetInt());
+    const IntVector2 mouseDeltaPos{ eventData[P_DX].GetInt(), eventData[P_DY].GetInt() };
+    const IntVector2 mousePos{ eventData[P_X].GetInt(), eventData[P_Y].GetInt() };
 
     if (cursor_)
     {
         if (!input->IsMouseVisible())
         {
             if (!input->IsMouseLocked())
-                cursor_->SetPosition(IntVector2(eventData[P_X].GetInt(), eventData[P_Y].GetInt()));
+                cursor_->SetPosition(ConvertSystemToUI(mousePos));
             else if (cursor_->IsVisible())
             {
                 // Relative mouse motion: move cursor only when visible
                 IntVector2 pos = cursor_->GetPosition();
-                pos.x_ += eventData[P_DX].GetInt();
-                pos.y_ += eventData[P_DY].GetInt();
+                pos += ConvertSystemToUI(mouseDeltaPos);
                 pos.x_ = Clamp(pos.x_, rootPos.x_, rootPos.x_ + rootSize.x_ - 1);
                 pos.y_ = Clamp(pos.y_, rootPos.y_, rootPos.y_ + rootSize.y_ - 1);
                 cursor_->SetPosition(pos);
@@ -1812,7 +1825,7 @@ void UI::HandleMouseMove(StringHash eventType, VariantMap& eventData)
         else
         {
             // Absolute mouse motion: move always
-            cursor_->SetPosition(IntVector2(eventData[P_X].GetInt(), eventData[P_Y].GetInt()));
+            cursor_->SetPosition(ConvertSystemToUI(mousePos));
         }
     }
 
@@ -1820,7 +1833,7 @@ void UI::HandleMouseMove(StringHash eventType, VariantMap& eventData)
     bool cursorVisible;
     GetCursorPositionAndVisible(cursorPos, cursorVisible);
 
-    ProcessMove(cursorPos, DeltaP, mouseButtons_, qualifiers_, cursor_, cursorVisible);
+    ProcessMove(cursorPos, mouseDeltaPos, mouseButtons_, qualifiers_, cursor_, cursorVisible);
 }
 
 void UI::HandleMouseWheel(StringHash eventType, VariantMap& eventData)

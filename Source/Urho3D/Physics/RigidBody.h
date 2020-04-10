@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2008-2019 the Urho3D project.
+// Copyright (c) 2008-2020 the Urho3D project.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -213,7 +213,7 @@ public:
     /// Return whether this RigidBody is acting as a trigger.
     bool IsTrigger() const { return trigger_; }
 
-    /// Return whether rigid body is active (not sleeping.)
+    /// Return whether rigid body is active (not sleeping).
     bool IsActive() const;
 
     /// Return collision layer.

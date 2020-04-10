@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2008-2019 the Urho3D project.
+// Copyright (c) 2008-2020 the Urho3D project.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -387,6 +387,7 @@ SharedPtr<Technique> Technique::Clone(const String& cloneName) const
             continue;
 
         Pass* newPass = ret->CreatePass(srcPass->GetName());
+        newPass->SetCullMode(srcPass->GetCullMode());
         newPass->SetBlendMode(srcPass->GetBlendMode());
         newPass->SetDepthTestMode(srcPass->GetDepthTestMode());
         newPass->SetLightingMode(srcPass->GetLightingMode());
